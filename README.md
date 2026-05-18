@@ -1,107 +1,274 @@
-# Task Manager (SaaS Multi-Tenancy Architecture)
+# TaskForge — Multi-tenant SaaS Workflow Management Platform
 
-A robust, full-stack task management platform built as a personal project. This project features a comprehensive user dashboard, OTP-based authentication, team collaboration capabilities, and is architected to support SaaS multi-tenancy.
+TaskForge is a modern multi-tenant SaaS workflow and task management platform designed for organizations and collaborative teams.
 
-**Repository:** [https://github.com/MinhPham204/TaskManager](https://github.com/MinhPham204/TaskManager)
-
-## Key Features
-
-This project provides a complete solution for managing both personal and team-based tasks:
-
-* **Authentication & Security:**
-    * Secure user registration and login using **JWT (JSON Web Tokens)**.
-    * **OTP (One-Time Password)** verification for both new account registration and password resets.
-    * Passwords are securely hashed using **bcrypt**.
-* **Task Management:**
-    * Full CRUD (Create, Read, Update, Delete) functionality for tasks.
-    * Set **priorities** (low, medium, high) and **due dates** for each task.
-    * Automated task status updates (e.g., "pending," "in progress," "completed").
-* **Team Collaboration (Multi-Tenancy):**
-    * Create and manage teams with role-based access control (Admins, Users).
-    * **Secure, Time-Limited Invitations:** Invite new members via email using a secure, one-time token.
-    * Invitation links are cached in **Redis** with a 24-hour expiry to ensure security.
-    * Search and add existing users in the system directly to the team.
-* **API Documentation:**
-    * Fully documented API endpoints using **Swagger UI**, integrated directly into the backend for easy testing and exploration.
-* **Performance & Infrastructure:**
-    * **Dockerized Backend:** Entire backend infrastructure (API, Database, Cache) is containerized for consistent development and deployment.
-    * **Redis-Powered Caching:** Utilizes Redis for caching time-sensitive data (OTPs, Invitation Tokens), significantly improving response speed.
-    * **MongoDB Replica Set:** Configured to support ACID transactions required for complex multi-tenant data operations.
-
-## Tech Stack
-
-This project is built with a modern, scalable architecture.
-
-### **Backend (Containerized)**
-* **NestJS & TypeScript:** A progressive Node.js framework for building efficient, reliable, and scalable server-side applications.
-* **MongoDB:** Primary NoSQL database (configured as a Replica Set).
-* **Mongoose:** ODM library for structured interaction with MongoDB.
-* **Redis:** In-memory data structure store, used for caching and sessions.
-* **Docker & Docker Compose:** Containerization and orchestration for the backend environment.
-* **Swagger:** Automated API documentation.
-
-### **Frontend**
-* **React.js:** The primary JavaScript library for building the user interface.
-* **Redux Toolkit:** Global state management for the application.
-* **Tailwind CSS:** A utility-first CSS framework for rapid and flexible styling.
+This project focuses heavily on:
+- scalable backend architecture
+- multi-tenant SaaS design
+- asynchronous processing
+- role-based access control (RBAC)
+- workflow orchestration
+- distributed backend systems
 
 ---
 
-## Getting Started
+# Key Highlights
 
-Follow these steps to run the project on your local machine. The backend is fully dockerized, making setup incredibly fast.
+- Multi-tenant SaaS architecture for organization-scoped collaboration
+- JWT Authentication & Role-Based Access Control (RBAC)
+- Asynchronous workflows using BullMQ and Redis
+- MongoDB aggregation pipeline optimization & compound indexing
+- OTP verification & email notification system
+- Swagger/OpenAPI documentation
+- Fully Dockerized backend infrastructure
 
-### **Prerequisites:**
-* **Docker Desktop** (Required for the backend)
-* **Node.js** (v16 or later - Required for the frontend)
-* **Git**
+---
 
-### **1. Backend Installation (via Docker)**
+# System Architecture
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/MinhPham204/TaskManager.git
-   cd TaskManager/backend
-   ```
+```text
+                        +-------------------+
+                        |     Frontend      |
+                        |   React + Redux   |
+                        +---------+---------+
+                                  |
+                                  v
+                    +--------------------------+
+                    |      NestJS REST API     |
+                    |     JWT Authentication   |
+                    +------------+-------------+
+                                 |
+         +-----------------------+----------------------+
+         |                       |                      |
+         v                       v                      v
++----------------+     +----------------+     +----------------+
+|    MongoDB     |     |     Redis      |     |    BullMQ      |
+| Replica Set DB |     | OTP / Caching  |     | Async Jobs     |
++----------------+     +----------------+     +----------------+
+```
 
-2. Configure Environment Variables:
-   Create a `.env` file in the `backend` directory based on the provided example.
-   ```bash
-   cp .env.example .env
-   ```
-   *(Ensure you fill in your specific credentials like `EMAIL_USER` and `EMAIL_PASS` for OTP functionality).*
+---
 
-3. Start the Docker Containers:
-   ```bash
-   docker-compose up -d --build
-   ```
+# Core Features
 
-4. **Crucial Step - Initialize MongoDB Replica Set:**
-   Since this is a fresh database instance, you must initialize the replica set for Mongoose transactions to work. Run this command once:
-   ```bash
-   docker exec -it task_manager_db mongosh --eval "rs.initiate()"
-   ```
+## Authentication & Security
 
-5. Explore the API:
-   The backend is now running. Open your browser and navigate to the Swagger documentation:
-    **`http://localhost:8001/api/docs`**
+- JWT Access & Refresh Token authentication
+- OTP verification for:
+  - user registration
+  - password reset
+- Password hashing using BCrypt
+- Role-based access control:
+  - ADMIN
+  - USER
+- Secure refresh token workflow
+- Standardized API response handling
 
-### **2. Frontend Installation**
+---
 
-1. Navigate to the frontend directory:
-   ```bash
-   cd ../frontend
-   ```
+# Multi-Tenant SaaS Architecture
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+TaskForge is designed as a multi-tenant collaboration platform:
 
-3. Configure Environment Variables:
-   Create a `.env` file and set your backend API address (e.g., `VITE_API_URL=http://localhost:8001`).
+- Organizations act as isolated workspaces
+- Organization-scoped permissions
+- Team-based task collaboration
+- Secure invitation & onboarding workflow
+- Cross-organization access prevention
 
-4. Start the React application:
-   ```bash
-   npm run dev
-   ```
+---
+
+# Teams & Collaboration
+
+- Team creation and management
+- Team member invitations
+- Role promotion/demotion
+- Invitation token validation using Redis
+- Team-scoped task management
+- Collaborative workflow support
+
+---
+
+# Task & Workflow Management
+
+- Full CRUD task management
+- Task priorities:
+  - Low
+  - Medium
+  - High
+- Due date tracking
+- Assignee management
+- Task status workflows:
+  - Pending
+  - In Progress
+  - Completed
+
+---
+
+# Async Processing & Background Jobs
+
+## Email Dispatching
+
+- Asynchronous email delivery using BullMQ
+- Redis-backed job queue processing
+
+## Scheduled Jobs
+
+- Automated task reminder workflows
+- Background notification processing
+
+## Queue-Based Architecture
+
+- Non-blocking background job execution
+- Scalable asynchronous task processing
+- Improved responsiveness under concurrent workloads
+
+---
+
+# Performance Optimizations
+
+- Optimized MongoDB aggregation pipelines
+- Applied compound indexing strategies
+- Reduced query execution time:
+  - ~80ms → ~2ms
+- Benchmarked on datasets with:
+  - 100,000+ records
+- Improved concurrent task retrieval performance
+
+---
+
+# Tech Stack
+
+## Backend
+
+- Node.js
+- TypeScript
+- NestJS
+- MongoDB
+- Mongoose
+- Redis
+- BullMQ
+- JWT Authentication
+- Swagger/OpenAPI
+- Docker & Docker Compose
+
+## Frontend
+
+- React.js
+- Redux Toolkit
+- Tailwind CSS
+
+---
+
+# API Documentation
+
+Swagger UI is integrated directly into the backend.
+
+```bash
+http://localhost:8001/api/docs
+```
+
+---
+
+# Dockerized Infrastructure
+
+The backend infrastructure is fully containerized using Docker Compose.
+
+Services:
+- NestJS API
+- MongoDB Replica Set
+- Redis
+- BullMQ Workers
+
+---
+
+# Getting Started
+
+## Prerequisites
+
+- Docker Desktop
+- Node.js 18+
+- Git
+
+---
+
+# 1. Clone Repository
+
+```bash
+git clone https://github.com/MinhPham204/TaskForge.git
+cd TaskForge
+```
+
+---
+
+# 2. Backend Setup
+
+## Configure Environment Variables
+
+Create `.env` file inside the backend directory.
+
+Example:
+
+```env
+MONGO_URI=mongodb://localhost:27017/taskforge
+JWT_SECRET=your-secret-key
+
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+EMAIL_USER=your-email
+EMAIL_PASS=your-password
+```
+
+---
+
+## Start Docker Infrastructure
+
+```bash
+docker-compose up -d --build
+```
+
+---
+
+## Initialize MongoDB Replica Set
+
+```bash
+docker exec -it task_manager_db mongosh --eval "rs.initiate()"
+```
+
+---
+
+## Run Backend
+
+```bash
+npm install
+npm run start:dev
+```
+
+---
+
+# 3. Frontend Setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+# Future Improvements
+
+- WebSocket Real-time Notifications
+- Microservice Architecture
+- CI/CD Pipeline
+- Kubernetes Deployment
+- Metrics & Monitoring
+- Distributed Tracing
+- File Upload Service
+
+---
+
+# Repository
+
+- GitHub: https://github.com/MinhPham204/TaskForge
