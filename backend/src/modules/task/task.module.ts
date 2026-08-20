@@ -8,6 +8,7 @@ import { Team, TeamSchema } from '../team/schemas/team.schema';
 import { User, UserSchema } from '../user/schemas/user.schema';
 import { NOTIFICATION_QUEUE } from '../automation/constants/queues';
 import { OrgAdminGuard } from '../../common/guards/org-admin.guard';
+import { MembershipModule } from '../membership/membership.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { OrgAdminGuard } from '../../common/guards/org-admin.guard';
     BullModule.registerQueue({
       name: NOTIFICATION_QUEUE,
     }),
+    MembershipModule,
   ],
   controllers: [TaskController],
   providers: [TaskService, OrgAdminGuard],

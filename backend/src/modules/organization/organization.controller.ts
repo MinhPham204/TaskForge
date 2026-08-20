@@ -25,19 +25,27 @@ import { AddMemberOrgDto, UpdateMemberRoleDto } from './dto/add-member-org.dto';
 import { OrgOwnerGuard } from './guards/org-owner.guard';
 import { OrgAdminGuard } from './guards/org-admin.guard';
 import { OrganizationService } from './organization.service';
+import { SkipTenant } from '../../common/decorators/skip-tenant.decorator';
+import { TenantMembershipGuard } from '../../common/guards/tenant-membership.guard';
 
 interface AuthUser {
   _id: { toString(): string };
 }
 
+/**
+ * Workspace discovery/accept-invitation routes opt out with @SkipTenant().
+ * Organization management routes require a validated active Membership before
+ * OrgOwnerGuard/OrgAdminGuard execute.
+ */
 @Controller('organizations')
-@ApiBearerAuth('accessToken') 
+@ApiBearerAuth('accessToken')
 @ApiTags('Organizations')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, TenantMembershipGuard)
 export class OrganizationController {
   constructor(private readonly orgService: OrganizationService) {}
 
   @Get()
+  @SkipTenant()
   @ApiOperation({
     summary: '[TESTING] Get organizations of current user',
     description:
@@ -64,9 +72,11 @@ export class OrganizationController {
    * Get all pending organization invitations for current user
    */
   @Get('pending-invitations')
+  @SkipTenant()
   @ApiOperation({
     summary: 'Get pending organization invitations',
-    description: 'Get all pending invitations to organizations for the current user',
+    description:
+      'Get all pending invitations to organizations for the current user',
   })
   @ApiResponse({
     status: 200,
@@ -119,9 +129,13 @@ export class OrganizationController {
    * GET /api/organizations/slug/:slug
    */
   @Get('slug/:slug')
+  @SkipTenant()
   @ApiOperation({ summary: 'Get organization by slug' })
   @ApiResponse({ status: 200, description: 'Organization found' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
   @ApiResponse({ status: 404, description: 'Organization not found' })
   findBySlug(@Param('slug') slug: string) {
     return this.orgService.findBySlug(slug);
@@ -131,9 +145,13 @@ export class OrganizationController {
    * GET /api/organizations/:id
    */
   @Get(':id')
+  @SkipTenant()
   @ApiOperation({ summary: 'Get organization by id' })
   @ApiResponse({ status: 200, description: 'Organization found' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
   @ApiResponse({ status: 404, description: 'Organization not found' })
   findOne(@Param('id') id: string) {
     return this.orgService.findById(id);
@@ -555,6 +573,7 @@ export class OrganizationController {
    * Accept pending organization invitation - chuyển user từ chưa có org sang org mới
    */
   @Post(':id/accept-invitation')
+  @SkipTenant()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Accept organization invitation',
@@ -569,7 +588,8 @@ export class OrganizationController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Invitation accepted successfully - user joined new organization',
+    description:
+      'Invitation accepted successfully - user joined new organization',
     schema: {
       properties: {
         _id: { type: 'string' },
@@ -610,13 +630,7 @@ export class OrganizationController {
       },
     },
   })
-  acceptInvitation(
-    @Param('id') orgId: string,
-    @GetUser() user: AuthUser,
-  ) {
-    return this.orgService.acceptInvitation(
-      orgId,
-      user._id.toString(),
-    );
+  acceptInvitation(@Param('id') orgId: string, @GetUser() user: AuthUser) {
+    return this.orgService.acceptInvitation(orgId, user._id.toString());
   }
 }

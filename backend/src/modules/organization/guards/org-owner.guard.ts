@@ -3,14 +3,9 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
-  NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import {
-  Organization,
-  OrganizationDocument,
-} from '../schemas/organization.schema';
+import { UserRole } from '../../user/schemas/user.schema';
+import type { TenantRequest } from '../../../common/interfaces/tenant-request.interface';
 
 /**
  * Guard để kiểm tra user có phải là Owner của organization không.
@@ -18,34 +13,20 @@ import {
  */
 @Injectable()
 export class OrgOwnerGuard implements CanActivate {
-  constructor(
-    @InjectModel(Organization.name)
-    private readonly orgModel: Model<OrganizationDocument>,
-  ) {}
-
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
-    const user = request.user;
-    const orgId = request.params.id;
-
-    if (!user || !user._id) {
-      throw new ForbiddenException('User not authenticated');
-    }
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest<TenantRequest>();
+    const membership = request.activeMembership;
+    const orgId = request.params?.id;
 
     if (!orgId) {
       throw new ForbiddenException('Organization ID not provided');
     }
-
-    const org = await this.orgModel.findById(orgId).lean();
-    if (!org) {
-      throw new NotFoundException(`Organization with id "${orgId}" not found`);
+    if (!membership || membership.organization.toString() !== orgId) {
+      throw new ForbiddenException(
+        'Active organization does not match the requested organization',
+      );
     }
-
-    // So sánh user._id với org.owner
-    const userId = new Types.ObjectId(user._id.toString());
-    const ownerId = new Types.ObjectId(org.owner.toString());
-
-    if (!userId.equals(ownerId)) {
+    if (membership.role !== UserRole.OWNER) {
       throw new ForbiddenException(
         'Only organization owner can perform this action',
       );

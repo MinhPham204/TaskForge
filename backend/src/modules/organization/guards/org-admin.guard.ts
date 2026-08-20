@@ -3,15 +3,9 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
-  NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { User, UserDocument, UserRole } from '../../user/schemas/user.schema';
-import {
-  Organization,
-  OrganizationDocument,
-} from '../schemas/organization.schema';
+import { UserRole } from '../../user/schemas/user.schema';
+import type { TenantRequest } from '../../../common/interfaces/tenant-request.interface';
 
 /**
  * Guard lớp 1 cho nhóm API quản trị nhân sự Organization.
@@ -19,52 +13,22 @@ import {
  */
 @Injectable()
 export class OrgAdminGuard implements CanActivate {
-  constructor(
-    @InjectModel(Organization.name)
-    private readonly orgModel: Model<OrganizationDocument>,
-    @InjectModel(User.name)
-    private readonly userModel: Model<UserDocument>,
-  ) {}
-
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
-    const user = request.user;
-    const orgId = request.params.id;
-
-    if (!user || !user._id) {
-      throw new ForbiddenException('User not authenticated');
-    }
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest<TenantRequest>();
+    const membership = request.activeMembership;
+    const orgId = request.params?.id;
 
     if (!orgId) {
       throw new ForbiddenException('Organization ID not provided');
     }
-
-    const org = await this.orgModel.findById(orgId).select('_id owner members').lean();
-    if (!org) {
-      throw new NotFoundException(`Organization with id "${orgId}" not found`);
-    }
-
-    const actorId = new Types.ObjectId(user._id.toString());
-    const actor = await this.userModel
-      .findById(actorId)
-      .select('_id role organization')
-      .lean();
-
-    if (!actor) {
-      throw new NotFoundException('User not found');
-    }
-
-    const belongsToOrganization =
-      actor.organization?.toString() === org._id.toString() &&
-      (org.owner.toString() === actorId.toString() ||
-        org.members.some((memberId) => memberId.toString() === actorId.toString()));
-
-    if (!belongsToOrganization) {
-      throw new ForbiddenException('You do not belong to this organization');
+    if (!membership || membership.organization.toString() !== orgId) {
+      throw new ForbiddenException(
+        'Active organization does not match the requested organization',
+      );
     }
 
     const isAllowedRole =
-      actor.role === UserRole.OWNER || actor.role === UserRole.ADMIN;
+      membership.role === UserRole.OWNER || membership.role === UserRole.ADMIN;
 
     if (!isAllowedRole) {
       throw new ForbiddenException(

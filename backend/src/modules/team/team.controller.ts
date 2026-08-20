@@ -24,6 +24,8 @@ import { TeamService, PaginatedResult } from './team.service';
 import { TeamDocument } from './schemas/team.schema';
 import { UserRole } from '../user/schemas/user.schema';
 import { TeamLeadGuard } from './guards/team-lead.guard';
+import { TenantMembershipGuard } from '../../common/guards/tenant-membership.guard';
+import { CurrentMembership } from '../../common/decorators/current-membership.decorator';
 import {
   AddMemberDto,
   CreateTeamDto,
@@ -34,12 +36,11 @@ import {
 
 interface AuthUser {
   _id: { toString(): string };
-  role: UserRole;
 }
 
 @ApiTags('Teams')
 @ApiBearerAuth('accessToken')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, TenantMembershipGuard)
 @Controller('teams')
 export class TeamController {
   constructor(private readonly teamService: TeamService) {}
@@ -51,7 +52,10 @@ export class TeamController {
       'Infrastructure management action. Only ORG_OWNER or ORG_ADMIN can create a new team. Optional leadUserId allows assigning another user as TEAM_LEAD at creation time.',
   })
   @ApiResponse({ status: 201, description: 'Team created successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
   @ApiResponse({
     status: 403,
     description: 'Forbidden - Only ORG_OWNER or ORG_ADMIN can create team',
@@ -59,20 +63,27 @@ export class TeamController {
   @Post()
   @UseGuards(OrgAdminGuard)
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateTeamDto, @GetUser() user: AuthUser) {
+  create(
+    @Body() dto: CreateTeamDto,
+    @GetUser() user: AuthUser,
+    @CurrentMembership('role') orgRole: UserRole,
+  ) {
     return this.teamService.create(dto, {
       userId: user._id.toString(),
-      orgRole: user.role,
+      orgRole,
     });
   }
-  
+
   @ApiOperation({
     summary: 'Get my teams',
     description:
       'Returns teams where current user is an actual member. TEAM_MEMBER can only see own teams. Supports pagination.',
   })
   @ApiResponse({ status: 200, description: 'Paginated list of my teams' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
   @Get('my-teams')
   async getMyTeams(
     @GetUser() user: AuthUser,
@@ -88,7 +99,10 @@ export class TeamController {
       'Organization directory view. Lists teams in current tenant organization with pagination.',
   })
   @ApiResponse({ status: 200, description: 'Paginated list of teams' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
   @Get()
   findAll(
     @Query() pagination: PaginationDto,
@@ -103,14 +117,24 @@ export class TeamController {
       'Allowed for ORG_OWNER/ORG_ADMIN or users who are members of this team. Enforced at service layer for defense in depth.',
   })
   @ApiResponse({ status: 200, description: 'Team found' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - You cannot access this team' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - You cannot access this team',
+  })
   @ApiResponse({ status: 404, description: 'Team not found' })
   @Get(':id')
-  findOne(@Param('id') id: string, @GetUser() user: AuthUser) {
+  findOne(
+    @Param('id') id: string,
+    @GetUser() user: AuthUser,
+    @CurrentMembership('role') orgRole: UserRole,
+  ) {
     return this.teamService.findById(id, {
       userId: user._id.toString(),
-      orgRole: user.role,
+      orgRole,
     });
   }
 
@@ -121,8 +145,14 @@ export class TeamController {
       'Team management action. Allowed for ORG_OWNER, ORG_ADMIN, or TEAM_LEAD of the target team.',
   })
   @ApiResponse({ status: 200, description: 'Team updated successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - You cannot manage this team' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - You cannot manage this team',
+  })
   @ApiResponse({ status: 404, description: 'Team not found' })
   @Patch(':id')
   @UseGuards(TeamLeadGuard)
@@ -130,10 +160,11 @@ export class TeamController {
     @Param('id') id: string,
     @Body() dto: UpdateTeamDto,
     @GetUser() user: AuthUser,
+    @CurrentMembership('role') orgRole: UserRole,
   ) {
     return this.teamService.update(id, dto, {
       userId: user._id.toString(),
-      orgRole: user.role,
+      orgRole,
     });
   }
 
@@ -144,16 +175,26 @@ export class TeamController {
       'Team lifecycle management action. Allowed for ORG_OWNER, ORG_ADMIN, or TEAM_LEAD of the target team.',
   })
   @ApiResponse({ status: 200, description: 'Team deleted successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - You cannot manage this team' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - You cannot manage this team',
+  })
   @ApiResponse({ status: 404, description: 'Team not found' })
   @Delete(':id')
   @UseGuards(TeamLeadGuard)
   @HttpCode(HttpStatus.OK)
-  delete(@Param('id') id: string, @GetUser() user: AuthUser) {
+  delete(
+    @Param('id') id: string,
+    @GetUser() user: AuthUser,
+    @CurrentMembership('role') orgRole: UserRole,
+  ) {
     return this.teamService.delete(id, {
       userId: user._id.toString(),
-      orgRole: user.role,
+      orgRole,
     });
   }
 
@@ -168,10 +209,19 @@ export class TeamController {
       'Allowed for ORG_OWNER, ORG_ADMIN, or TEAM_LEAD of this team. Target user must belong to same organization tenant.',
   })
   @ApiResponse({ status: 200, description: 'Member added successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - You cannot manage this team' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - You cannot manage this team',
+  })
   @ApiResponse({ status: 404, description: 'Team or user not found' })
-  @ApiResponse({ status: 409, description: 'Conflict - User is already a member' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflict - User is already a member',
+  })
   @Post(':id/members')
   @UseGuards(TeamLeadGuard)
   @HttpCode(HttpStatus.OK)
@@ -179,10 +229,11 @@ export class TeamController {
     @Param('id') teamId: string,
     @Body() dto: AddMemberDto,
     @GetUser() user: AuthUser,
+    @CurrentMembership('role') orgRole: UserRole,
   ) {
     return this.teamService.addMember(teamId, dto, {
       userId: user._id.toString(),
-      orgRole: user.role,
+      orgRole,
     });
   }
 
@@ -193,8 +244,14 @@ export class TeamController {
       'Allowed for ORG_OWNER, ORG_ADMIN, or TEAM_LEAD. TEAM_LEAD cannot remove themselves if they are the last lead.',
   })
   @ApiResponse({ status: 200, description: 'Member removed successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Team management rule violated' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Team management rule violated',
+  })
   @ApiResponse({ status: 404, description: 'Team or member not found' })
   @Delete(':id/members/:memberId')
   @UseGuards(TeamLeadGuard)
@@ -203,10 +260,11 @@ export class TeamController {
     @Param('id') teamId: string,
     @Param('memberId') memberId: string,
     @GetUser() user: AuthUser,
+    @CurrentMembership('role') orgRole: UserRole,
   ) {
     return this.teamService.removeMember(teamId, memberId, {
       userId: user._id.toString(),
-      orgRole: user.role,
+      orgRole,
     });
   }
 
@@ -217,20 +275,30 @@ export class TeamController {
       'Allowed for ORG_OWNER, ORG_ADMIN, or TEAM_LEAD. Only current TEAM_MEMBER can be promoted to TEAM_LEAD.',
   })
   @ApiResponse({ status: 200, description: 'Member promoted successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - You cannot manage this team' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - You cannot manage this team',
+  })
   @ApiResponse({ status: 404, description: 'Team or member not found' })
-  @ApiResponse({ status: 409, description: 'Conflict - Target is not TEAM_MEMBER' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflict - Target is not TEAM_MEMBER',
+  })
   @Patch(':id/members/:memberId/promote')
   @UseGuards(TeamLeadGuard)
   promoteToLead(
     @Param('id') teamId: string,
     @Param('memberId') memberId: string,
     @GetUser() user: AuthUser,
+    @CurrentMembership('role') orgRole: UserRole,
   ) {
     return this.teamService.promoteToLead(teamId, memberId, {
       userId: user._id.toString(),
-      orgRole: user.role,
+      orgRole,
     });
   }
 
@@ -243,10 +311,19 @@ export class TeamController {
       'Allowed for ORG_OWNER, ORG_ADMIN, or TEAM_LEAD. Creates invitation with token and expiration.',
   })
   @ApiResponse({ status: 200, description: 'Invitation created successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - You cannot manage this team' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - You cannot manage this team',
+  })
   @ApiResponse({ status: 404, description: 'Team not found' })
-  @ApiResponse({ status: 409, description: 'Conflict - Already member or already invited' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflict - Already member or already invited',
+  })
   @Post(':id/invitations')
   @UseGuards(TeamLeadGuard)
   @HttpCode(HttpStatus.OK)
@@ -254,10 +331,11 @@ export class TeamController {
     @Param('id') teamId: string,
     @Body() dto: InviteMemberDto,
     @GetUser() user: AuthUser,
+    @CurrentMembership('role') orgRole: UserRole,
   ) {
     return this.teamService.inviteMember(teamId, dto, {
       userId: user._id.toString(),
-      orgRole: user.role,
+      orgRole,
     });
   }
 
@@ -268,8 +346,14 @@ export class TeamController {
       'Allowed for ORG_OWNER, ORG_ADMIN, or TEAM_LEAD. Removes invitation data to invalidate existing invite link.',
   })
   @ApiResponse({ status: 200, description: 'Invitation canceled successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - No valid JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - You cannot manage this team' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - No valid JWT token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - You cannot manage this team',
+  })
   @ApiResponse({ status: 404, description: 'Team not found' })
   @Delete(':id/invitations/:email')
   @UseGuards(TeamLeadGuard)
@@ -278,10 +362,11 @@ export class TeamController {
     @Param('id') teamId: string,
     @Param('email') email: string,
     @GetUser() user: AuthUser,
+    @CurrentMembership('role') orgRole: UserRole,
   ) {
     return this.teamService.cancelInvitation(teamId, email, {
       userId: user._id.toString(),
-      orgRole: user.role,
+      orgRole,
     });
   }
 }

@@ -5,6 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { UserRole } from '../../modules/user/schemas/user.schema';
+import type { TenantRequest } from '../interfaces/tenant-request.interface';
 
 /**
  * Guard kiểm tra quyền cấp Organization cho nhóm API giám sát hạ tầng.
@@ -13,11 +14,11 @@ import { UserRole } from '../../modules/user/schemas/user.schema';
 @Injectable()
 export class OrgAdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest<{ user?: { role?: UserRole } }>();
-    const role = request.user?.role;
+    const request = context.switchToHttp().getRequest<TenantRequest>();
+    const role = request.activeMembership?.role;
 
     if (!role) {
-      throw new ForbiddenException('User role is missing');
+      throw new ForbiddenException('Active membership role is missing');
     }
 
     const allowed = role === UserRole.OWNER || role === UserRole.ADMIN;

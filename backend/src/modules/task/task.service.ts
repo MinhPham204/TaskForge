@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -162,21 +163,40 @@ export class TaskService {
     return team;
   }
 
-  private async validateAssignees(assigneeIds: string[]): Promise<Types.ObjectId[]> {
+  /**
+   * @param team Khi truyền vào (create task), validate thêm assignedTo phải thuộc team.members.
+   *   Không truyền (update task khi không đổi team) để giữ nguyên hành vi cũ.
+   */
+  private async validateAssignees(
+    assigneeIds: string[],
+    team?: TeamDocument,
+  ): Promise<Types.ObjectId[]> {
     if (!assigneeIds || assigneeIds.length === 0) return [];
 
     const uniqueAssigneeIds = [...new Set(assigneeIds)];
-    
+
     // Tự động chỉ tìm trong Org hiện tại (Vì có tenantStorage)
     const validUsersCount = await this.userModel.countDocuments({
       _id: { $in: uniqueAssigneeIds },
-      isActive: true, 
+      isActive: true,
     });
 
     if (validUsersCount !== uniqueAssigneeIds.length) {
       throw new BadRequestException(
         'Một hoặc nhiều thành viên được giao việc không hợp lệ, bị khóa, hoặc không thuộc Tổ chức này',
       );
+    }
+
+    if (team) {
+      const teamMemberIds = new Set(
+        team.members.map((member) => member.user.toString()),
+      );
+      const notInTeam = uniqueAssigneeIds.some((id) => !teamMemberIds.has(id));
+      if (notInTeam) {
+        throw new BadRequestException(
+          'Một hoặc nhiều thành viên được giao việc không thuộc Team của Task này',
+        );
+      }
     }
 
     return uniqueAssigneeIds.map(id => new Types.ObjectId(id));
@@ -387,8 +407,11 @@ export class TaskService {
     // Đảm bảo user thuộc org trước khi tạo → lỗi rõ ràng thay vì Mongoose ValidationError
     this.tenantStorage.requireOrganizationId();
 
-    await this.ensureCreateTaskAccess(dto.team, currentUser);
-    const validAssignees = await this.validateAssignees(dto.assignedTo ?? []);
+    const team = await this.ensureCreateTaskAccess(dto.team, currentUser);
+    const validAssignees = await this.validateAssignees(
+      dto.assignedTo ?? [],
+      team,
+    );
 
     // Plugin tự filter team theo org hiện tại
 
@@ -477,7 +500,22 @@ export class TaskService {
     dto: UpdateTaskStatusDto,
     currentUser: TaskActor,
   ): Promise<TaskDocument> {
-    await this.ensureTaskMutationAccess(id, currentUser);
+    const task = await this.ensureTaskMutationAccess(id, currentUser);
+
+    // Chặn bypass approval flow: nếu Team yêu cầu duyệt, không cho set COMPLETED trực tiếp
+    // tại đây — phải đi qua submitForApproval -> approveTask. Team cũ chưa có field
+    // requireApproval sẽ được Mongoose hydrate về default true.
+    if (dto.status === TaskStatus.COMPLETED) {
+      const team = await this.teamModel
+        .findById(task.team)
+        .select('requireApproval');
+      const requireApproval = team?.requireApproval ?? true;
+      if (requireApproval) {
+        throw new BadRequestException(
+          'Team này yêu cầu phê duyệt trước khi hoàn thành Task. Vui lòng dùng chức năng "Nộp để duyệt" (submit for approval).',
+        );
+      }
+    }
 
     let progressUpdate: number | undefined;
     if (dto.status === TaskStatus.COMPLETED) progressUpdate = 100;
@@ -488,14 +526,14 @@ export class TaskService {
       updatePayload['progress'] = progressUpdate;
     }
 
-    const task = await this.taskModel.findByIdAndUpdate(
+    const updatedTask = await this.taskModel.findByIdAndUpdate(
       id,
       { $set: updatePayload },
       { new: true },
     );
 
-    if (!task) throw new NotFoundException('Task not found');
-    return task;
+    if (!updatedTask) throw new NotFoundException('Task not found');
+    return updatedTask;
   }
 
   async updateProgress(
@@ -573,18 +611,34 @@ export class TaskService {
       throw new ForbiddenException('Bạn không có quyền thao tác trên Task này');
     }
 
-    if (task.status !== TaskStatus.PENDING_APPROVAL) {
-      throw new BadRequestException(
-        `Only PENDING_APPROVAL tasks can be approved. Current status: "${task.status}"`,
+    // Cố ý KHÔNG chặn self-approval (Team Lead approve task do chính mình tạo/được giao).
+    // Quyết định có chủ đích, không phải thiếu sót: team quy mô nhỏ (agency/SME) thường
+    // chỉ có 1 Team Lead — áp segregation-of-duties sẽ khiến task kẹt vĩnh viễn ở
+    // PENDING_APPROVAL khi không còn ai khác đủ điều kiện duyệt. Chi tiết:
+    // .spec-kit/specs/phase-1-va-loi-backend.plan.md mục 1.
+
+    // Atomic transition: filter theo status hiện tại để tránh race condition khi 2 request
+    // approve/reject cùng xử lý 1 task PENDING_APPROVAL.
+    const updatedTask = await this.taskModel.findOneAndUpdate(
+      { _id: taskId, status: TaskStatus.PENDING_APPROVAL },
+      {
+        $set: {
+          status: TaskStatus.COMPLETED,
+          progress: 100,
+          approvedBy: new Types.ObjectId(currentUser.userId),
+          rejectionReason: null,
+        },
+      },
+      { new: true },
+    );
+
+    if (!updatedTask) {
+      throw new ConflictException(
+        `Task không còn ở trạng thái PENDING_APPROVAL, có thể đã được xử lý bởi thao tác khác. Current status: "${task.status}"`,
       );
     }
 
-    task.status = TaskStatus.COMPLETED;
-    task.progress = 100;
-    task.approvedBy = new Types.ObjectId(currentUser.userId);
-    task.rejectionReason = null;
-
-    return task.save();
+    return updatedTask;
   }
 
   /**
@@ -613,17 +667,29 @@ export class TaskService {
       throw new ForbiddenException('Bạn không có quyền thao tác trên Task này');
     }
 
-    if (task.status !== TaskStatus.PENDING_APPROVAL) {
-      throw new BadRequestException(
-        `Only PENDING_APPROVAL tasks can be rejected. Current status: "${task.status}"`,
+    // Cố ý KHÔNG chặn self-approval — xem lý do ở approveTask() phía trên.
+
+    // Atomic transition: filter theo status hiện tại để tránh race condition khi 2 request
+    // approve/reject cùng xử lý 1 task PENDING_APPROVAL.
+    const updatedTask = await this.taskModel.findOneAndUpdate(
+      { _id: taskId, status: TaskStatus.PENDING_APPROVAL },
+      {
+        $set: {
+          status: TaskStatus.IN_PROGRESS,
+          approvedBy: null,
+          rejectionReason: dto.rejectionReason ?? null,
+        },
+      },
+      { new: true },
+    );
+
+    if (!updatedTask) {
+      throw new ConflictException(
+        `Task không còn ở trạng thái PENDING_APPROVAL, có thể đã được xử lý bởi thao tác khác. Current status: "${task.status}"`,
       );
     }
 
-    task.status = TaskStatus.IN_PROGRESS;
-    task.approvedBy = null;
-    task.rejectionReason = dto.rejectionReason ?? null;
-
-    return task.save();
+    return updatedTask;
   }
 
   // Todo Checklist

@@ -30,8 +30,11 @@ function injectOrgFilter(this: Query<unknown, unknown>): void {
     return; 
   }
 
-  // Lớp bảo vệ 2: Bỏ qua các Collection cốt lõi không thuộc về Tenant nào cả
-  const excludedModels = ['Organization', 'User']; 
+  // Lớp bảo vệ 2: Bỏ qua các Collection cốt lõi không thuộc về Tenant nào cả.
+  // 'Membership' là NGUỒN xác thực tenancy (1 user - N org) — bản thân nó span nhiều org,
+  // nếu bị filter theo organization sẽ không thể liệt kê toàn bộ org của user và
+  // TenantInterceptor không thể validate quyền truy cập trước khi có context.
+  const excludedModels = ['Organization', 'User', 'Membership'];
   if (this.model && excludedModels.includes(this.model.modelName)) {
     return; // Tổ chức thì không thể thuộc về tổ chức
   }

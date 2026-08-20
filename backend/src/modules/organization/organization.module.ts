@@ -10,6 +10,7 @@ import {
 } from './schemas/organization.schema';
 import { UserModule } from '../user/user.module';
 import { SharedModule } from '../../common/shared.module';
+import { MembershipModule } from '../membership/membership.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { SharedModule } from '../../common/shared.module';
     ]),
     UserModule, // Để OrganizationService inject UserModel và update user.organization
     SharedModule, // Để inject EmailService
+    MembershipModule,
   ],
   controllers: [OrganizationController],
   providers: [OrganizationService, OrgOwnerGuard, OrgAdminGuard],

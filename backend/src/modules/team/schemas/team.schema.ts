@@ -75,6 +75,15 @@ export class Team {
   @Prop({ type: [PendingInvitationSchema], default: [] })
   pendingInvitations!: PendingInvitation[];
 
+  /**
+   * Bật/tắt yêu cầu phê duyệt khi task chuyển sang COMPLETED.
+   * Team tạo trước khi có field này sẽ nhận default `true` khi Mongoose hydrate document
+   * (không cần migration thủ công).
+   */
+  @ApiProperty({ default: true })
+  @Prop({ type: Boolean, default: true })
+  requireApproval!: boolean;
+
   /** Tự động inject bởi TenantPlugin, không truyền thủ công */
   @Prop({ type: Types.ObjectId, ref: 'Organization', required: true })
   organization!: Types.ObjectId;

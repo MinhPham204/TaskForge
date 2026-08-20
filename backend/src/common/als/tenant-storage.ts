@@ -1,7 +1,10 @@
 import { AsyncLocalStorage } from 'async_hooks';
+import type { UserRole } from '../../modules/user/schemas/user.schema';
 
 export interface TenantStore {
   organizationId: string;
+  /** Role của user TRONG organization đang active (từ Membership), org-scoped — không phải role toàn cục. */
+  membershipRole?: UserRole;
 }
 
 /**
