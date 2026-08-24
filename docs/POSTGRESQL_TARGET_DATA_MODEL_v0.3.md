@@ -1,7 +1,7 @@
 # PostgreSQL Target Data Model v0.3
 
-> **Trạng thái:** Accepted  
-> **Ngày:** 2026-08-23  
+> **Trạng thái:** Accepted — Data Model Frozen
+> **Ngày:** 2026-08-23; relational integrity review 2026-08-24
 > **Business baseline:** [`TASKFORGE_BUSINESS_SCOPE_v0.3.md`](./TASKFORGE_BUSINESS_SCOPE_v0.3.md) — Accepted  
 > **Architecture baseline:** [`TARGET_TECHNICAL_ARCHITECTURE_v0.3.md`](./TARGET_TECHNICAL_ARCHITECTURE_v0.3.md) và [ADR-001..004](../.spec-kit/adr/) — Accepted  
 > **Phạm vi:** Target relational model; không phải Prisma schema, migration SQL, implementation plan hoặc Refactor Roadmap.
@@ -81,6 +81,18 @@ Chỉ dùng database enum cho vocabulary đã khóa:
 
 Task priority, Milestone lifecycle, file storage state, Notification delivery state và các policy vocabulary chưa khóa dùng bounded text code/application validation thay vì tự thêm business enum.
 
+### 2.5. Executable relational integrity contract
+
+ERD, DBML hoặc schema visualization chỉ là representation của target schema. Relation đơn như `tasks.project_id -> projects.id` có thể được giữ để diagram dễ đọc, nhưng không thay thế và không làm yếu composite same-tenant FK được định nghĩa trong tài liệu này. Khi visualization và constraint catalog khác nhau về mức chi tiết, constraint catalog tại §4–§7 là source of truth.
+
+Executable PostgreSQL/Prisma migration phải hiện thực và integration-test đầy đủ:
+
+- composite FK bảo vệ cùng Organization và cùng Project tại §5;
+- partial unique constraint/index được liệt kê trong từng table definition, gồm active Owner, pending Invitation, active status/checklist position, pending Approval Request, active file relation và các deduplication key có điều kiện;
+- PostgreSQL `CHECK` cho range, approval configuration và lifecycle consistency được liệt kê trong từng table definition.
+
+Nếu Prisma schema hoặc DBML không biểu diễn trực tiếp được partial index/composite constraint/CHECK, migration phải dùng PostgreSQL SQL tương ứng. Các dòng ghi `Partial UQ`, `Composite FK` hoặc `Check` trong tài liệu này là executable schema requirement, không chỉ là note cho documentation.
+
 ## 3. Relational model tổng thể
 
 ### 3.1. Core cardinality
@@ -151,7 +163,7 @@ erDiagram
     organizations ||--o{ notifications : delivers
 ```
 
-Mermaid biểu diễn business relationship chính; composite same-tenant keys và lifecycle conditions được định nghĩa ở các section sau.
+Mermaid biểu diễn business relationship chính; các cạnh đơn chỉ là visualization shorthand. Composite same-tenant keys, partial index và lifecycle `CHECK` được định nghĩa ở các section sau và phải được giữ trong executable schema.
 
 ## 4. Table definitions
 
@@ -177,7 +189,7 @@ Global identity, không tenant ownership.
 
 Không có `organization_id`, `role`, `team_id` hoặc organization lifecycle field trên User. `refresh_token_hash` phản ánh authentication implementation v1 hiện tại, không khóa User vào mô hình một session vĩnh viễn. Nếu phát sinh requirement multi-device/multi-session, persistence có thể tách thành `user_sessions` mà không thay đổi core domain model; v0.3 chưa cần table này.
 
-Indexes: unique `email`; index `disabled_at` chỉ cần nếu operational query chứng minh cần.
+UQ `email` đã tạo unique index cần thiết; executable schema không khai báo thêm một unique index trùng hệt. Index `disabled_at` chỉ cần nếu operational query chứng minh cần.
 
 #### `organizations`
 
@@ -223,7 +235,7 @@ Membership không hard delete. Exactly-one active Owner cần application transa
 | `email` | `citext not null` | Recipient identity candidate |
 | `invited_role` | `organization_role not null` | Default `MEMBER`; Owner activation vẫn chỉ qua transfer operation |
 | `invited_by_membership_id` | `uuid not null` | Composite FK cùng Organization |
-| `token_hash` | `text not null` | UQ; không lưu raw token |
+| `token_hash` | `text not null` | Hashed invitation credential; không lưu raw token |
 | `state` | `invitation_state not null` | Lifecycle SoT |
 | `expires_at` | `timestamptz not null` | Expiry |
 | `responded_at` | `timestamptz null` | Accepted/rejected/revoked time |
@@ -267,7 +279,7 @@ UQ `(organization_id, id)` làm composite FK target. Không có Team role, `requ
 | `removed_at` | `timestamptz null` | Null = current Team Member |
 | `created_at`, `updated_at` | `timestamptz not null` | Technical timestamps |
 
-PK `(team_id, organization_membership_id)`. Composite FKs bảo đảm Team và Membership cùng Organization. Không có `role` column. Re-add có thể reactivate cùng logical relation; detailed cycles được giữ ở Audit/Activity thay vì tạo Team role/history model mới.
+PK `(team_id, organization_membership_id)`. Composite FK `(organization_id, team_id)` -> Team và `(organization_id, organization_membership_id)` -> OrganizationMembership bảo đảm cùng Organization. Không có `role` column. Re-add có thể reactivate cùng logical relation; detailed cycles được giữ ở Audit/Activity thay vì tạo Team role/history model mới.
 
 Indexes:
 
@@ -293,7 +305,7 @@ DB bảo vệ same-tenant relation; active Membership eligibility và dependency
 | `version` | `bigint not null default 0` | Lifecycle/concurrency control |
 | `created_at`, `updated_at` | `timestamptz not null` | Technical timestamps |
 
-UQ `(organization_id, id)`. Index `(organization_id, state, updated_at desc)`. Project name uniqueness chưa khóa nên không có unique constraint.
+UQ `(organization_id, id)`. Composite FK `(organization_id, created_by_membership_id)` -> `organization_memberships(organization_id, id)`. Index `(organization_id, state, updated_at desc)`. Project name uniqueness chưa khóa nên không có unique constraint.
 
 #### `project_teams`
 
@@ -308,7 +320,7 @@ Tập Participating Teams; không tạo Project Members tự động.
 | `added_at` | `timestamptz not null` | Participation start |
 | `removed_at` | `timestamptz null` | Null = currently participating |
 
-PK `(project_id, team_id)`. Composite FKs `(organization_id, project_id)` và `(organization_id, team_id)` bảo vệ tenant. UQ `(organization_id, project_id, team_id)` làm target cho Task owning-Team FK.
+PK `(project_id, team_id)`. Composite FKs `(organization_id, project_id)` -> Project, `(organization_id, team_id)` -> Team và `(organization_id, added_by_membership_id)` -> OrganizationMembership bảo vệ tenant. UQ `(organization_id, project_id, team_id)` làm target cho Task owning-Team FK.
 
 FK không thể yêu cầu `removed_at is null`; add/remove Task/Member vẫn phải kiểm active relation trong application transaction.
 
@@ -329,7 +341,7 @@ Constraints/indexes:
 
 - UQ `(project_id, organization_membership_id)`.
 - UQ `(organization_id, project_id, id)` làm composite FK target.
-- Composite FK to Project và OrganizationMembership cùng tenant.
+- Composite FK `(organization_id, project_id)` -> Project và `(organization_id, organization_membership_id)` -> OrganizationMembership.
 - Index `(organization_id, project_id, removed_at, role)` cho participant/last-PM query.
 - Index `(organization_id, organization_membership_id, removed_at)` cho user projects.
 
@@ -352,6 +364,7 @@ DB không thể declaratively chứng minh User thuộc ít nhất một active 
 Constraints/indexes:
 
 - UQ `(organization_id, project_id, id)` làm Task FK target.
+- Composite FK `(organization_id, project_id)` -> Project.
 - Partial UQ `(project_id, position)` where `archived_at is null`.
 - Index `(organization_id, project_id, archived_at, position)` cho Board config.
 - Không unique display `name` cho tới khi `TBD-STATUS-01` được chốt.
@@ -369,7 +382,7 @@ Minimum active `NOT_STARTED`, `IN_PROGRESS`, `COMPLETED`; archive-in-use/migrate
 | `version` | `bigint not null default 0` | Concurrent toggle control khi cần |
 | `created_at`, `updated_at` | `timestamptz not null` | Technical timestamps |
 
-PK `(project_id, module_code)`; composite FK to Project. Project creation transaction tạo đúng bốn row; default enabled values là `TBD-MOD-01`. Disable chỉ đổi `enabled`, không cascade/delete module data.
+PK `(project_id, module_code)`; composite FK `(organization_id, project_id)` -> Project. Project creation transaction tạo đúng bốn row; default enabled values là `TBD-MOD-01`. Disable chỉ đổi `enabled`, không cascade/delete module data.
 
 ### 4.4. Task, Checklist, Approval và Comment
 
@@ -398,6 +411,7 @@ PK `(project_id, module_code)`; composite FK to Project. Project creation transa
 Constraints:
 
 - UQ `(organization_id, project_id, id)` làm child FK target.
+- Composite FK `(organization_id, project_id)` -> Project.
 - Composite FK `(organization_id, project_id, owning_team_id)` -> `project_teams`.
 - Composite FK `(organization_id, project_id, status_id)` -> `project_task_statuses`.
 - Composite FK creator/approver -> `project_memberships` cùng tenant/project.
@@ -426,7 +440,7 @@ Task không lưu semantic category, effective progress, approval state, `approve
 | `assigned_at` | `timestamptz not null` | Assignment start |
 | `removed_at` | `timestamptz null` | Null = current assignee |
 
-PK `(task_id, project_membership_id)`. Composite FKs ensure Task, assignee và actor thuộc cùng Project/Organization. Index `(organization_id, project_membership_id, removed_at, task_id)` cho My Tasks và `(organization_id, project_id, task_id, removed_at)` cho Task detail.
+PK `(task_id, project_membership_id)`. Composite FK `(organization_id, project_id, task_id)` -> Task; assignee và assigned-by actor dùng `(organization_id, project_id, *_project_membership_id)` -> ProjectMembership. Các FK này bảo đảm Task, assignee và actor thuộc cùng Project/Organization. Index `(organization_id, project_membership_id, removed_at, task_id)` cho My Tasks và `(organization_id, project_id, task_id, removed_at)` cho Task detail.
 
 TeamMember intersection với current owning Team không thể được bảo vệ ổn định chỉ bằng FK vì owning Team có thể đổi; assignment/change-Team command phải lock/revalidate Task, ProjectMembership và TeamMember.
 
@@ -446,7 +460,7 @@ TeamMember intersection với current owning Team không thể được bảo v�
 
 Constraints/indexes:
 
-- Composite FK to Task and optional completing ProjectMembership.
+- Composite FK `(organization_id, project_id, task_id)` -> Task và optional `(organization_id, project_id, completed_by_project_membership_id)` -> ProjectMembership.
 - Check completed timestamp/actor cùng null hoặc cùng non-null.
 - Partial UQ `(task_id, position)` where `removed_at is null`.
 - Index `(organization_id, project_id, task_id, removed_at, position)`.
@@ -478,7 +492,8 @@ Constraints/indexes:
 - UQ `(task_id, request_number)`.
 - Partial UQ `(task_id)` where `state = PENDING`: tối đa một pending request.
 - Partial UQ `(task_id, idempotency_key)` where `idempotency_key is not null`.
-- Composite FK to Task, approver ProjectMembership và requester/resolver OrganizationMembership cùng tenant.
+- Composite FK `(organization_id, project_id, task_id)` -> Task và `(organization_id, project_id, approver_project_membership_id)` -> ProjectMembership.
+- Composite FK `(organization_id, requested_by_membership_id)` và optional resolver -> OrganizationMembership cùng tenant.
 - Check `PENDING` -> resolver/time null; terminal -> resolver/time non-null.
 - Check `REJECTED`/`CANCELLED` có non-empty `resolution_reason`; `APPROVED` reason optional.
 - Index `(organization_id, project_id, approver_project_membership_id, state, requested_at)` cho Approval queue.
@@ -500,7 +515,7 @@ Request tạo bằng insert. Approve/reject/cancel là conditional update `PENDI
 | `deleted_by_membership_id` | `uuid null` | Author/moderator Organization actor |
 | `created_at`, `updated_at` | `timestamptz not null` | Technical timestamps |
 
-Composite FKs enforce same tenant/project; index `(organization_id, project_id, task_id, created_at)` supports timeline. Mention relation/table chưa cần ở v1; mention candidates có thể lưu trong safe parsed metadata hoặc table riêng khi Notification phase chứng minh cần query độc lập.
+Composite FK `(organization_id, project_id, task_id)` -> Task và `(organization_id, project_id, author_project_membership_id)` -> ProjectMembership; optional deleted-by actor dùng `(organization_id, deleted_by_membership_id)` -> OrganizationMembership. Các FK enforce cùng tenant/project. Index `(organization_id, project_id, task_id, created_at)` supports timeline. Mention relation/table chưa cần ở v1; mention candidates có thể lưu trong safe parsed metadata hoặc table riêng khi Notification phase chứng minh cần query độc lập.
 
 ### 4.5. Files và Storage
 
@@ -520,7 +535,7 @@ Composite FKs enforce same tenant/project; index `(organization_id, project_id, 
 | `deleted_at` | `timestamptz null` | Metadata tombstone; physical deletion là operational flow |
 | `created_at`, `updated_at` | `timestamptz not null` | Technical timestamps |
 
-UQ `(organization_id, id)`; UQ `(storage_provider_code, object_key)`. Download authorization luôn đi qua Task/Project relation, không qua object key.
+UQ `(organization_id, id)`; UQ `(storage_provider_code, object_key)`. Composite FK `(organization_id, uploaded_by_membership_id)` -> OrganizationMembership. Download authorization luôn đi qua Task/Project relation, không qua object key.
 
 #### `task_attachments`
 
@@ -534,7 +549,7 @@ UQ `(organization_id, id)`; UQ `(storage_provider_code, object_key)`. Download a
 | `created_at` | `timestamptz not null` | Link time |
 | `removed_at` | `timestamptz null` | Soft unlink |
 
-Partial UQ `(task_id, stored_file_id)` where `removed_at is null`. Composite FKs enforce Task/Project/File tenant. Không có dependency hoặc FK tới `project_module_settings(FILES)`; Task Attachment hoạt động khi Files module disabled.
+Partial UQ `(task_id, stored_file_id)` where `removed_at is null`. Composite FK tới Task và attached-by ProjectMembership dùng `(organization_id, project_id, ...)`; StoredFile dùng `(organization_id, stored_file_id)`. Không có dependency hoặc FK tới `project_module_settings(FILES)`; Task Attachment hoạt động khi Files module disabled.
 
 #### `project_files`
 
@@ -548,7 +563,7 @@ Partial UQ `(task_id, stored_file_id)` where `removed_at is null`. Composite FKs
 | `created_at` | `timestamptz not null` | Link time |
 | `removed_at` | `timestamptz null` | Soft unlink |
 
-Partial UQ `(project_id, stored_file_id)` where `removed_at is null`. Files module enabled-state được kiểm ở application; disable không xóa row hoặc StoredFile.
+Partial UQ `(project_id, stored_file_id)` where `removed_at is null`. Composite FK `(organization_id, project_id)` -> Project, `(organization_id, stored_file_id)` -> StoredFile và `(organization_id, project_id, added_by_project_membership_id)` -> ProjectMembership. Files module enabled-state được kiểm ở application; disable không xóa row hoặc StoredFile.
 
 ### 4.6. Optional Project modules
 
@@ -565,7 +580,7 @@ Partial UQ `(project_id, stored_file_id)` where `removed_at is null`. Files modu
 | `closed_at`, `archived_at` | `timestamptz null` | Lifecycle timestamps |
 | `created_at`, `updated_at` | `timestamptz not null` | Technical timestamps |
 
-UQ `(organization_id, project_id, id)` làm Task optional FK target. Index `(organization_id, project_id, archived_at, due_date)`. Progress được aggregate từ Task; không lưu duplicate progress.
+UQ `(organization_id, project_id, id)` làm Task optional FK target; composite FK `(organization_id, project_id)` -> Project. Index `(organization_id, project_id, archived_at, due_date)`. Progress được aggregate từ Task; không lưu duplicate progress.
 
 #### `documents`
 
@@ -580,7 +595,7 @@ UQ `(organization_id, project_id, id)` làm Task optional FK target. Index `(org
 | `archived_at` | `timestamptz null` | Archive/soft removal |
 | `created_at`, `updated_at` | `timestamptz not null` | Technical timestamps |
 
-Index `(organization_id, project_id, archived_at, updated_at desc)`. Content versioning/rich format không thuộc v0.3 schema baseline.
+Composite FK `(organization_id, project_id)` -> Project; author và last editor dùng `(organization_id, project_id, *_project_membership_id)` -> ProjectMembership. Index `(organization_id, project_id, archived_at, updated_at desc)`. Content versioning/rich format không thuộc v0.3 schema baseline.
 
 #### `risks`
 
@@ -597,11 +612,11 @@ Index `(organization_id, project_id, archived_at, updated_at desc)`. Content ver
 | `archived_at` | `timestamptz null` | Soft archive |
 | `created_at`, `updated_at` | `timestamptz not null` | Technical timestamps |
 
-UQ `(organization_id, project_id, id)`; composite FK của owner bảo đảm cùng Project/Organization; indexes `(organization_id, project_id, state, archived_at)` và owner lookup. Active owner eligibility beyond same Project remains module policy.
+UQ `(organization_id, project_id, id)`; composite FK `(organization_id, project_id)` -> Project và `(organization_id, project_id, owner_project_membership_id)` -> ProjectMembership. Indexes `(organization_id, project_id, state, archived_at)` và owner lookup. Active owner eligibility beyond same Project remains module policy.
 
 #### `risk_task_links`
 
-Columns `organization_id`, `project_id`, `risk_id`, `task_id`, `created_at`; PK `(risk_id, task_id)`. Composite FKs enforce Risk và Task cùng Project/Organization. Risk resolution không transition Task và Task completion không resolve Risk.
+Columns `organization_id`, `project_id`, `risk_id`, `task_id`, `created_at`; PK `(risk_id, task_id)`. Composite FK `(organization_id, project_id, risk_id)` -> Risk và `(organization_id, project_id, task_id)` -> Task enforce cùng Project/Organization. Risk resolution không transition Task và Task completion không resolve Risk.
 
 Mọi optional-module table giữ data khi module disabled. Application gate chặn normal create/mutation; database không cascade theo module setting.
 
@@ -622,7 +637,7 @@ Mọi optional-module table giữ data khi module disabled. Application gate ch�
 | `source_event_id` | `uuid null` | Dedup/reconcile key |
 | `occurred_at` | `timestamptz not null` | Timeline order |
 
-UQ `(organization_id, source_event_id)` where source ID non-null. Composite FK áp dụng cho Project/actor khi các field có giá trị. Index `(organization_id, project_id, occurred_at desc)`. Generic subject không có FK vì Activity là projection; writer phải nhận verified tenant/resource context.
+Partial UQ `(organization_id, source_event_id)` where source ID non-null. Optional Project dùng composite FK `(organization_id, project_id)`; optional actor dùng `(organization_id, actor_membership_id)` -> OrganizationMembership. Index `(organization_id, project_id, occurred_at desc)`. Generic subject không có FK vì Activity là projection; writer phải nhận verified tenant/resource context.
 
 #### `audit_logs`
 
@@ -642,7 +657,7 @@ UQ `(organization_id, source_event_id)` where source ID non-null. Composite FK �
 | `correlation_id` | `uuid null` | Request/command correlation |
 | `occurred_at` | `timestamptz not null` | Evidence time |
 
-Nếu `actor_membership_id` có giá trị thì `organization_id` cũng phải có và composite FK bảo đảm cùng tenant; Project context dùng composite FK tương tự. Indexes `(organization_id, occurred_at desc)`, `(organization_id, project_id, occurred_at desc)`, `(actor_user_id, occurred_at desc)` và `(target_type, target_id, occurred_at desc)`. Application user không có update/delete path. DB runtime privileges nên append-only khi implementation được thiết kế; retention vẫn là operational policy.
+Check: nếu `actor_membership_id` hoặc `project_id` có giá trị thì `organization_id` cũng phải có. Actor Membership và Project context dùng composite FK với `organization_id` để bảo đảm cùng tenant. Indexes `(organization_id, occurred_at desc)`, `(organization_id, project_id, occurred_at desc)`, `(actor_user_id, occurred_at desc)` và `(target_type, target_id, occurred_at desc)`. Application user không có update/delete path. DB runtime privileges nên append-only khi implementation được thiết kế; retention vẫn là operational policy.
 
 #### `notifications`
 
@@ -661,7 +676,7 @@ Nếu `actor_membership_id` có giá trị thì `organization_id` cũng phải c
 | `read_at`, `delivered_at`, `failed_at`, `expires_at` | `timestamptz null` | Delivery/read lifecycle |
 | `created_at`, `updated_at` | `timestamptz not null` | Technical timestamps |
 
-Partial UQ `(organization_id, recipient_user_id, deduplication_key)` where key non-null. Index `(organization_id, recipient_user_id, read_at, created_at desc)` cho inbox và `(delivery_state_code, created_at)` cho worker. Recipient access phải được revalidate trước delivery; Notification không cấp permission và failure không rollback business state.
+Partial UQ `(organization_id, recipient_user_id, deduplication_key)` where key non-null. Optional Project dùng composite FK `(organization_id, project_id)` để không nhận context từ tenant khác. Index `(organization_id, recipient_user_id, read_at, created_at desc)` cho inbox và `(delivery_state_code, created_at)` cho worker. Recipient access phải được revalidate trước delivery; Notification không cấp permission và failure không rollback business state.
 
 ## 5. Composite tenant integrity
 
@@ -686,6 +701,27 @@ Composite FK không thay active/lifecycle/business eligibility checks. Ví dụ 
 
 ## 6. Important indexes
 
+### 6.1. Partial constraint/index catalog
+
+Các predicate sau là executable PostgreSQL requirement dù visualization/ORM chỉ ghi được bằng note:
+
+| Table | Partial constraint/index |
+|---|---|
+| `organization_memberships` | UQ `(organization_id)` where `role = 'OWNER' and state = 'ACTIVE'` |
+| `organization_invitations` | UQ `(organization_id, email)` where `state = 'PENDING'` |
+| `project_task_statuses` | UQ `(project_id, position)` where `archived_at is null` |
+| `task_checklist_items` | UQ `(task_id, position)` where `removed_at is null` |
+| `task_approval_requests` | UQ `(task_id)` where `state = 'PENDING'`; UQ `(task_id, idempotency_key)` where key non-null |
+| `task_attachments` | UQ `(task_id, stored_file_id)` where `removed_at is null` |
+| `project_files` | UQ `(project_id, stored_file_id)` where `removed_at is null` |
+| `activity_entries` | UQ `(organization_id, source_event_id)` where source ID non-null |
+| `notifications` | UQ `(organization_id, recipient_user_id, deduplication_key)` where key non-null |
+| `tasks` | Non-unique due scan `(organization_id, due_at)` for active rows có due date; milestone lookup cho non-null `milestone_id` |
+
+Partial UQ active Owner chỉ bảo vệ `active Owner <= 1`; application transfer/create transaction tiếp tục bảo vệ `active Owner >= 1`. Không dùng trigger để cố enforce exactly-one.
+
+### 6.2. Query indexes
+
 Không index mọi FK/filter upfront. Baseline indexes phục vụ tenant boundary, authorization và use case đã biết:
 
 | Use case | Index chính |
@@ -708,6 +744,19 @@ Không index mọi FK/filter upfront. Baseline indexes phục vụ tenant bounda
 Search full-text, trigram, workload projection và dashboard-specific indexes chỉ thêm sau query plan/measurement. Cache/materialized view không thuộc physical transactional schema baseline.
 
 ## 7. Database vs application invariant matrix
+
+Các row-local rule dưới đây phải là PostgreSQL `CHECK`, không chỉ là validation note:
+
+- `tasks.manual_progress between 0 and 100`;
+- `project_task_statuses.position >= 0` và `task_checklist_items.position >= 0`;
+- `stored_files.size_bytes >= 0`;
+- `task_approval_requests.request_number > 0`;
+- Task approval configuration: `requires_approval = true` iff approver non-null;
+- Checklist completion timestamp/actor cùng null hoặc cùng non-null;
+- Approval Request `PENDING` có resolver/time null, terminal state có resolver/time non-null; rejected/cancelled có non-empty resolution reason;
+- Audit Project/Membership context không được có khi `organization_id` null.
+
+Lower-bound, existential và multi-table lifecycle invariant vẫn thuộc application transaction như phân loại bên dưới; không chuyển chúng thành trigger/CHECK giả tạo.
 
 | Invariant | Database enforcement | Application/transaction enforcement |
 |---|---|---|
@@ -763,6 +812,8 @@ Không dùng trigger cho lower-bound/existential/business-state invariant ở ba
 
 Isolation level/row-lock syntax được chọn khi thiết kế executable repository/migration; không cần global serializable transaction cho mọi CRUD.
 
+Transactional Outbox giữ trạng thái **Selective / Deferred** theo Target Technical Architecture §10.4. Data Model v0.3 không thêm `outbox_events`: hiện chưa có Accepted decision biến Outbox thành requirement chung của v1. PostgreSQL transaction boundary vẫn do Service/Application layer sở hữu. Phase có async flow cần reliable PostgreSQL -> BullMQ handoff phải chốt reliability requirement riêng trước khi bổ sung outbox table/dispatcher; pattern này không áp dụng mặc định cho mọi transaction/event.
+
 ## 9. Delete, archive và FK policy
 
 - `users`, `organizations`, Membership, Project, Task, Approval Request, Comment, module data và audit/history không hard delete qua normal application flow.
@@ -816,6 +867,7 @@ Không có deferred decision nào làm thay đổi core keys, tenant ownership h
 | Self-approval/approval invalidation/request lại/cancel actor | Immutable request cycles + generic actor references; không pre-model revision mechanism | Không; chốt trước Approval implementation |
 | File provider/upload/scanning/retention | Stable metadata/relation; technical fields tối thiểu | Không; chốt trước Storage implementation |
 | Notification delivery vocabulary/retention | Text code + lifecycle timestamps | Không |
+| Transactional Outbox | Selective / Deferred; không có `outbox_events` trong baseline | Không; chốt tại phase có reliable DB -> BullMQ handoff |
 | Mongo data cần giữ hay reset | Không thêm legacy column; staging nếu ETL thật sự cần | Không đối với target schema |
 | RLS | Deferred defense-in-depth ADR | Không |
 
@@ -840,7 +892,7 @@ Schema bao phủ đầy đủ:
 
 ### 12.2. Readiness decision
 
-**Đánh giá: đủ ổn định để dùng làm input cho Refactor Roadmap.**
+**Đánh giá: Accepted — Data Model Frozen; đủ ổn định làm input cho Target Tech Stack Review.**
 
 Lý do:
 
@@ -851,4 +903,4 @@ Lý do:
 - Approval physical representation đã được chọn mà không khóa logical model thành ba table.
 - Deferred decisions không thay đổi core relationship graph.
 
-Tài liệu chưa phải executable schema. Prisma schema/migration vẫn là implementation artifact riêng; Refactor Roadmap phải dùng Data Model Accepted này thay vì legacy Phase 2C enum/table assumptions.
+Tài liệu và visualization chưa phải executable schema. Prisma schema/migration sau này vẫn là implementation artifact riêng và bắt buộc preserve composite FK, partial index cùng `CHECK` đã xác định. Artifact kế tiếp là **Target Tech Stack Review**; chỉ sau review đó mới lập Refactor Roadmap. Không dùng legacy Phase 2C enum/table assumptions để ghi đè Data Model Accepted này.
