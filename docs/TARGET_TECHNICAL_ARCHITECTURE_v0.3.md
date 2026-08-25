@@ -3,7 +3,9 @@
 > **Trạng thái:** Accepted — Architecture Simplification Review  
 > **Ngày:** 2026-08-23  
 > **Business baseline:** [`TASKFORGE_BUSINESS_SCOPE_v0.3.md`](./TASKFORGE_BUSINESS_SCOPE_v0.3.md) — Accepted  
-> **Phạm vi:** Kiến trúc kỹ thuật mục tiêu; không phải implementation plan, migration script hay Prisma schema.
+> **Phạm vi:** Kiến trúc kỹ thuật mục tiêu; không phải implementation plan, migration script, TypeORM entity/migration hoặc OpenFGA model/tuple.
+
+> **Technology amendment 2026-08-25:** Target Tech Stack Review v0.3 chọn TypeORM + `pg` và TypeORM migrations thay Prisma, đồng thời ADR-005 bổ sung OpenFGA cho ReBAC. Mọi tham chiếu Prisma còn lại trong tài liệu kiến trúc này chỉ được đọc như ví dụ ORM/infrastructure legacy và không ghi đè Target Tech Stack Accepted; OpenFGA không thay PostgreSQL Membership SoT, explicit tenant scoping hoặc Domain Policy.
 
 ## 1. Mục đích, nguồn sự thật và giới hạn
 
@@ -19,7 +21,7 @@ Thứ tự nguồn sự thật áp dụng trong tài liệu:
 Tài liệu này không:
 
 - sửa production source;
-- tạo migration hoặc Prisma schema;
+- tạo TypeORM entity/migration hoặc OpenFGA authorization model/tuple;
 - quy định thứ tự PR/refactor;
 - bổ sung custom module, custom workflow, low-code engine hoặc business capability ngoài v0.3;
 - tự khóa các business question được Business Scope đánh dấu còn mở.

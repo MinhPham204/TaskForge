@@ -2,6 +2,7 @@
 
 Status: Accepted
 Date: 2026-08-23
+Updated: 2026-08-25
 
 ## Context
 
@@ -17,7 +18,7 @@ Không xây target Mongo adapter, permanent Mongo/PostgreSQL coexistence, cross-
 
 Nếu MongoDB chỉ chứa development/demo data, không cần production-grade ETL; dữ liệu có thể được tạo lại bằng PostgreSQL seed. Nhu cầu giữ production data, nếu xuất hiện, là migration concern riêng và không thay đổi target persistence decision này.
 
-ORM là infrastructure detail. Controller không thao tác ORM trực tiếp; business rule không phụ thuộc Prisma/Mongoose-specific behavior; ORM record/type không được expose thành API contract. Repository/data-access boundary chỉ cần đủ để tách business logic khỏi persistence, không bắt buộc interface cho mọi entity.
+ORM là infrastructure detail. Target Tech Stack Review v0.3 chọn TypeORM + `pg`, nhưng Controller không thao tác ORM trực tiếp; business rule không phụ thuộc TypeORM/Mongoose-specific behavior; ORM entity/type không được expose thành API contract. Repository/data-access boundary chỉ cần đủ để tách business logic khỏi persistence, không bắt buộc interface cho mọi entity.
 
 PostgreSQL được chọn vì foreign key, unique/composite constraint, ACID transaction, concurrency control và relational query/filter/report phù hợp domain v0.3.
 
@@ -44,4 +45,4 @@ PostgreSQL được chọn vì foreign key, unique/composite constraint, ACID tr
 
 ## Scope / Notes
 
-ADR này không định nghĩa PostgreSQL tables, Prisma schema, migration SQL, cutover order hoặc rollback procedure. Các nội dung đó thuộc PostgreSQL Target Data Model / Schema Design và Migration Strategy.
+ADR này không định nghĩa PostgreSQL tables, TypeORM entities/migrations, migration SQL, cutover order hoặc rollback procedure. Các nội dung đó thuộc PostgreSQL Target Data Model, Target Tech Stack Review, Schema Design và Migration Strategy.

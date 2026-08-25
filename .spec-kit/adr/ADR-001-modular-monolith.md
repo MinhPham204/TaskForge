@@ -58,7 +58,7 @@ Controller
 - **Controller:** HTTP routing, request/response DTO, transport validation và gọi Service/Use Case. Không chứa business logic, raw query hoặc Router layer riêng ngoài NestJS `@Controller()`.
 - **Service:** business operation, orchestration, authorization/policy invocation và transaction boundary khi phù hợp. CRUD/rule đơn giản nằm trực tiếp ở domain service; không bắt buộc mỗi action có Use Case riêng.
 - **Use Case / Policy:** chỉ tạo cho invariant/business rule đủ phức tạp hoặc khi giúp service không phình, ví dụ last Owner/Project Manager, participant eligibility, Task assignment/completion, Approval actions và Project completion.
-- **Repository / Data Access:** ORM/database access, persistence query, database-error mapping khi cần và explicit tenant scoping. Service/business rule không query Prisma trực tiếp.
+- **Repository / Data Access:** ORM/database access, persistence query, database-error mapping khi cần và explicit tenant scoping. Service/business rule không query TypeORM trực tiếp.
 
 Không bắt buộc `IRepository`, `RepositoryPort` hoặc `RepositoryAdapter` cho mọi entity khi target chỉ có một PostgreSQL implementation.
 
@@ -121,7 +121,7 @@ Generic technical primitive → shared, nếu thực sự được reuse
 
 Không để layered architecture tạo god service. Khi service chứa nhiều operation độc lập, có thể tách thành focused services như assignment/transition/approval service hoặc selective `use-cases/`. Vertical Slice là kỹ thuật decomposition tùy chọn khi capability lớn lên, không phải top-level architecture rule.
 
-Module giao tiếp qua public service/query contract. Module không tùy ý import raw ORM model, Prisma model/client, repository hoặc internal service của module khác. Ví dụ Task gọi public Project membership/Team membership query service thay vì query internal repository của Project/Team.
+Module giao tiếp qua public service/query contract. Module không tùy ý import raw ORM entity/DataSource, repository hoặc internal service của module khác. Ví dụ Task gọi public Project membership/Team membership query service thay vì query internal repository của Project/Team.
 
 Operation cần transaction qua nhiều domain dùng selective coordinator/application service. Không dùng async event để thay thế invariant cần consistency đồng bộ.
 

@@ -1,11 +1,13 @@
 # TaskForge Backend Refactor Roadmap v0.3
 
-> **Trạng thái:** Proposed for Roadmap Review  
-> **Ngày:** 2026-08-24  
+> **Trạng thái:** Accepted
+> **Ngày:** 2026-08-25
+> **Acceptance review:** 2026-08-25 — Roadmap Blocking Decision = 0
 > **Business baseline:** [`TASKFORGE_BUSINESS_SCOPE_v0.3.md`](../docs/TASKFORGE_BUSINESS_SCOPE_v0.3.md) — Accepted  
-> **Architecture baseline:** [`TARGET_TECHNICAL_ARCHITECTURE_v0.3.md`](../docs/TARGET_TECHNICAL_ARCHITECTURE_v0.3.md) và [ADR-001..004](./adr/) — Accepted  
+> **Architecture baseline:** [`TARGET_TECHNICAL_ARCHITECTURE_v0.3.md`](../docs/TARGET_TECHNICAL_ARCHITECTURE_v0.3.md) và [ADR-001..005](./adr/) — Accepted
 > **Data baseline:** [`POSTGRESQL_TARGET_DATA_MODEL_v0.3.md`](../docs/POSTGRESQL_TARGET_DATA_MODEL_v0.3.md) — Accepted  
-> **Phạm vi:** Roadmap backend cấp cao; không phải Detailed Phase Plan, Prisma schema, migration SQL hoặc source implementation.
+> **Tech baseline:** [`TARGET_TECH_STACK_REVIEW_v0.3.md`](../docs/TARGET_TECH_STACK_REVIEW_v0.3.md) — Accepted
+> **Phạm vi:** Roadmap backend cấp cao; không phải Detailed Phase Plan, TypeORM entity/migration, OpenFGA model/tuple hoặc source implementation.
 
 ## 1. Kết luận và hướng chuyển đổi
 
@@ -27,21 +29,25 @@ Domain-oriented Modular Monolith
 + pragmatic layers inside each domain
 + explicit fail-closed tenant boundary
 + PostgreSQL-only target runtime
++ TypeORM migrations (`synchronize: false` in production)
++ OpenFGA ReBAC over PostgreSQL-authoritative relationships
 + UUID v4 opaque IDs
 ```
 
-Roadmap gồm **12 phase**. Thứ tự được quyết định bởi dependency nghiệp vụ:
+Roadmap gồm **12 phase** sau một **Entry Gate 0** bắt buộc cho current Membership security cutover. Thứ tự được quyết định bởi dependency nghiệp vụ:
 
 ```text
-PostgreSQL foundation
+Entry Gate 0: current Membership security cutover
         ↓
-Identity + OrganizationMembership
+PostgreSQL/TypeORM + OpenFGA test foundation
+        ↓
+Identity + OrganizationMembership + Organization ReBAC
         ↓
 Team
         ↓
-Project participants/configuration
+Project participants/configuration + Project ReBAC
         ↓
-Task + Checklist + Comment
+Task + Checklist + Comment + Resource ReBAC
         ↓
 Approval
         ↓
@@ -60,7 +66,8 @@ Không có phase “move controllers”, “move services” hoặc “move repo
 
 | Area | Current implementation đã kiểm chứng | Target v0.3 | Roadmap owner |
 |---|---|---|---|
-| Persistence | MongoDB/Mongoose; service/guard inject raw models; chưa có Prisma/PostgreSQL dependency | PostgreSQL duy nhất; ORM nằm sau domain data access | Phase 1 và từng capability phase |
+| Persistence | MongoDB/Mongoose; service/guard inject raw models; chưa có TypeORM/PostgreSQL dependency | PostgreSQL duy nhất; TypeORM + `pg` nằm sau domain data access; TypeORM migrations, production `synchronize: false` | Phase 1 và từng capability phase |
+| Authorization | Nest guards/RBAC + Membership checks phân tán; chưa có OpenFGA | Active Membership/explicit tenant gate + OpenFGA ReBAC; Domain Policy giữ business-state invariant | Phase 1–8 và mọi capability phase |
 | Source organization | Đã package theo module nhưng service lớn, module export raw MongooseModule/model | Top-level theo domain; pragmatic layers bên trong; public cross-module contract hẹp | Từng capability phase |
 | Identity | User bắt buộc có `organization`, global `role`, `team`, ObjectId; refresh hash đơn session | User global, UUID; không Organization role trên User | Phase 2 |
 | Organization | `owner`, `members[]`, pending invitations embedded; unique slug/name assumption; nhiều path one-user-one-org | Organization + Membership + Invitation; role SoT chỉ từ active Membership | Phase 2 |
@@ -75,7 +82,7 @@ Không có phase “move controllers”, “move services” hoặc “move repo
 | Files | URL strings; chưa có stored-object ownership model | StoredFile + TaskAttachment core + Project Files module | Phase 9 |
 | Optional modules | Chưa có Milestones/Documents/Risks/Project Files target | Đúng bốn module, disable giữ data | Phase 9–10 |
 | Tests | 11 unit tests chủ yếu guard/interceptor; E2E Hello World không bảo vệ domain | Domain + PostgreSQL integration + tenant/auth negative + critical E2E tăng dần | Mọi phase |
-| Docker/deploy | API + Mongo latest + Redis; dev Dockerfile port lệch; chưa migration job/health/CI target | PostgreSQL/Redis, reproducible migration, production image, health/backup/deploy gates | Phase 1 và 12 |
+| Docker/deploy | API + Mongo latest + Redis; dev Dockerfile port lệch; chưa migration job/health/CI target | PostgreSQL/Redis/OpenFGA, isolated migration lifecycles, production image, health/backup/deploy gates | Phase 1 và 12 |
 | Frontend contract | Global `user.role`/`user.organization`, ObjectId, Team approval/fixed status; chưa gửi workspace header | Active workspace Membership role, UUID opaque ID, Project-aware contract | Phase 7 và 11 |
 
 ## 3. Refactor principles
@@ -89,7 +96,8 @@ Không có phase “move controllers”, “move services” hoặc “move repo
 7. **Explicit tenant everywhere.** Detail/list/search/aggregate/worker đều nhận verified tenant context và repository query luôn scope Organization rõ ràng.
 8. **Business command rõ nghĩa.** Complete/archive/participant/status/approval/module actions không bị ép vào generic patch.
 9. **No abstraction ceremony.** Không interface/port/generic repository/use-case class cho mọi CRUD; chỉ tạo seam giúp business logic không phụ thuộc ORM hoặc giữ module boundary.
-10. **Technology đúng nhu cầu.** Không RLS, full Outbox, realtime, Redis cache, CQRS, Kafka/RabbitMQ hoặc microservice trong baseline roadmap nếu phase chưa chứng minh requirement.
+10. **Authorization đúng ranh giới.** PostgreSQL Membership/resource relation là business SoT; OpenFGA chỉ evaluate relationship authorization. Task/checklist/Approval và invariant đa entity luôn thuộc Domain Policy/Service.
+11. **Technology đúng nhu cầu.** Không RLS, full Outbox, realtime, Redis cache, CQRS, Kafka/RabbitMQ hoặc microservice trong baseline roadmap nếu phase chưa chứng minh requirement. OpenFGA sync chỉ thiết kế đủ grant/revoke correctness của slice, không xây event platform tổng quát.
 
 ## 4. Transition và cutover policy
 
@@ -98,6 +106,9 @@ Project và ProjectMembership là dependency mới không tồn tại trong lega
 Roadmap chọn:
 
 ```text
+Entry Gate 0: finish current Mongo Membership security cutover
+              no PostgreSQL/TypeORM/OpenFGA implementation
+
 Phase 1–9:  build + verify target capability by dependency
               legacy runtime remains the only served authority
               no target/legacy dual-write
@@ -112,6 +123,24 @@ Phase 11–12: add remaining new capability and operational hardening
 
 Các target module trước Phase 10 được test qua isolated application/integration composition, không được mở như API production song song. Detailed Phase Plan có thể chọn integration branch hoặc composition-root technique phù hợp, nhưng không được tạo một permanent two-database architecture.
 
+### Entry Gate 0 — Complete Current Membership Security Cutover
+
+**Trạng thái thực thi:** Pending. Đây là entry gate của roadmap, không phải phase target mới; execution checklist canonical nằm tại [`00-membership-security-cutover.plan.md`](./specs/00-membership-security-cutover.plan.md).
+
+Mục tiêu của Gate 0 là đóng security gap trong runtime MongoDB hiện tại trước khi mở PostgreSQL foundation. Gate này không triển khai PostgreSQL, TypeORM hoặc OpenFGA và không cố refactor legacy domain thành target model.
+
+Exit criteria bắt buộc:
+
+- `GET /auth/my-organizations` trả workspace từ active Membership, không từ `User.organization`/global role.
+- Invitation acceptance có thể tạo hoặc activate Membership ở Organization thứ hai; không còn one-user-one-org authorization rule.
+- Registration, Organization lifecycle, directory/assignee và notification authorization paths không dùng `user.role`, `user.organization` hoặc `Organization.members[]` làm authority. Legacy fields có thể còn tồn tại vật lý nhưng không là authorization SoT.
+- Critical integration/E2E trên disposable MongoDB/Redis chứng minh missing/malformed tenant header, non-member Organization, inactive Membership và cross-tenant resource access đều fail closed; list/search/aggregate/worker path quan trọng không leak tenant data.
+- Current guards/controllers/services không cấp Organization permission từ global User role; mọi exception control-plane phải được đặt tên và test tường minh.
+- Không xóa vật lý `User.organization`, `User.role`, `User.team` hoặc Mongo relationship fields trong Gate 0. Physical removal chỉ xảy ra tại dependency-closed PostgreSQL cutover Phase 10.
+- Frontend workspace UI/cache cutover vẫn thuộc Phase 10; Gate 0 chỉ khóa backend workspace/security contract cần thiết để roadmap tiếp tục.
+
+Gate 0 hoàn tất mới được bắt đầu Detailed Plan/implementation của Phase 1. Việc roadmap được Accepted không có nghĩa Gate 0 đã hoàn tất.
+
 ### Data disposition gate
 
 - Mặc định ưu tiên **PostgreSQL seed/reset** nếu Mongo hiện tại chỉ là development/demo data.
@@ -123,14 +152,15 @@ Các target module trước Phase 10 được test qua isolated application/inte
 
 | Phase | Capability outcome | Depends on | Runtime cutover? |
 |---:|---|---|---|
-| 1 | PostgreSQL foundation, executable schema workflow và test safety net | Accepted baselines | Không |
-| 2 | Identity, Authentication, Organization, Membership, Invitation và tenant control plane | 1 | Không |
+| Gate 0 | Current Membership security cutover và tenant E2E gate | Current source + Phase 2 Membership plan | Không |
+| 1 | PostgreSQL/TypeORM foundation, OpenFGA test infrastructure, executable schema workflow và test safety net | Accepted baselines + Gate 0 complete | Không |
+| 2 | Identity, Authentication, Organization, Membership, Invitation, tenant control plane và Organization-level ReBAC | 1 | Không |
 | 3 | Team/TeamMember không role | 2 | Không |
-| 4 | Project, Participants, Task Status và module settings | 2–3 | Không |
-| 5 | Task core, assignment, checklist, comment và transitions | 4 | Không |
+| 4 | Project, Participants, Task Status, module settings và Project-level ReBAC | 2–3 | Không |
+| 5 | Task core, assignment, checklist, comment, transitions và resource-level ReBAC | 4 | Không |
 | 6 | Approval độc lập Task Status | 5 | Không |
 | 7 | Project/Task read models và target API contracts | 4–6 | Không |
-| 8 | Activity, Audit, Notification và async jobs | 2–7 | Không |
+| 8 | Activity, Audit, Notification, async jobs và authorization projection reliability | 2–7 | Không |
 | 9 | Stored files, core Task Attachment và Project Files | 5, 8 | Không |
 | 10 | Minimal frontend alignment, seed/data action, PostgreSQL cutover và Mongo removal | 1–9 | **Có** |
 | 11 | Milestones, Documents và Risks | 4–5, 8–10 | PostgreSQL only |
@@ -150,7 +180,8 @@ Mọi target capability phụ thuộc UUID, transaction, composite tenant constr
 
 #### Scope
 
-- PostgreSQL/ORM/migration foundation và application-wide database infrastructure tối thiểu.
+- PostgreSQL/TypeORM/`pg` migration foundation và application-wide database infrastructure tối thiểu.
+- OpenFGA local/test service, isolated datastore migration và authorization-model test harness; chưa tạo business tuple production.
 - Physical schema/migration từ Data Model Accepted; không redesign domain trong phase plan.
 - Dev/test PostgreSQL, Redis và repeatable database lifecycle.
 - Convention repository/data access và transaction coordinator tối thiểu cho các phase sau.
@@ -159,17 +190,20 @@ Mọi target capability phụ thuộc UUID, transaction, composite tenant constr
 #### Target state
 
 - Database trống có thể apply toàn bộ migration và đạt schema v0.3.
-- Nest build/generate client thành công; PostgreSQL integration test có database disposable.
+- Nest build, TypeORM DataSource/migration CLI và PostgreSQL integration test chạy được với database disposable.
+- OpenFGA server/datastore migration và empty-model smoke test chạy được độc lập business schema.
 - Legacy AppModule vẫn phục vụ Mongo cho tới Phase 10; không có write sang hai DB.
 
 #### Main work
 
-- Chọn/pin ORM version tương thích NestJS 11/Node; thêm PostgreSQL driver.
+- Pin TypeORM 1.1.x, `@nestjs/typeorm` 11.x và `pg` 8.x thành tested set.
 - Tạo executable schema/migration có review SQL cho enum, partial unique và composite FK.
-- Thêm database module/service; controller không thấy ORM client.
+- Thêm TypeORM DataSource/database module; controller không thấy DataSource/raw ORM repository.
+- Production/shared deploy config bắt buộc `synchronize: false`; migration chỉ chạy qua one-shot job.
+- Thêm OpenFGA service/test harness với database/schema/role và migration lifecycle tách khỏi TaskForge business schema; pin server/SDK/model ID convention theo Tech Stack Review.
 - Chuẩn hóa `DATABASE_URL`/migration config trong `.env.example`, không log connection string.
 - Loại logging connection URI/secret khỏi bootstrap hiện tại và thêm fail-fast configuration validation tối thiểu.
-- Dev Compose có PostgreSQL healthcheck, Redis và migration workflow; không còn dùng image `latest` cho target DB.
+- Dev Compose có PostgreSQL/OpenFGA/Redis healthcheck và hai migration lifecycle tách biệt; không còn dùng image `latest` cho target DB/service.
 - Tạo test helper để reset schema/data trên database disposable, không dùng production target.
 - Ghi rõ schema conformance checklist với Data Model Accepted.
 
@@ -177,6 +211,8 @@ Mọi target capability phụ thuộc UUID, transaction, composite tenant constr
 
 - Migration chạy từ volume/database trống và chạy deploy lần hai không tạo pending drift.
 - Database tests chứng minh UUID, enum, check, unique/partial unique, composite same-tenant FK và rollback transaction quan trọng.
+- Assertion production configuration không bật TypeORM `synchronize`; API replica không tự chạy migration.
+- OpenFGA datastore migrate/write/check/restart smoke pass và không tạo bảng trong TaskForge business schema.
 - Nest build và smoke integration test pass.
 - Không có target route hoặc dual-write được bật.
 
@@ -186,7 +222,7 @@ Chưa gỡ Mongo/Mongoose. Có thể loại bỏ tài liệu schema PostgreSQL c
 
 #### Dependencies
 
-Business Scope, Target Architecture, Data Model và ADR-001..004 Accepted.
+Business Scope, Target Architecture, Data Model, ADR-001..005 và Target Tech Stack Accepted; Entry Gate 0 đã đạt toàn bộ exit criteria.
 
 ---
 
@@ -205,6 +241,7 @@ Team, Project, authorization và mọi tenant query đều phụ thuộc active 
 - Identity/Auth repository và API models dùng UUID opaque string.
 - Organization, OrganizationMembership, OrganizationInvitation lifecycle.
 - Authentication → active Membership → tenant context flow.
+- Organization-level OpenFGA relations/checks cho access/manage, derived từ committed Membership state.
 - Organization onboarding transaction, last Owner và workspace discovery.
 - Minimal Team provisioning contract chỉ để tạo `General` Team/TeamMember trong onboarding; Team management hoàn thiện ở Phase 3.
 
@@ -214,6 +251,7 @@ Team, Project, authorization và mọi tenant query đều phụ thuộc active 
 - Registration/onboarding tạo User + Organization + one active OWNER Membership + General Team + creator TeamMember atomically.
 - Một User có Membership ở nhiều Organization với role khác nhau.
 - Tenant-scoped target access fail-closed; control-plane operation có explicit policy riêng.
+- PostgreSQL Membership là authoritative; OpenFGA không chứa business Membership lifecycle và không thay explicit tenant/resource lookup.
 
 #### Main work
 
@@ -222,6 +260,8 @@ Team, Project, authorization và mọi tenant query đều phụ thuộc active 
 - Implement invite/accept/reject/revoke/expire và Membership suspend/revoke/leave lifecycle theo Accepted baseline.
 - Thay global User role trong principal bằng `userId` global + verified active Membership context.
 - Repository signature bắt buộc explicit tenant cho tenant data; ALS chỉ truyền context, không là correctness layer.
+- Thiết kế/version Organization-level OpenFGA model và authorization adapter sau active Membership/tenant gate.
+- Project committed Organization/Membership changes thành idempotent tuple upsert/delete; exact durable transport chỉ chốt đủ cho Phase 2 grant/revoke correctness, không generic event platform.
 - Thiết kế response DTO hẹp: profile global, workspace membership và invitation; không expose ORM record.
 - Thêm domain, persistence, authorization và critical E2E tests cùng phase.
 
@@ -232,6 +272,7 @@ Team, Project, authorization và mọi tenant query đều phụ thuộc active 
 - Admin ở Organization A không có quyền tại B; inactive Membership bị chặn; giả mạo/missing tenant context fail-closed.
 - Invitation accept tạo/activate Membership atomically và không quay lại one-user-one-org.
 - JWT/global User role không được dùng cho Organization authorization.
+- OpenFGA Organization allow/deny/inheritance tests pass; stale/missing tuple, revocation và service-unavailable path fail closed theo ADR-005.
 - Auth bootstrap không dùng fallback JWT secret; thiếu secret bắt buộc phải fail fast.
 
 #### Legacy cleanup
@@ -310,6 +351,7 @@ Legacy không có Project model phù hợp; Task không thể refactor đúng tr
 - ProjectTaskStatus configuration + semantic category.
 - Bốn ProjectModuleSetting rows và enable/disable commands.
 - Project creation transaction.
+- Project-level OpenFGA relations/checks kế thừa Organization access và phản ánh ProjectMembership role.
 
 #### Target state
 
@@ -317,6 +359,7 @@ Legacy không có Project model phù hợp; Task không thể refactor đúng tr
 - Project có ít nhất một active Participating Team; active Project có ít nhất một PM.
 - Project Member là active Organization Member và thuộc ít nhất một Participating Team.
 - Board columns đến từ ProjectTaskStatus; module disable chỉ đổi setting và giữ data.
+- OpenFGA trả lời Project access/manage relationship; PostgreSQL vẫn quyết định ProjectMembership lifecycle, qualification và last-PM invariant.
 
 #### Main work
 
@@ -324,6 +367,7 @@ Legacy không có Project model phù hợp; Task không thể refactor đúng tr
 - Create Project transaction: default team + creator PM + default status configuration + four module settings.
 - Commands add/remove Participating Team, add/remove Member, assign/change role, status configure/reorder/archive, module toggle, lifecycle transitions.
 - Authorization phân tách Organization role và Project role; Owner/Admin không auto thành PM.
+- Extend versioned OpenFGA model cho Organization → Project và project committed participant/role changes thành idempotent tuples.
 - API dùng explicit business commands thay generic patch cho participant/status/module/lifecycle.
 - Test last PM, participant qualification, status/project ownership và same-tenant constraints.
 - Đặt public dependency contracts để Phase 5 bổ sung Task owning-Team/assignee checks vào remove Participating Team, TeamMember và Membership lifecycle; không giả định invariant này đã hoàn tất khi Task target chưa tồn tại.
@@ -336,6 +380,7 @@ Legacy không có Project model phù hợp; Task không thể refactor đúng tr
 - Không remove Participating Team nếu làm participant dependency invalid.
 - Status khác Project/archived không dùng cho mutation mới; required semantic status set được bảo toàn.
 - Disable module không xóa data hoặc relation.
+- Cross-Organization Project tuple/check không thể bypass explicit tenant lookup; grant/revoke Project relation có integration test.
 
 #### Legacy cleanup
 
@@ -364,6 +409,7 @@ Task cần Project participants, Team membership và ProjectTaskStatus đã ổn
 - Project-configurable status transitions, checklist/progress/completion baseline.
 - Task archive/history; due date optional.
 - Task Attachment chỉ đặt contract seam; storage implementation ở Phase 9.
+- Resource-level OpenFGA relations/checks cho Task access/manage qua parent Project và direct relation cần thiết.
 
 #### Target state
 
@@ -371,11 +417,13 @@ Task cần Project participants, Team membership và ProjectTaskStatus đã ổn
 - Assignee là active Project Member đồng thời thuộc owning Team; multi-assignee là shared responsibility.
 - Task có một workflow state chung từ ProjectTaskStatus.
 - Checklist là progress SoT khi có active items; completed Task có effective progress 100%.
+- OpenFGA chỉ quyết định relationship access/manage; status transition, checklist/completion và assignee eligibility vẫn thuộc Task Domain Policy.
 
 #### Main work
 
 - Focused Task services/policies cho assignment, owning-Team change, transition và completion; tránh `task.service.ts` god service.
-- Repository queries luôn mang Organization/Project context; không Prisma query trong controller/service policy.
+- Repository queries luôn mang Organization/Project context; không TypeORM query trong controller/service policy.
+- Extend OpenFGA model/projection cho Project → Task/resource; không encode Task status, checklist hoặc Approval state thành authorization tuple/condition.
 - Transaction revalidation khi assign/change owning Team/status/complete.
 - Comment author/visibility/soft-delete theo ProjectMembership.
 - Hoàn thiện cross-domain dependency checks cho remove Participating Team, remove TeamMember và suspend/revoke/leave Membership khi đang có owning Task/assignee; finalize Complete Project coordinator trên consistent terminal-Task query.
@@ -392,6 +440,7 @@ Task cần Project participants, Team membership và ProjectTaskStatus đã ổn
 - Không remove Participating Team/TeamMember/Membership nếu làm owning Team hoặc current assignee invalid; dependency phải được xử lý bằng explicit command trước.
 - Project không thể chuyển `COMPLETED` khi còn Task non-terminal.
 - Cross-tenant detail/list/update/delete fail-closed.
+- OpenFGA `allowed=true` không bypass same-tenant lookup hoặc Task transition/completion invariant; grant/revoke/resource-parent tests pass.
 
 #### Legacy cleanup
 
@@ -475,7 +524,7 @@ Read model chỉ ổn định sau Project, Task và Approval source-of-truth mod
 
 - Read query dùng PostgreSQL index/query trước; projection riêng chỉ khi query thực tế cần.
 - Board render từ ProjectTaskStatus config; approval UI state không derive từ REVIEW.
-- API không expose Prisma record/ObjectId/global User role.
+- API không expose TypeORM entity/ObjectId/global User role.
 
 #### Main work
 
@@ -518,6 +567,7 @@ Business commands và target recipient/resource relations đã ổn định; tr�
 - Domain event classification cho core commands.
 - BullMQ producers/workers/reminders và recipient eligibility.
 - Reliability/idempotency theo từng side effect; selective Outbox chỉ nếu requirement chứng minh cần.
+- Authorization projection reliability cho OpenFGA tuple changes phát sinh từ committed business relationships.
 
 #### Target state
 
@@ -525,12 +575,14 @@ Business commands và target recipient/resource relations đã ổn định; tr�
 - Worker payload có verified Organization/resource identity; worker revalidate access/recipient.
 - Queue/email/realtime failure không rollback hoặc thay business truth.
 - Audit records critical command; Activity/Notification có thể rebuild/reconcile theo policy.
+- OpenFGA tuple projection có retry/reconciliation và documented freshness expectation; PostgreSQL vẫn là authoritative recovery source.
 
 #### Main work
 
 - Public event/intent contract hẹp, không gửi ORM record.
 - Chuyển reminder scan và notification recipients sang PostgreSQL queries explicit tenant.
 - Idempotency/dedup/retry; đánh giá transaction-outbox gap cho từng critical flow.
+- Chốt durable handoff hoặc equivalent retry/reconciliation cho security-critical OpenFGA grant/revoke; không dùng generic Outbox mặc định nếu slice không cần.
 - Tách worker/scheduler bootstrap role nếu multiple API replicas sẽ duplicate cron.
 - Không thêm realtime transport trong phase nếu chưa có requirement.
 
@@ -541,6 +593,7 @@ Business commands và target recipient/resource relations đã ổn định; tr�
 - Worker chạy ngoài HTTP ALS vẫn scope đúng tenant.
 - Notification/Activity failure không làm mất committed Task/Approval state.
 - Audit không có normal update/delete path và redacts secret.
+- Tuple projection failure/retry không thay business state; reconciliation sửa được drift từ PostgreSQL và revocation freshness đạt gate đã chốt.
 
 #### Legacy cleanup
 
@@ -620,8 +673,8 @@ Cutover sớm hơn buộc runtime trộn ObjectId/Mongo entity với UUID/Projec
 
 ```text
 TaskForge runtime
-        ↓
-PostgreSQL
+        ├── business state → PostgreSQL
+        └── relationship authorization → OpenFGA
 ```
 
 Không còn MongoDB trong target runtime, no dual-write, no Mongoose import, no ObjectId API validator và no legacy role/status authority.
@@ -633,6 +686,7 @@ Không còn MongoDB trong target runtime, no dual-write, no Mongoose import, no 
 - Chạy full target test composition; backup/checkpoint trước data action.
 - Nếu dev/demo: reset PostgreSQL bằng seed target. Nếu production: chỉ thực hiện migration theo strategy riêng đã review.
 - Switch composition root/config/containers; remove Mongo/Mongoose, tenant plugin, migration compatibility, Mongo seeder và legacy source paths.
+- Rebuild/reconcile OpenFGA tuples từ authoritative PostgreSQL relations, pin authorization model ID và chạy grant/revoke/cross-tenant security smoke trước cutover.
 - Không giữ compatibility endpoint nào tái tạo business model cũ; deprecation chỉ áp dụng cho transport shape có thể map đúng semantic.
 
 #### Verification
@@ -642,10 +696,11 @@ Không còn MongoDB trong target runtime, no dual-write, no Mongoose import, no 
 - Không import/use `mongoose`, `@nestjs/mongoose`, ObjectId validator, `MONGO_URI`, Mongo service/container hoặc legacy collection.
 - Frontend không derive authorization từ global `user.role`/`user.organization`, Team Lead hoặc fixed status.
 - PostgreSQL seed/migration validation không orphan FK; smoke rollback action được xác định trước cutover.
+- OpenFGA outage fail closed cho protected operations; tuple reconciliation report không còn drift trước cutover.
 
 #### Legacy cleanup
 
-Đây là cleanup phase chính: xóa toàn bộ legacy Mongo persistence và obsolete domain behavior đã được đánh dấu ở Phase 2–9. Không xóa lịch sử planning; các plan cũ được giữ với classification ở Section 8.
+Đây là cleanup phase chính: xóa toàn bộ legacy Mongo persistence và obsolete domain behavior đã được đánh dấu ở Phase 2–9. Lịch sử plan cũ vẫn được giữ trong Git; worktree chỉ dùng canonical plan index ở Section 8.
 
 #### Dependencies
 
@@ -712,30 +767,31 @@ CI/deploy phải kiểm đúng target runtime; làm production manifest trước
 #### Scope
 
 - CI backend/frontend target, migration verification và security tests.
-- Production multi-stage image, migration job, PostgreSQL/Redis deployment, health/readiness/graceful shutdown.
+- Production multi-stage image, TypeORM/OpenFGA migration jobs, PostgreSQL/Redis/OpenFGA deployment, health/readiness/graceful shutdown.
 - Backup/restore smoke, secrets/config validation, worker/scheduler deployment role.
 - Documentation phản ánh source thực tế.
 
 #### Target state
 
 - Clean checkout có thể install/build/test/migrate/start theo documented workflow.
-- Production API không tự chạy concurrent migrations; DB/Redis không public.
+- Production API không tự chạy concurrent migrations; PostgreSQL/Redis/OpenFGA không public trực tiếp.
 - Worker/scheduler không duplicate ngoài ý muốn khi scale API.
 
 #### Main work
 
-- CI dùng `npm ci`, non-mutating lint/typecheck, unit, PostgreSQL integration, critical E2E và build.
+- CI dùng `npm ci`, non-mutating lint/typecheck, unit, PostgreSQL integration, OpenFGA model/integration, critical E2E và build.
 - Pin runtime images/dependencies; healthchecks và one-shot migration deploy.
 - Bootstrap validation fail-fast cho required config; không log secret/connection URI.
+- OpenFGA auth/TLS, timeout/fail-closed, model ID, metrics và datastore pool config có production gate; Playground disabled ở production.
 - PostgreSQL backup/restore smoke; retry/dead-letter/alert baseline cho jobs.
 - Update README/operations docs; benchmark/query tuning chỉ theo measurement.
 
 #### Verification
 
 - CI xanh từ clean environment; migration deploy từ database trống và upgrade path được test.
-- API readiness phụ thuộc PostgreSQL/migration hợp lệ; graceful shutdown đóng queue/DB đúng.
+- API readiness phụ thuộc PostgreSQL/OpenFGA và migration hợp lệ; graceful shutdown đóng queue/DB/client đúng.
 - Backup restore vào database mới và critical smoke pass.
-- No production port exposure cho PostgreSQL/Redis; secrets không nằm trong repo/log.
+- No production port exposure cho PostgreSQL/Redis/OpenFGA; secrets không nằm trong repo/log.
 
 #### Legacy cleanup
 
@@ -762,29 +818,27 @@ Phase 11.
 | Approval độc lập Task Status | 6 | Domain/state/race + E2E |
 | Project complete chỉ khi mọi Task terminal | 5 | Consistent query + transaction/race integration |
 | Tenant isolation fail-closed | 2, then every phase | Negative repository/authorization/E2E |
+| OpenFGA không thay Membership/tenant/business invariant SoT | 2, 4–8 | Model + projection + negative tenant + Domain Policy E2E |
+| OpenFGA relationship projection grant/revoke có freshness/reconciliation gate | 2, 4–5, 8 | Integration + failure/retry/reconciliation tests |
 | Module disable giữ data | 4, 9–10 | Persistence + authorization/E2E |
 | Activity/Audit/Notification không là SoT | 8 | Failure/retry integration |
 
 Không dồn các test này vào Phase 12. Phase 12 chỉ chạy lại/gate toàn bộ safety net đã được xây cùng capability.
 
-## 8. Existing `.spec-kit` classification
+## 8. Canonical `.spec-kit/specs` execution plans
 
-Các tài liệu cũ được giữ làm lịch sử. Business Scope/Architecture/Data Model v0.3 và roadmap này có priority cao hơn khi assumption xung đột.
+[`specs/README.md`](./specs/README.md) là execution index duy nhất cho Gate 0 và Phase 1–12. Mỗi phase có một file nhỏ theo cùng template: outcome/invariants, implementation slices, task checklist, verification và exit/deferred boundary.
 
-| Artifact | Classification | Phần còn dùng được | Phần bị thay thế/cần cập nhật |
-|---|---|---|---|
-| `constitution.md` | Needs update | Tenant isolation, atomic mutation, RBAC intent | Hardcode Mongoose/ALS như correctness/tech stack; thiếu Accepted PostgreSQL/domain boundaries |
-| `phase-1-va-loi-backend` | Superseded by v0.3 business model | Conditional atomic transition và assignee validation technique | Team Lead, Team `requireApproval`, fixed approval statuses, self-approval decision cũ |
-| `phase-2-multi-org-membership` | Needs update | Header + active Membership, fail-closed guard, workspace/cache intent; một phần đã có trong source | Mongo backfill/cutover, global schema vocabulary và checklist chưa phản ánh target onboarding/lifecycle |
-| `phase-2c-postgresql-database-dockerization` | Superseded as schema/phase plan; reusable operational notes | PostgreSQL direction, explicit tenant repository, migration workflow, test/Docker/cutover concepts | TEAM_LEAD, Team approval/invitations, fixed status, old tables, mandatory RLS/outbox, long rollback coexistence, full-DDD folder assumptions |
-| `phase-3-audit-sync-route` | Needs update | Route/consumer/header audit | User directory qua Mongoose plugin; API chưa Project-aware/UUID target |
-| `phase-4-hoan-thien-frontend` | Needs update | Workspace switch/reset-cache and active Membership role | Team approval toggle, legacy rejected status và global-role dashboards |
-| `phase-5-unit-test` | Needs update | Security/race/incremental test priority | Mongo test tooling và legacy approval state/self-approval assumptions |
-| `phase-6-benchmark` | Superseded | Chỉ giữ principle “measure actual workload” | Mongo collection/index benchmark; target tuning phải dùng PostgreSQL queries sau Phase 7 |
-| `phase-7-ci-docs` | Needs update | CI/docs objective | Mongoose/ALS architecture text và mutating lint script assumption |
-| `phase-8-deploy` | Needs update | Multi-stage image, private data services, CORS/seed intent | Mongo deployment/env/backup target |
-| `example.plan.md` | Still valid for future Detailed Phase Plan | Checklist template intent | Không dùng nó thay roadmap hoặc tự tạo file-level plan trong task này |
-| Root `TASKFORGE_UPGRADE_PLAN*`/`DATABASE_SCHEMA.md` | Superseded reference | Historical context only | Không được ghi đè Accepted v0.3 hoặc roadmap status |
+Các plan numbering 1–8 cũ đã bị xóa khỏi worktree ngày 2026-08-25 vì trộn legacy Mongo assumptions với target architecture và không còn khớp dependency graph này. Lịch sử vẫn có trong Git nhưng không phải implementation authority. `constitution.md`, Business Scope/Architecture/Data Model/Tech Stack Accepted và roadmap này luôn có priority cao hơn phase plan nếu có conflict.
+
+| Plan set | Classification | Usage |
+|---|---|---|
+| `00-membership-security-cutover.plan.md` | Current entry gate | Hoàn tất Membership security trên Mongo runtime; không PostgreSQL/OpenFGA implementation |
+| `01`–`09` | Target capability build plans | Build/test theo dependency; không production target route hoặc dual-write |
+| `10-frontend-cutover-mongo-removal.plan.md` | One-way cutover plan | Frontend alignment, approved data action, PostgreSQL/OpenFGA cutover và Mongo removal |
+| `11-optional-modules.plan.md` | Post-cutover capability plan | Milestones, Documents, Risks |
+| `12-ci-deployment-operations.plan.md` | Operational gate | CI, deployment, backup/restore và hardening |
+| Root `TASKFORGE_UPGRADE_PLAN*`/`DATABASE_SCHEMA.md` | Superseded reference | Historical context only; không ghi đè Accepted v0.3 hoặc canonical plans |
 
 ## 9. Legacy deprecation/removal map
 
@@ -811,14 +865,15 @@ Các tài liệu cũ được giữ làm lịch sử. Business Scope/Architectur
 
 | Milestone | Test growth required before exit |
 |---|---|
-| Phase 1 | Migration/schema constraints, transaction rollback, database lifecycle |
-| Phase 2 | Identity/Organization policy, Owner race, Membership isolation/RBAC, onboarding E2E |
+| Gate 0 | Membership security integration/E2E cho missing/malformed header, non-member Organization, inactive Membership, cross-tenant resource và các list/search/aggregate/worker path quan trọng |
+| Phase 1 | TypeORM migration/schema constraints, `synchronize: false`, transaction rollback, database lifecycle và OpenFGA infrastructure/model harness |
+| Phase 2 | Identity/Organization policy, Owner race, Membership isolation/ReBAC, tuple grant/revoke và onboarding E2E |
 | Phase 3 | Team tenant/member eligibility and no-role authorization |
-| Phase 4 | Participant qualification, last PM, status/module constraints and Project commands |
-| Phase 5 | Owning Team, assignee intersection, checklist/completion, archived mutation |
+| Phase 4 | Participant qualification, last PM, status/module constraints, Project commands và Project relation authorization |
+| Phase 5 | Owning Team, assignee intersection, checklist/completion, archived mutation và resource relation authorization |
 | Phase 6 | Approval separation, completion gate, pending bypass and competing action |
 | Phase 7 | Query correctness, API contracts, list/search/report tenant negatives |
-| Phase 8 | Worker isolation, idempotency/retry, notification recipient, audit immutability |
+| Phase 8 | Worker isolation, idempotency/retry, notification recipient, audit immutability và OpenFGA projection reconciliation |
 | Phase 9 | File relation authorization, orphan/cleanup and module independence |
 | Phase 10 | Full critical backend E2E + frontend workspace/contract smoke + no-Mongo scan |
 | Phase 11 | Disabled-module mutation/history and cross-Project relation negatives |
@@ -851,6 +906,7 @@ Backend có thể giữ transport compatibility chỉ khi semantic map một-m�
 
 | Roadmap phases | Business Scope v0.3 | Target Architecture v0.3 | Data Model v0.3 |
 |---|---|---|---|
+| Gate 0 | Không đổi business scope; đóng security gap của runtime hiện tại | Current Membership/tenant boundary; chưa triển khai target persistence/ReBAC | Không đổi Frozen Data Model; MongoDB legacy fields chỉ giữ tương thích tới Phase 10 |
 | 1 | Technical boundary | §8 Persistence, §13 testing | §2 conventions, §5–8 constraints/transactions |
 | 2 | §3–6, onboarding/invariants 1–5 | Identity/Organization, authorization, onboarding transaction | `users`, `organizations`, Membership, Invitation |
 | 3 | §7, Team decisions/invariants | Team ownership/authorization | `teams`, `team_members` |
@@ -871,7 +927,7 @@ Các TBD dưới đây không mở lại hierarchy/domain model và không chặ
 | Gate | Must be resolved by | Effect |
 |---|---:|---|
 | Mongo data disposable hay production cần giữ | Before Phase 10 | Seed/reset hoặc separate Data Migration Strategy |
-| Exact ORM version/generator location | Phase 1 Detailed Plan | Tool compatibility; UUID v4 decision không đổi |
+| Exact TypeORM patch, CLI và DataSource location | Phase 1 Detailed Plan | Tool compatibility trong tested set đã chọn; UUID v4 decision không đổi |
 | Invitation/Organization exact edge lifecycle còn deferred | Phase 2 affected command | Chỉ block operation tương ứng |
 | Project status name uniqueness/module defaults | Phase 4 | Chỉ config policy tương ứng |
 | Contributor field/transition permissions | Phase 5 | Command authorization, không đổi role model |
@@ -889,6 +945,9 @@ Roadmap hoàn thành khi:
 - [ ] PostgreSQL là persistence duy nhất của runtime; MongoDB/Mongoose/ObjectId assumptions đã bị loại khỏi source/config/container.
 - [ ] Source top-level theo domain; layer nằm trong owning domain; shared không chứa business dumping ground.
 - [ ] User là global identity; active OrganizationMembership là Organization role SoT duy nhất.
+- [ ] OpenFGA trả lời relationship authorization cho Organization/Project/resource; PostgreSQL Membership/resource relations vẫn là business SoT và explicit tenant scoping vẫn fail-closed.
+- [ ] OpenFGA không chứa Task/checklist/Approval business-state invariant; các rule này được kiểm soát và kiểm thử trong Domain Policy/Service layer.
+- [ ] Relationship projection sau committed business transaction có idempotency, grant/revoke, reconciliation và freshness behavior được kiểm thử theo từng capability phase.
 - [ ] Exactly one active Owner và last Project Manager invariants có transaction/race tests.
 - [ ] Team không role; ProjectTeam và ProjectMembership tách riêng.
 - [ ] Project status configurable theo Project; Board không dùng fixed global Task Status.
@@ -900,20 +959,24 @@ Roadmap hoàn thành khi:
 - [ ] Unit, PostgreSQL integration, authorization/tenant negative, contract và critical E2E tests xanh.
 - [ ] Frontend không dùng global User role/organization, Team Lead, ObjectId semantics hoặc fixed approval status.
 - [ ] Clean CI/deploy/migration/backup-restore workflow phản ánh đúng PostgreSQL target.
-- [ ] Legacy planning documents được giữ lịch sử nhưng không còn chi phối implementation mới.
+- [ ] Legacy planning history vẫn truy xuất được qua Git nhưng không còn chi phối implementation mới; worktree chỉ dùng canonical phase plans.
 
 ## 15. Readiness decision
 
 **Roadmap Blocking Decision = 0**
 
-Không còn blocker kiến trúc hoặc schema trước khi bắt đầu Detailed Plan cho Phase 1. Các feature/operational TBD đã được gắn đúng phase và chỉ chặn operation tương ứng. Data disposition chỉ phải khóa trước Phase 10, không chặn foundation/core implementation.
+Không còn blocker kiến trúc hoặc schema để bắt đầu **Entry Gate 0**. Roadmap được Accepted về quyết định và thứ tự triển khai; trạng thái Pending của Gate 0 là work item, không phải roadmap decision blocker. Detailed Plan/implementation Phase 1 chỉ bắt đầu sau khi Gate 0 đạt toàn bộ exit criteria. Các feature/operational TBD đã được gắn đúng phase và chỉ chặn operation tương ứng; data disposition chỉ phải khóa trước Phase 10.
 
 Flow tiếp theo:
 
 ```text
 Refactor Roadmap
         ↓
-Select Phase
+Entry Gate 0 — Membership Security Cutover
+        ↓
+Gate 0 review / exit criteria pass
+        ↓
+Select Phase 1
         ↓
 Detailed Phase Plan
         ↓
@@ -924,4 +987,6 @@ Test / Review
 Next Phase
 ```
 
-**Phase nên triển khai đầu tiên:** Phase 1 — PostgreSQL Foundation & Verification Harness.
+**Công việc triển khai đầu tiên:** Entry Gate 0 — Complete Current Membership Security Cutover.
+
+**Phase target đầu tiên sau khi Gate 0 pass:** Phase 1 — PostgreSQL Foundation & Verification Harness.

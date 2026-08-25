@@ -2,6 +2,7 @@
 
 Status: Accepted
 Date: 2026-08-23
+Updated: 2026-08-25
 
 ## Context
 
@@ -24,7 +25,9 @@ resource Organization ownership
         ↓
 ProjectMembership / ProjectRole
         ↓
-resource relationship / business policy
+OpenFGA resource relationship check
+        ↓
+Domain Policy / business-state invariant
 ```
 
 Tenant-scoped data access nhận hoặc resolve `organizationId` tường minh và fail-closed khi thiếu verified tenant context. Client-provided Organization ID không được tin trước khi Membership được xác thực. Global User role không cấp Organization hoặc Project permission.
@@ -32,6 +35,8 @@ Tenant-scoped data access nhận hoặc resolve `organizationId` tường minh v
 Query, mutation, list, search, report, aggregate và worker dùng cùng isolation principle. Control-plane operation không có active tenant context phải có explicit authorization path riêng, không dùng generic tenant bypass.
 
 PostgreSQL hỗ trợ isolation bằng foreign key, composite same-tenant constraint, unique index và referential integrity khi phù hợp. Application vẫn chịu trách nhiệm cho resource ownership, lifecycle và policy không thể biểu diễn hoàn toàn bằng constraint.
+
+OpenFGA bổ sung ReBAC cho access/manage check theo Organization → Project → Resource nhưng không thay active Membership resolution, explicit tenant scoping hoặc database constraints. PostgreSQL Membership vẫn là business Source of Truth; chi tiết boundary và relationship projection tuân ADR-005.
 
 PostgreSQL RLS là later defense-in-depth, không phải v1 correctness dependency. ADR này không thiết kế RLS policy.
 
@@ -58,4 +63,4 @@ PostgreSQL RLS là later defense-in-depth, không phải v1 correctness dependen
 
 ## Scope / Notes
 
-ADR này không định nghĩa endpoint, header contract chi tiết, RLS SQL hoặc permission matrix đầy đủ. Authorization action-level tiếp tục tuân Business Scope v0.3 và Target Technical Architecture v0.3.
+ADR này không định nghĩa endpoint, header contract chi tiết, RLS SQL hoặc permission matrix đầy đủ. Authorization action-level tiếp tục tuân Business Scope v0.3, Target Technical Architecture v0.3 và ADR-005.
