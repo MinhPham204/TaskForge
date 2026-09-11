@@ -1,6 +1,7 @@
 # PostgreSQL Target Data Model v0.3
 
 > **Trạng thái:** Accepted — Data Model Frozen
+<<<<<<< HEAD
 > **Ngày:** 2026-08-23; relational integrity review 2026-08-24; stack-reference alignment 2026-08-29
 > **Business baseline:** [`TASKFORGE_BUSINESS_SCOPE_v0.3.md`](./TASKFORGE_BUSINESS_SCOPE_v0.3.md) — Accepted  
 > **Architecture baseline:** [`TARGET_TECHNICAL_ARCHITECTURE_v0.3.md`](./TARGET_TECHNICAL_ARCHITECTURE_v0.3.md) và [ADR-001..004](../.spec-kit/adr/) — Accepted  
@@ -9,6 +10,16 @@
 ## 1. Mục tiêu và giới hạn
 
 Tài liệu này chuyển domain model đã Accepted thành physical relational model đủ rõ để review trước khi viết TypeORM entities/migrations và trước khi lập Refactor Roadmap.
+=======
+> **Ngày:** 2026-08-23; relational integrity review 2026-08-24
+> **Business baseline:** [`TASKFORGE_BUSINESS_SCOPE_v0.3.md`](./TASKFORGE_BUSINESS_SCOPE_v0.3.md) — Accepted  
+> **Architecture baseline:** [`TARGET_TECHNICAL_ARCHITECTURE_v0.3.md`](./TARGET_TECHNICAL_ARCHITECTURE_v0.3.md) và [ADR-001..004](../.spec-kit/adr/) — Accepted  
+> **Phạm vi:** Target relational model; không phải Prisma schema, migration SQL, implementation plan hoặc Refactor Roadmap.
+
+## 1. Mục tiêu và giới hạn
+
+Tài liệu này chuyển domain model đã Accepted thành physical relational model đủ rõ để review trước khi viết Prisma schema/migration và trước khi lập Refactor Roadmap.
+>>>>>>> 9707a3377afa9c6c7995af44993b54a2bae0c20f
 
 Source of truth theo thứ tự:
 
@@ -20,7 +31,11 @@ Source of truth theo thứ tự:
 Tài liệu này không:
 
 - thay đổi Business Scope hoặc giải quyết các business TBD bằng assumption;
+<<<<<<< HEAD
 - tạo TypeORM entity/migration, seed, RLS, partitioning hoặc cache;
+=======
+- tạo Prisma schema, migration, seed, RLS, partitioning hoặc cache;
+>>>>>>> 9707a3377afa9c6c7995af44993b54a2bae0c20f
 - mô tả MongoDB/PostgreSQL dual-write hay target coexistence;
 - quy định phase/PR/refactor order;
 - tạo một table cho mọi logical entity nếu physical representation đơn giản hơn vẫn giữ đúng semantic.
@@ -79,6 +94,7 @@ Chỉ dùng database enum cho vocabulary đã khóa:
 | `approval_request_state` | `PENDING`, `APPROVED`, `REJECTED`, `CANCELLED` |
 | `risk_state` | `OPEN`, `MITIGATING`, `RESOLVED` |
 
+<<<<<<< HEAD
 Task priority, file storage state, Notification delivery state và các policy vocabulary chưa khóa dùng bounded text code/application validation thay vì tự thêm business enum.
 
 P6-01 locks the following bounded text codes, so P6-02 must not add PostgreSQL enums for them:
@@ -88,18 +104,29 @@ P6-01 locks the following bounded text codes, so P6-02 must not add PostgreSQL e
 - Risk `state`: `OPEN`, `MITIGATING`, `RESOLVED` (the existing `risk_state` enum).
 
 Milestone close/reopen is explicit and never derived from progress. Risk follows `OPEN -> MITIGATING -> RESOLVED`, with explicit `RESOLVED -> OPEN` reopening. A Risk owner must be an active Project Member in the same Project at create/assignment time. Every Project always creates the four module settings (`MILESTONES`, `DOCUMENTS`, `FILES`, `RISKS`) with `enabled = true`; disabling preserves data and the setting row.
+=======
+Task priority, Milestone lifecycle, file storage state, Notification delivery state và các policy vocabulary chưa khóa dùng bounded text code/application validation thay vì tự thêm business enum.
+>>>>>>> 9707a3377afa9c6c7995af44993b54a2bae0c20f
 
 ### 2.5. Executable relational integrity contract
 
 ERD, DBML hoặc schema visualization chỉ là representation của target schema. Relation đơn như `tasks.project_id -> projects.id` có thể được giữ để diagram dễ đọc, nhưng không thay thế và không làm yếu composite same-tenant FK được định nghĩa trong tài liệu này. Khi visualization và constraint catalog khác nhau về mức chi tiết, constraint catalog tại §4–§7 là source of truth.
 
+<<<<<<< HEAD
 Executable PostgreSQL/TypeORM migration phải hiện thực và integration-test đầy đủ:
+=======
+Executable PostgreSQL/Prisma migration phải hiện thực và integration-test đầy đủ:
+>>>>>>> 9707a3377afa9c6c7995af44993b54a2bae0c20f
 
 - composite FK bảo vệ cùng Organization và cùng Project tại §5;
 - partial unique constraint/index được liệt kê trong từng table definition, gồm active Owner, pending Invitation, active status/checklist position, pending Approval Request, active file relation và các deduplication key có điều kiện;
 - PostgreSQL `CHECK` cho range, approval configuration và lifecycle consistency được liệt kê trong từng table definition.
 
+<<<<<<< HEAD
 Nếu TypeORM metadata hoặc DBML không biểu diễn trực tiếp được partial index/composite constraint/CHECK, migration phải dùng PostgreSQL SQL tương ứng. Các dòng ghi `Partial UQ`, `Composite FK` hoặc `Check` trong tài liệu này là executable schema requirement, không chỉ là note cho documentation.
+=======
+Nếu Prisma schema hoặc DBML không biểu diễn trực tiếp được partial index/composite constraint/CHECK, migration phải dùng PostgreSQL SQL tương ứng. Các dòng ghi `Partial UQ`, `Composite FK` hoặc `Check` trong tài liệu này là executable schema requirement, không chỉ là note cho documentation.
+>>>>>>> 9707a3377afa9c6c7995af44993b54a2bae0c20f
 
 ## 3. Relational model tổng thể
 
@@ -390,7 +417,11 @@ Minimum active `NOT_STARTED`, `IN_PROGRESS`, `COMPLETED`; archive-in-use/migrate
 | `version` | `bigint not null default 0` | Concurrent toggle control khi cần |
 | `created_at`, `updated_at` | `timestamptz not null` | Technical timestamps |
 
+<<<<<<< HEAD
 PK `(project_id, module_code)`; composite FK `(organization_id, project_id)` -> Project. Project creation transaction tạo đúng bốn row (`MILESTONES`, `DOCUMENTS`, `FILES`, `RISKS`), tất cả `enabled = true`. Disable chỉ đổi `enabled`, không cascade/delete module data.
+=======
+PK `(project_id, module_code)`; composite FK `(organization_id, project_id)` -> Project. Project creation transaction tạo đúng bốn row; default enabled values là `TBD-MOD-01`. Disable chỉ đổi `enabled`, không cascade/delete module data.
+>>>>>>> 9707a3377afa9c6c7995af44993b54a2bae0c20f
 
 ### 4.4. Task, Checklist, Approval và Comment
 
@@ -583,7 +614,11 @@ Partial UQ `(project_id, stored_file_id)` where `removed_at is null`. Composite 
 | `organization_id`, `project_id` | `uuid not null` | Composite Project FK |
 | `name` | `text not null` | Metadata |
 | `description` | `text not null default ''` | Metadata |
+<<<<<<< HEAD
 | `status_code` | `varchar(32) not null` | `OPEN` or `CLOSED`; close/reopen is explicit |
+=======
+| `status_code` | `varchar(32) not null` | Exact lifecycle vocabulary deferred |
+>>>>>>> 9707a3377afa9c6c7995af44993b54a2bae0c20f
 | `due_date` | `date not null` | Milestone deadline |
 | `closed_at`, `archived_at` | `timestamptz null` | Lifecycle timestamps |
 | `created_at`, `updated_at` | `timestamptz not null` | Technical timestamps |
@@ -613,8 +648,13 @@ Composite FK `(organization_id, project_id)` -> Project; author và last editor 
 | `organization_id`, `project_id` | `uuid not null` | Composite Project FK |
 | `title` | `text not null` | Risk content |
 | `description` | `text not null default ''` | Risk content |
+<<<<<<< HEAD
 | `likelihood_code`, `impact_code` | `varchar(32) not null` | `LOW`, `MEDIUM` or `HIGH`; application controlled |
 | `owner_project_membership_id` | `uuid not null` | Required active same-Project owner |
+=======
+| `likelihood_code`, `impact_code` | `varchar(32) not null` | Exact scale deferred; application controlled |
+| `owner_project_membership_id` | `uuid not null` | Required same-Project owner; exact eligibility policy deferred |
+>>>>>>> 9707a3377afa9c6c7995af44993b54a2bae0c20f
 | `mitigation` | `text not null default ''` | Mitigation narrative |
 | `state` | `risk_state not null` | Baseline workflow |
 | `archived_at` | `timestamptz null` | Soft archive |
@@ -665,7 +705,11 @@ Partial UQ `(organization_id, source_event_id)` where source ID non-null. Option
 | `correlation_id` | `uuid null` | Request/command correlation |
 | `occurred_at` | `timestamptz not null` | Evidence time |
 
+<<<<<<< HEAD
 FK `actor_user_id -> users.id` dùng `ON DELETE RESTRICT/NO ACTION`; null chỉ dành cho actor hệ thống hoặc identity không còn biểu diễn bằng User. Check: nếu `actor_membership_id` hoặc `project_id` có giá trị thì `organization_id` cũng phải có. Actor Membership và Project context dùng composite FK với `organization_id` để bảo đảm cùng tenant. Indexes `(organization_id, occurred_at desc)`, `(organization_id, project_id, occurred_at desc)`, `(actor_user_id, occurred_at desc)` và `(target_type, target_id, occurred_at desc)`. Application user không có update/delete path. DB runtime privileges nên append-only khi implementation được thiết kế; retention vẫn là operational policy.
+=======
+Check: nếu `actor_membership_id` hoặc `project_id` có giá trị thì `organization_id` cũng phải có. Actor Membership và Project context dùng composite FK với `organization_id` để bảo đảm cùng tenant. Indexes `(organization_id, occurred_at desc)`, `(organization_id, project_id, occurred_at desc)`, `(actor_user_id, occurred_at desc)` và `(target_type, target_id, occurred_at desc)`. Application user không có update/delete path. DB runtime privileges nên append-only khi implementation được thiết kế; retention vẫn là operational policy.
+>>>>>>> 9707a3377afa9c6c7995af44993b54a2bae0c20f
 
 #### `notifications`
 
@@ -684,7 +728,11 @@ FK `actor_user_id -> users.id` dùng `ON DELETE RESTRICT/NO ACTION`; null chỉ 
 | `read_at`, `delivered_at`, `failed_at`, `expires_at` | `timestamptz null` | Delivery/read lifecycle |
 | `created_at`, `updated_at` | `timestamptz not null` | Technical timestamps |
 
+<<<<<<< HEAD
 FK `recipient_user_id -> users.id` dùng `ON DELETE RESTRICT/NO ACTION`; recipient là global identity nhưng delivery eligibility luôn được đánh giá trong Organization context. Partial UQ `(organization_id, recipient_user_id, deduplication_key)` where key non-null. Optional Project dùng composite FK `(organization_id, project_id)` để không nhận context từ tenant khác. Index `(organization_id, recipient_user_id, read_at, created_at desc)` cho inbox và `(delivery_state_code, created_at)` cho worker. Recipient access phải được revalidate trước delivery; Notification không cấp permission và failure không rollback business state.
+=======
+Partial UQ `(organization_id, recipient_user_id, deduplication_key)` where key non-null. Optional Project dùng composite FK `(organization_id, project_id)` để không nhận context từ tenant khác. Index `(organization_id, recipient_user_id, read_at, created_at desc)` cho inbox và `(delivery_state_code, created_at)` cho worker. Recipient access phải được revalidate trước delivery; Notification không cấp permission và failure không rollback business state.
+>>>>>>> 9707a3377afa9c6c7995af44993b54a2bae0c20f
 
 ## 5. Composite tenant integrity
 
@@ -869,6 +917,12 @@ Không có deferred decision nào làm thay đổi core keys, tenant ownership h
 | Organization slug/addressing | Không có required slug column | Không |
 | Team/Project/Status name uniqueness | Index/search, không unique | Không |
 | Task priority vocabulary | `priority_code varchar(32)` | Không |
+<<<<<<< HEAD
+=======
+| Milestone exact lifecycle | `status_code varchar(32)` | Không; chốt trước Milestone implementation |
+| Risk likelihood/impact scale | Text codes | Không; chốt trước Risk implementation |
+| Module default enable state | Bốn setting rows, values do creation policy | Không |
+>>>>>>> 9707a3377afa9c6c7995af44993b54a2bae0c20f
 | Self-approval/approval invalidation/request lại/cancel actor | Immutable request cycles + generic actor references; không pre-model revision mechanism | Không; chốt trước Approval implementation |
 | File provider/upload/scanning/retention | Stable metadata/relation; technical fields tối thiểu | Không; chốt trước Storage implementation |
 | Notification delivery vocabulary/retention | Text code + lifecycle timestamps | Không |
@@ -908,4 +962,8 @@ Lý do:
 - Approval physical representation đã được chọn mà không khóa logical model thành ba table.
 - Deferred decisions không thay đổi core relationship graph.
 
+<<<<<<< HEAD
 Tài liệu và visualization chưa phải executable schema. TypeORM entities/migrations vẫn là implementation artifacts riêng và bắt buộc preserve composite FK, partial index cùng `CHECK` đã xác định. Target Tech Stack Review và Refactor Roadmap không được làm yếu Data Model Frozen; không dùng legacy PostgreSQL planning enum/table assumptions để ghi đè baseline này.
+=======
+Tài liệu và visualization chưa phải executable schema. Prisma schema/migration sau này vẫn là implementation artifact riêng và bắt buộc preserve composite FK, partial index cùng `CHECK` đã xác định. Artifact kế tiếp là **Target Tech Stack Review**; chỉ sau review đó mới lập Refactor Roadmap. Không dùng legacy Phase 2C enum/table assumptions để ghi đè Data Model Accepted này.
+>>>>>>> 9707a3377afa9c6c7995af44993b54a2bae0c20f
