@@ -1,7 +1,10 @@
 # Đánh giá hiện trạng và phương án thay thế MongoDB bằng PostgreSQL
 
 > Ngày đánh giá: 2026-08-10  
+> Rebaseline technology decision: 2026-08-25
 > Phạm vi: Backend NestJS, mô hình multi-organization, frontend contract và hạ tầng dữ liệu liên quan.
+
+> **Decision update:** Phần đánh giá hiện trạng và hướng PostgreSQL vẫn có giá trị tham khảo. ORM recommendation cũ đã được thay thế bởi Target Tech Stack Review v0.3: target dùng TypeORM + `pg` + TypeORM migrations; production `synchronize: false`. OpenFGA được bổ sung cho ReBAC theo ADR-005 nhưng không thay PostgreSQL Membership Source of Truth hoặc tenant integrity.
 
 ## 1. Đánh giá hiện trạng dự án
 
@@ -73,18 +76,20 @@ PostgreSQL Row-Level Security có cơ chế default-deny khi bật RLS nhưng kh
 Đề xuất sử dụng:
 
 - PostgreSQL.
-- Prisma ORM.
-- Prisma Migrate.
+- TypeORM + `@nestjs/typeorm`.
+- `pg` PostgreSQL driver.
+- TypeORM migrations; production `synchronize: false`.
+- OpenFGA cho relationship authorization theo ADR-005.
 - Giữ nguyên Redis và BullMQ.
-- Repository/use-case boundary để application layer không phụ thuộc trực tiếp Prisma.
+- Repository/data-access boundary để application layer không phụ thuộc trực tiếp TypeORM.
 
-Prisma có integration chính thức với NestJS, hỗ trợ PostgreSQL, migration SQL có thể chỉnh sửa và nhiều kiểu transaction:
+TypeORM có NestJS adapter, dùng `pg` cho PostgreSQL và cho phép custom SQL trong migration qua `QueryRunner`:
 
-- [Prisma ORM với NestJS](https://docs.prisma.io/docs/guides/frameworks/nestjs)
-- [Prisma Migrate](https://docs.prisma.io/docs/orm/prisma-migrate)
-- [Prisma transactions](https://www.prisma.io/docs/orm/prisma-client/queries/transactions)
+- [TypeORM PostgreSQL driver](https://typeorm.io/docs/drivers/postgres/)
+- [TypeORM migration setup](https://typeorm.io/docs/migrations/setup/)
+- [TypeORM creating migrations/custom SQL](https://typeorm.io/docs/migrations/creating/)
 
-TypeORM cũng dùng được, nhưng với dự án này Prisma có lợi thế về type safety, schema dễ review và migration rõ ràng. Dù chọn Prisma, không nên inject `PrismaService` khắp controller/guard; nên đóng nó sau repository hoặc application service.
+Không inject TypeORM `DataSource`/Repository khắp controller/guard. ORM nằm sau repository/data-access hoặc application service; business rule và API output không phụ thuộc TypeORM entity behavior.
 
 ## 4. Mô hình PostgreSQL đề xuất
 
@@ -118,12 +123,14 @@ ID nên dùng UUID cho hệ thống mới. Nếu phải giữ dữ liệu hiện
 
 ## 5. Thiết kế multi-tenant sau chuyển đổi
 
-Không nên thay global Mongoose plugin bằng một “global Prisma middleware” tương tự rồi tiếp tục phụ thuộc vào hành vi ngầm.
+Không nên thay global Mongoose plugin bằng subscriber/hook/global ORM filter tương tự rồi tiếp tục phụ thuộc vào hành vi ngầm.
 
 Nên áp dụng hai lớp:
 
 1. Application/repository luôn nhận `organizationId` tường minh và fail-closed nếu thiếu tenant context.
 2. PostgreSQL RLS là lớp phòng vệ bổ sung cho bảng tenant-scoped.
+
+OpenFGA là lớp relationship authorization bổ sung, không phải tenant filtering layer. Request vẫn phải resolve active Membership và load resource bằng explicit tenant scope trước khi dùng OpenFGA; business-state invariant vẫn chạy trong Domain Policy/Service sau relation check.
 
 Các bảng global/control-plane:
 
@@ -174,8 +181,8 @@ Không cần refactor đẹp toàn bộ Mongoose trước khi bỏ MongoDB, như
 ### Giai đoạn 1 — Dựng PostgreSQL song song
 
 - Thêm PostgreSQL vào Docker Compose.
-- Thêm Prisma schema và migration đầu tiên.
-- Dựng `PrismaModule`.
+- Thêm TypeORM DataSource/entities và migration đầu tiên, gồm custom PostgreSQL SQL cần thiết.
+- Dựng Nest database module với `@nestjs/typeorm`; production `synchronize: false`.
 - Tạo repository contract theo từng module.
 - Chưa xóa MongoDB.
 
@@ -238,7 +245,7 @@ Với một backend developer:
 
 ## 9. Kết luận
 
-Khuyến nghị cuối cùng là chuyển sang **PostgreSQL + Prisma**, nhưng coi đây là một migration kiến trúc chứ không phải thay package Mongoose.
+Khuyến nghị được rebaseline là chuyển sang **PostgreSQL + TypeORM + `pg`**, dùng TypeORM migrations và coi đây là một migration kiến trúc chứ không phải thay package Mongoose. OpenFGA được triển khai theo authorization slice sau khi Membership Source of Truth và tenant security gate ổn định.
 
 Thứ tự ưu tiên nên là:
 
