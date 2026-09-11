@@ -1,49 +1,60 @@
-version: '3.8'
-
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: task_manager_api
+    container_name: taskforge_api
     ports:
       - '8001:8001'
     volumes:
-      # Ánh xạ code từ máy local vào container để code tự động reload khi bạn bấm Save
       - .:/usr/src/app
-      # Giữ lại node_modules bên trong container, không bị ghi đè bởi máy local
       - /usr/src/app/node_modules
     env_file:
       - .env
+    environment:
+      POSTGRES_URL: postgresql://taskforge:taskforge@postgres:5432/taskforge
+      POSTGRES_SSL: 'false'
+      POSTGRES_SYNCHRONIZE: 'false'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
     depends_on:
-      - mongo
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
-      - task_network
+      - taskforge_network
 
-  mongo:
-    image: mongo:latest
-    container_name: task_manager_db
+  postgres:
+    image: postgres:18.6-alpine
+    container_name: taskforge_postgres
     ports:
-      - '27018:27017' # Ánh xạ cổng 27017 của container ra cổng 27018 của máy host để tránh xung đột với MongoDB nếu bạn đã cài trên máy
-    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"] # Cấu hình MongoDB để chạy replica set nhằm hỗ trợ transactions
+      - '54329:5432'
+    environment:
+      POSTGRES_USER: taskforge
+      POSTGRES_PASSWORD: taskforge
+      POSTGRES_DB: taskforge
     volumes:
-      # Lưu trữ dữ liệu DB ra một ổ đĩa ảo để không bị mất data khi tắt Docker
-      - mongo_data:/data/db
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U taskforge -d taskforge']
+      interval: 5s
+      timeout: 5s
+      retries: 20
     networks:
-      - task_network
+      - taskforge_network
 
   redis:
-    image: redis:alpine
-    container_name: task_manager_redis
+    image: redis:7.4-alpine
+    container_name: taskforge_redis
     ports:
       - '6379:6379'
     networks:
-      - task_network
+      - taskforge_network
 
 volumes:
-  mongo_data:
+  postgres_data:
 
 networks:
-  task_network:
+  taskforge_network:
     driver: bridge

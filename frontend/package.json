@@ -7,25 +7,21 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "test:workspace": "node src/tests/workspace-compatibility.test.js",
+    "test:workflow": "node src/tests/task-workflow.test.js",
+    "test": "node src/tests/workspace-compatibility.test.js && node src/tests/task-workflow.test.js",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.1",
-    "@mui/icons-material": "^7.3.4",
-    "@mui/material": "^7.3.4",
     "@reduxjs/toolkit": "^2.9.0",
     "axios": "^1.11.0",
-    "lucide-react": "^0.542.0",
-    "moment": "^2.30.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.6.0",
     "react-icons": "^5.5.0",
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.8.1",
-    "react-select": "^5.10.2",
-    "recharts": "^3.1.2"
+    "react-select": "^5.10.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",

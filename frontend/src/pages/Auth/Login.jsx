@@ -3,11 +3,10 @@ import AuthLayout from '../../components/layouts/AuthLayout'
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import Input from "../../components/Inputs/Input"
 import { validateEmail } from '../../utils/helper';
-import axios from 'axios';
 import axiosInstance from '../../utils/axiosInstance';
 import { API_PATHS } from '../../utils/apiPaths';
 import { useDispatch } from 'react-redux';
-import { setCredentials } from '../../store/authSlice';
+import { setCredentials, fetchMyOrganizations } from '../../store/authSlice';
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -38,12 +37,14 @@ const Login = () => {
         password,
       });
 
-      // NestJS trả về: { accessToken, refreshToken, user: { _id, name, email, role, organization } }
+      // NestJS returns access/refresh tokens and a global UUID user identity.
       const { accessToken, user } = response.data;
 
       if (accessToken && user) {
         // setCredentials tự động lưu tokens vào localStorage và cập nhật Redux state
         dispatch(setCredentials(response.data));
+        // Lấy danh sách workspace và chọn active organization
+        await dispatch(fetchMyOrganizations());
 
         // Lấy thông tin redirect từ query string
         const query = new URLSearchParams(location.search);
@@ -52,12 +53,8 @@ const Login = () => {
         if (from) {
           navigate(decodeURIComponent(from), { replace: true });
         } else {
-          // owner/admin → dashboard quản trị, member → dashboard cá nhân
-          const defaultPath =
-            user.role === "owner" || user.role === "admin"
-              ? "/admin/dashboard"
-              : "/user/dashboard";
-          navigate(defaultPath, { replace: true });
+          // Root resolves the destination from the active Membership role.
+          navigate("/", { replace: true });
         }
       }
     } catch (error) {

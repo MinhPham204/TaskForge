@@ -1,28 +1,35 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import axiosInstance from "../utils/axiosInstance";
-import { API_PATHS } from "../utils/apiPaths";
+import axiosInstance, { ACTIVE_ORG_KEY } from "../utils/axiosInstance.js";
+import { API_PATHS } from "../utils/apiPaths.js";
 
 // ─────────────────────────────────────────────
 // Helpers: đồng bộ localStorage ↔ Redux state
 // ─────────────────────────────────────────────
-const persistAuth = ({ accessToken, refreshToken, user }) => {
+const getStoredItem = (key) => {
   try {
-    if (accessToken)  localStorage.setItem("token", accessToken);
-    if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
-    if (user)         localStorage.setItem("authUser", JSON.stringify(user));
+    if (typeof localStorage !== "undefined") {
+      return localStorage.getItem(key);
+    }
   } catch (_) {
-    // no-op (private browsing / storage full)
+    // Storage can be unavailable in privacy-restricted browser contexts.
+  }
+  return null;
+};
+
+const setStoredItem = (key, val) => {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(key, val);
+    }
+  } catch (_) {
+    // Storage can be unavailable in privacy-restricted browser contexts.
   }
 };
 
-const clearPersistedAuth = () => {
-  try {
-    localStorage.removeItem("token");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("authUser");
-  } catch (_) {
-    // no-op
-  }
+const persistAuth = ({ accessToken, refreshToken, user }) => {
+  if (accessToken)  setStoredItem("token", accessToken);
+  if (refreshToken) setStoredItem("refreshToken", refreshToken);
+  if (user)         setStoredItem("authUser", JSON.stringify(user));
 };
 
 // ─────────────────────────────────────────────
@@ -30,7 +37,7 @@ const clearPersistedAuth = () => {
 // ─────────────────────────────────────────────
 const userFromStorage = (() => {
   try {
-    const raw = localStorage.getItem("authUser");
+    const raw = getStoredItem("authUser");
     return raw ? JSON.parse(raw) : null;
   } catch (_) {
     return null;
@@ -38,27 +45,47 @@ const userFromStorage = (() => {
 })();
 
 const initialState = {
-  /** user: { _id, name, email, role, profileImageUrl, organization }
-   *  organization là ObjectId string → dùng làm organizationId cho RBAC
-   */
   user: userFromStorage,
-  accessToken:  localStorage.getItem("token")        || null,
-  refreshToken: localStorage.getItem("refreshToken") || null,
-  loading: userFromStorage ? false : true,
+  accessToken:  getStoredItem("token"),
+  refreshToken: getStoredItem("refreshToken"),
+  loading: false,
   error: null,
+
+  // Workspace state
+  organizations: [],
+  activeOrganizationId: null,
+  activeOrganization: null,
+  isOrganizationsLoading: false,
+  organizationsInitialized: false,
+  organizationsError: null,
 };
 
 // ─────────────────────────────────────────────
-// Async Thunk: bootstrap user từ token (trang load lại)
+// Async Thunks
 // ─────────────────────────────────────────────
+
+/** Bootstrap user profile từ token */
 export const fetchProfile = createAsyncThunk(
   "auth/fetchProfile",
   async (_, { rejectWithValue }) => {
     try {
       const response = await axiosInstance.get(API_PATHS.AUTH.GET_PROFILE);
-      return response.data; // { _id, name, email, role, profileImageUrl, organization }
+      return response.data;
     } catch (error) {
       return rejectWithValue(error?.response?.data || { message: "Unauthorized" });
+    }
+  }
+);
+
+/** Workspace discovery: lấy danh sách organization mà user có active membership */
+export const fetchMyOrganizations = createAsyncThunk(
+  "auth/fetchMyOrganizations",
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await axiosInstance.get(API_PATHS.AUTH.MY_ORGANIZATIONS);
+      return response.data; // Array of WorkspaceOrganizationDto: [{ organizationId, name, slug, logoUrl, role, joinedAt }]
+    } catch (error) {
+      return rejectWithValue(error?.response?.data || { message: "Failed to fetch organizations" });
     }
   }
 );
@@ -72,9 +99,6 @@ const authSlice = createSlice({
   reducers: {
     /**
      * setCredentials: gọi sau khi login / set-password thành công.
-     * payload = { accessToken, refreshToken, user }
-     * Trong đó user = { _id, name, email, role, profileImageUrl, organization }
-     * → role & organizationId (= user.organization) có thể lấy qua selector
      */
     setCredentials(state, action) {
       const { accessToken, refreshToken, user } = action.payload;
@@ -87,81 +111,189 @@ const authSlice = createSlice({
     },
 
     /**
-     * setUser: giữ lại để backward-compat với các component cũ
-     * nếu chỉ cần cập nhật user (không có token mới).
+     * setUser: backward-compat nếu chỉ cần cập nhật user object.
      */
     setUser(state, action) {
       state.user    = action.payload;
       state.loading = false;
       state.error   = null;
-      try {
-        localStorage.setItem("authUser", JSON.stringify(action.payload));
-      } catch (_) {
-        // no-op: private browsing / storage full
-      }
+      setStoredItem("authUser", JSON.stringify(action.payload));
     },
 
     /**
      * updateTokens: axiosInstance gọi sau khi refresh thành công
-     * để đồng bộ token mới vào Redux state.
      */
     updateTokens(state, action) {
       const { accessToken, refreshToken } = action.payload;
       state.accessToken  = accessToken;
       if (refreshToken) state.refreshToken = refreshToken;
-      try {
-        localStorage.setItem("token", accessToken);
-        if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
-      } catch (_) {
-        // no-op: private browsing / storage full
+      setStoredItem("token", accessToken);
+      if (refreshToken) setStoredItem("refreshToken", refreshToken);
+    },
+
+    /**
+     * Pure reducer chỉ cập nhật workspace được chọn. Store listener chịu trách
+     * nhiệm persist selection và purge tenant-bound state khi ID thay đổi.
+     */
+    setActiveOrganization(state, action) {
+      const orgId = action.payload;
+      const found = state.organizations.find((o) => o.organizationId === orgId);
+      if (found) {
+        state.activeOrganizationId = found.organizationId;
+        state.activeOrganization   = found;
+      } else {
+        state.activeOrganizationId = null;
+        state.activeOrganization   = null;
       }
     },
 
     /** clearUser: logout hoàn toàn — xóa state + localStorage */
     clearUser(state) {
-      state.user         = null;
-      state.accessToken  = null;
-      state.refreshToken = null;
-      state.loading      = false;
-      state.error        = null;
-      clearPersistedAuth();
+      state.user                   = null;
+      state.accessToken            = null;
+      state.refreshToken           = null;
+      state.loading                = false;
+      state.error                  = null;
+      state.organizations          = [];
+      state.activeOrganizationId   = null;
+      state.activeOrganization     = null;
+      state.isOrganizationsLoading = false;
+      state.organizationsInitialized = false;
+      state.organizationsError     = null;
+    },
+
+    /** setSessionFromDev: hỗ trợ review/testing nhanh trong dev mode */
+    setSessionFromDev(state, action) {
+      const { user, organizations, activeOrganizationId } = action.payload;
+      state.user = user;
+      state.accessToken = 'dev-mock-token';
+      state.organizations = organizations || [];
+      state.activeOrganizationId = activeOrganizationId || organizations?.[0]?.organizationId || null;
+      state.activeOrganization = organizations?.[0] || null;
+      state.organizationsInitialized = true;
+      state.isOrganizationsLoading = false;
+      state.loading = false;
+      state.error = null;
     },
   },
 
   extraReducers: (builder) => {
     builder
+      // fetchProfile
       .addCase(fetchProfile.pending, (state) => {
         state.loading = true;
         state.error   = null;
       })
       .addCase(fetchProfile.fulfilled, (state, action) => {
-        // profile endpoint trả về chỉ user object (không có token mới)
         state.user    = action.payload;
         state.loading = false;
-        try {
-          localStorage.setItem("authUser", JSON.stringify(action.payload));
-        } catch (_) {
-          // no-op: private browsing / storage full
-        }
+        setStoredItem("authUser", JSON.stringify(action.payload));
       })
       .addCase(fetchProfile.rejected, (state, action) => {
-        state.user    = null;
-        state.loading = false;
-        state.error   = action.payload?.message || "Unauthorized";
-        clearPersistedAuth();
+        state.user                   = null;
+        state.accessToken            = null;
+        state.refreshToken           = null;
+        state.loading                = false;
+        state.error                  = action.payload?.message || "Unauthorized";
+        state.organizations          = [];
+        state.activeOrganizationId   = null;
+        state.activeOrganization     = null;
+        state.organizationsInitialized = false;
+      })
+
+      // fetchMyOrganizations
+      .addCase(fetchMyOrganizations.pending, (state) => {
+        state.isOrganizationsLoading = true;
+        state.organizationsError     = null;
+      })
+      .addCase(fetchMyOrganizations.fulfilled, (state, action) => {
+        const orgs = Array.isArray(action.payload) ? action.payload : [];
+        state.organizations          = orgs;
+        state.isOrganizationsLoading = false;
+        state.organizationsInitialized = true;
+        state.organizationsError     = null;
+
+        // Đối chiếu persisted organizationId với danh sách mới từ server
+        const persistedOrgId = getStoredItem(ACTIVE_ORG_KEY);
+
+        let selectedOrg = null;
+        if (persistedOrgId) {
+          selectedOrg = orgs.find((o) => o.organizationId === persistedOrgId) || null;
+        }
+        // Nếu persisted ID không còn hợp lệ, chọn workspace hợp lệ đầu tiên
+        if (!selectedOrg && orgs.length > 0) {
+          selectedOrg = orgs[0];
+        }
+
+        if (selectedOrg) {
+          state.activeOrganizationId = selectedOrg.organizationId;
+          state.activeOrganization   = selectedOrg;
+        } else {
+          // Danh sách rỗng: activeOrganization & activeOrganizationId là null, KHÔNG fallback legacy user.organization
+          state.activeOrganizationId = null;
+          state.activeOrganization   = null;
+        }
+      })
+      .addCase(fetchMyOrganizations.rejected, (state, action) => {
+        state.isOrganizationsLoading = false;
+        state.organizationsInitialized = true;
+        state.organizationsError     = action.payload?.message || "Failed to fetch organizations";
+        state.organizations          = [];
+        state.activeOrganizationId   = null;
+        state.activeOrganization     = null;
       });
   },
 });
 
-export const { setCredentials, setUser, updateTokens, clearUser } = authSlice.actions;
+export const {
+  setCredentials,
+  setUser,
+  updateTokens,
+  setActiveOrganization,
+  clearUser,
+  setSessionFromDev,
+} = authSlice.actions;
+
 export default authSlice.reducer;
+
+// ─────────────────────────────────────────────
+// Action Thunks (State & Cache Isolation)
+// ─────────────────────────────────────────────
+
+/**
+ * switchOrganization: chuyển active workspace an toàn.
+ * a. Cập nhật active workspace trong authSlice & localStorage
+ * b. Reset toàn bộ tenant-bound RTK Query caches.
+ */
+export const switchOrganization = (newOrgId) => (dispatch) => {
+  dispatch(setActiveOrganization(newOrgId));
+};
+
+/**
+ * logout: đăng xuất an toàn.
+ * Xóa auth credentials và purge toàn bộ tenant-bound caches & states.
+ */
+export const logout = () => (dispatch) => {
+  dispatch(clearUser());
+};
 
 // ─────────────────────────────────────────────
 // Selectors
 // ─────────────────────────────────────────────
-/** Lấy role của user hiện tại: "owner" | "admin" | "member" | null */
-export const selectRole           = (state) => state.auth.user?.role           ?? null;
-/** Lấy organizationId (ObjectId string) của user hiện tại */
-export const selectOrganizationId = (state) => state.auth.user?.organization   ?? null;
-/** Kiểm tra user có quyền Approve/Reject task không */
-export const selectCanApprove     = (state) => ["owner", "admin"].includes(state.auth.user?.role);
+/** Danh sách workspaces mà user tham gia */
+export const selectOrganizations          = (state) => state.auth.organizations;
+/** Active workspace object ({ organizationId, name, slug, logoUrl, role, joinedAt }) */
+export const selectActiveOrganization     = (state) => state.auth.activeOrganization;
+/** Active organization UUID string. */
+export const selectActiveOrganizationId   = (state) => state.auth.activeOrganizationId;
+/** Workspace role từ active Membership ("owner" | "admin" | "member" | null) */
+export const selectRole                   = (state) => {
+  const role = state.auth.activeOrganization?.role;
+  return typeof role === "string" ? role.toLowerCase() : null;
+};
+/** Backward-compatible alias cho selectActiveOrganizationId */
+export const selectOrganizationId         = (state) => state.auth.activeOrganizationId ?? null;
+/** Trạng thái loading workspace discovery */
+export const selectIsOrganizationsLoading = (state) => state.auth.isOrganizationsLoading;
+/** Workspace discovery đã hoàn thành ít nhất một lần trong session hiện tại */
+export const selectOrganizationsInitialized = (state) => state.auth.organizationsInitialized;

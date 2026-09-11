@@ -1,6 +1,6 @@
 import { createApi } from '@reduxjs/toolkit/query/react';
-import { axiosBaseQuery } from './baseQuery';
-import { API_PATHS } from '../utils/apiPaths';
+import { axiosBaseQuery } from './baseQuery.js';
+import { API_PATHS } from '../utils/apiPaths.js';
 
 export const authApi = createApi({
     reducerPath: 'authApi',
@@ -13,8 +13,8 @@ export const authApi = createApi({
         }),
         updateProfile: builder.mutation({
             query: (profileData) => ({
-                url: API_PATHS.AUTH.GET_PROFILE, 
-                method: 'put',
+                url: API_PATHS.AUTH.UPDATE_PROFILE,
+                method: 'patch',
                 data: profileData,
             }),
             invalidatesTags: ['User'], // Tự động làm mới profile sau khi cập nhật
@@ -22,7 +22,7 @@ export const authApi = createApi({
         changePassword: builder.mutation({
             query: (passwordData) => ({
                 url: API_PATHS.AUTH.CHANGE_PASSWORD, 
-                method: 'put',
+                method: 'patch',
                 data: passwordData,
             }),
         }),

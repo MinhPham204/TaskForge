@@ -3,8 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-// import mongoose from 'mongoose';
-// mongoose.set('debug', true); // Bật debug mode cho Mongoose để log chi tiết các query và lỗi
+import { HttpRequestLoggingInterceptor } from './common/observability/http-request-logging.interceptor';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
@@ -20,6 +19,7 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
+  app.useGlobalInterceptors(app.get(HttpRequestLoggingInterceptor));
 
   app.enableCors({ origin: clientUrl, credentials: true });
   app.setGlobalPrefix('api');
@@ -41,7 +41,8 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
 
-  console.log('Connecting to MongoDB:', process.env.MONGO_URI);
+  // Enable graceful shutdown hooks for SIGTERM / SIGINT container lifecycles
+  app.enableShutdownHooks();
 
   await app.listen(port);
   console.log(`Server:  http://localhost:${port}/api`);

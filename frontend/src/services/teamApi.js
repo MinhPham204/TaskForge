@@ -1,50 +1,71 @@
 // src/services/teamApi.js
 
 import { createApi } from '@reduxjs/toolkit/query/react';
-import { axiosBaseQuery } from './baseQuery';
-import { API_PATHS } from '../utils/apiPaths';
+import { axiosBaseQuery } from './baseQuery.js';
+import { API_PATHS } from '../utils/apiPaths.js';
 
 export const teamApi = createApi({
     reducerPath: 'teamApi',
     baseQuery: axiosBaseQuery(),
     tagTypes: ['Team'],
     endpoints: (builder) => ({
-        // Lấy chi tiết team (đã có từ trước)
-        getMyTeamDetails: builder.query({
-            query: () => ({ url: API_PATHS.TEAM.GET_MY_TEAM_DETAILS, method: 'get' }),
+        // PostgreSQL Team endpoints (P3)
+        getTeams: builder.query({
+            query: () => ({ url: API_PATHS.TEAM.LIST, method: 'get' }),
             providesTags: ['Team'],
         }),
-        // Mutation để mời thành viên
-        inviteMember: builder.mutation({
-            query: (invitationData) => ({ // { email, role }
-                url: API_PATHS.TEAM.INVITE_MEMBER,
-                method: 'post',
-                data: invitationData,
-            }),
-            invalidatesTags: ['Team'], // Làm mới lại danh sách team để thấy lời mời
+        getTeamById: builder.query({
+            query: (teamId) => ({ url: API_PATHS.TEAM.GET_BY_ID(teamId), method: 'get' }),
+            providesTags: (result, error, teamId) => [{ type: 'Team', id: teamId }],
         }),
-        acceptInvitation: builder.mutation({
-            query: (token) => ({ // { email, role }
-                url: API_PATHS.TEAM.ACCEPT_INVITATION,
+        createTeam: builder.mutation({
+            query: (data) => ({
+                url: API_PATHS.TEAM.CREATE,
                 method: 'post',
-                data: token,
+                data,
             }),
-            invalidatesTags: ['Team'], 
+            invalidatesTags: ['Team'],
         }),
-        // Mutation để xóa thành viên
-        removeMember: builder.mutation({
-            query: (userId) => ({
-                url: API_PATHS.TEAM.REMOVE_MEMBER(userId),
+        updateTeam: builder.mutation({
+            query: ({ teamId, ...data }) => ({
+                url: API_PATHS.TEAM.UPDATE(teamId),
+                method: 'patch',
+                data,
+            }),
+            invalidatesTags: (result, error, { teamId }) => [{ type: 'Team', id: teamId }, 'Team'],
+        }),
+        archiveTeam: builder.mutation({
+            query: (teamId) => ({
+                url: API_PATHS.TEAM.ARCHIVE(teamId),
+                method: 'post',
+            }),
+            invalidatesTags: ['Team'],
+        }),
+        addTeamMember: builder.mutation({
+            query: ({ teamId, organizationMembershipId }) => ({
+                url: API_PATHS.TEAM.ADD_MEMBER(teamId),
+                method: 'post',
+                data: { organizationMembershipId },
+            }),
+            invalidatesTags: (result, error, { teamId }) => [{ type: 'Team', id: teamId }],
+        }),
+        removeTeamMember: builder.mutation({
+            query: ({ teamId, organizationMembershipId }) => ({
+                url: API_PATHS.TEAM.REMOVE_MEMBER_RELATION(teamId, organizationMembershipId),
                 method: 'delete',
             }),
-            invalidatesTags: ['Team'], // Làm mới lại danh sách thành viên
+            invalidatesTags: (result, error, { teamId }) => [{ type: 'Team', id: teamId }],
         }),
     }),
 });
 
 export const {
-    useGetMyTeamDetailsQuery,
-    useInviteMemberMutation,
-    useAcceptInvitationMutation,
-    useRemoveMemberMutation,
+    useGetTeamsQuery,
+    useGetTeamByIdQuery,
+    useLazyGetTeamByIdQuery,
+    useCreateTeamMutation,
+    useUpdateTeamMutation,
+    useArchiveTeamMutation,
+    useAddTeamMemberMutation,
+    useRemoveTeamMemberMutation,
 } = teamApi;

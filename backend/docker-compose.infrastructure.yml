@@ -1,0 +1,34 @@
+name: taskforge-postgres-local
+
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-taskforge}
+      POSTGRES_USER: ${POSTGRES_USER:-taskforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-taskforge}
+    ports:
+      - '${POSTGRES_PORT:-54329}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  redis:
+    image: redis:7.2.14-alpine
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  postgres_data:

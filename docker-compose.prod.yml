@@ -1,0 +1,129 @@
+name: taskforge-production
+
+services:
+  # Internal PostgreSQL 18 database on private network (not exposed on host)
+  postgres:
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-taskforge_prod}
+      POSTGRES_USER: ${POSTGRES_USER:-taskforge_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-taskforge_secret_pass}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    networks:
+      - taskforge-internal
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  # Internal Redis 7.2 on private network (not exposed on host)
+  redis:
+    image: redis:7.2.14-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis_prod_data:/data
+    networks:
+      - taskforge-internal
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set_MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set_MINIO_SECRET_KEY}
+    volumes: [minio_prod_data:/data]
+    networks: [taskforge-internal]
+
+  # One-shot migration job: runs schema migrations once before API starts
+  migration:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      POSTGRES_URL: postgresql://${POSTGRES_USER:-taskforge_admin}:${POSTGRES_PASSWORD:-taskforge_secret_pass}@postgres:5432/${POSTGRES_DB:-taskforge_prod}
+      POSTGRES_SSL: 'false'
+      POSTGRES_SYNCHRONIZE: 'false'
+    command: ['node', './node_modules/typeorm/cli.js', 'migration:run', '-d', 'dist/database/data-source.js']
+    networks:
+      - taskforge-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Backend REST API
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 8001
+      CLIENT_URL: ${CLIENT_URL:-http://localhost}
+      POSTGRES_URL: postgresql://${POSTGRES_USER:-taskforge_admin}:${POSTGRES_PASSWORD:-taskforge_secret_pass}@postgres:5432/${POSTGRES_DB:-taskforge_prod}
+      POSTGRES_SSL: 'false'
+      POSTGRES_SYNCHRONIZE: 'false'
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-production-access-secret-minimum-32-chars}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-production-refresh-secret-minimum-32-chars}
+      JWT_VERIFIED_SECRET: ${JWT_VERIFIED_SECRET:-production-verified-secret-minimum-32-chars}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      JWT_VERIFIED_EXPIRES_IN: 5m
+      EMAIL_USER: ${EMAIL_USER:-noreply@taskforge.dev}
+      EMAIL_PASS: ${EMAIL_PASS:-dummy}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: 'false'
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set_MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set_MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-taskforge-files}
+    ports:
+      - '8001:8001'
+    volumes:
+      - taskforge_uploads:/usr/src/app/uploads
+    networks:
+      - taskforge-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      migration:
+        condition: service_completed_successfully
+
+  # Frontend SPA served via Nginx Alpine
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8001}
+    ports:
+      - '80:80'
+    networks:
+      - taskforge-internal
+    depends_on:
+      - api
+
+networks:
+  taskforge-internal:
+    driver: bridge
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:
+  taskforge_uploads:
+  minio_prod_data:

@@ -1,12 +1,11 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Input from "../../components/Inputs/Input";
-import ProfilePhotoSelector from "../../components/Inputs/ProfilePhotoSelector";
 import { validateEmail } from "../../utils/helper";
 import axiosInstance from "../../utils/axiosInstance";
 import { API_PATHS } from "../../utils/apiPaths";
-import { useSelector, useDispatch } from 'react-redux';
-import { setUser, clearUser, fetchProfile } from '../../store/authSlice';
+import { useDispatch } from 'react-redux';
+import { fetchMyOrganizations, setCredentials } from '../../store/authSlice';
 
 const SignUp = () => {
   const [step, setStep] = useState(1); // 1: nhập email, 2: verify otp, 3: thông tin khác
@@ -14,11 +13,9 @@ const SignUp = () => {
   const [otp, setOtp] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
-  const [profilePic, setProfilePic] = useState(null);
   const [error, setError] = useState("");
   const [verifiedToken, setVerifiedToken] = useState(null);
 
-  const { user, loading } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -86,7 +83,6 @@ const handleFinalSignUp = async (e) => {
     setError("Please enter your password.");
     return;
   }
-
   setError("");
 
   try {
@@ -97,18 +93,18 @@ const handleFinalSignUp = async (e) => {
       {
         fullName,
         password,
-        profilePic,
       },
     );
 
-    const { token: accessToken, role } = response.data;
+    const { accessToken, user } = response.data;
 
-    if (accessToken) {
-      localStorage.setItem("token", accessToken);
-      dispatch(setUser(response.data));
-
-      const defaultPatch = role === "admin" ? "admin/dashboard" : "user/dashboard";
-      navigate(defaultPatch, {replace: true});
+    if (accessToken && user) {
+      dispatch(setCredentials(response.data));
+      localStorage.removeItem("verifiedToken");
+      await dispatch(fetchMyOrganizations());
+      navigate("/", {replace: true});
+    } else {
+      setError("Sign up did not return an authenticated session.");
     }
   } catch (error) {
     console.error("Signup error:", error);
@@ -133,7 +129,7 @@ const handleFinalSignUp = async (e) => {
         <p className="text-sm text-gray-600 text-center mt-2 mb-6">
           {step === 1 && "Enter your email to receive a verification code."}
           {step === 2 && "We’ve sent a 6-digit code to your email."}
-          {step === 3 && "Fill in your details to finish registration."}
+          {step === 3 && "Finish registration, then create or join a workspace."}
         </p>
 
         {/* Step 1: Email */}
@@ -186,7 +182,6 @@ const handleFinalSignUp = async (e) => {
         {/* Step 3: Thông tin khác */}
         {step === 3 && (
           <form onSubmit={handleFinalSignUp} className="space-y-4">
-            <ProfilePhotoSelector image={profilePic} setImage={setProfilePic} />
             <Input
               value={fullName}
               onChange={({ target }) => setFullName(target.value)}

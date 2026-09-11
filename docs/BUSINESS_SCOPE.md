@@ -1,5 +1,7 @@
 # Phạm vi nghiệp vụ TaskForge
 
+> **SUPERSEDED / REFERENCE ONLY:** Tài liệu v0.1 này chỉ được giữ để truy vết lịch sử. Accepted business baseline hiện hành là [`TASKFORGE_BUSINESS_SCOPE_v0.3.md`](./TASKFORGE_BUSINESS_SCOPE_v0.3.md); không dùng nội dung bên dưới để ghi đè v0.3, architecture hoặc canonical phase plans.
+>
 > Trạng thái: Baseline đề xuất v0.1, ngày 2026-08-16. Đây là hợp đồng phạm vi sản phẩm để chủ dự án duyệt và điều chỉnh. Tài liệu mô tả sản phẩm muốn hướng đến; source code mô tả phần đang chạy và `.spec-kit/` mô tả kế hoạch triển khai.
 
 ## 1. Định nghĩa sản phẩm

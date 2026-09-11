@@ -1,0 +1,126 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: taskforge_test
+          POSTGRES_USER: taskforge_test
+          POSTGRES_PASSWORD: taskforge_test
+        ports:
+          - 54330:5432
+        options: >-
+          --health-cmd "pg_isready -U taskforge_test -d taskforge_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+      redis:
+        image: redis:7.2.14-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Lint PostgreSQL foundation without writing files
+        working-directory: backend
+        run: npm run lint:check
+
+      - name: Type-check backend
+        working-directory: backend
+        run: npm run typecheck
+
+      - name: Run backend unit tests
+        working-directory: backend
+        run: npm run test -- --runInBand
+
+      - name: Apply migrations to an empty PostgreSQL database
+        working-directory: backend
+        run: npm run test:db:migrate
+
+      - name: Rerun migrations without schema drift
+        working-directory: backend
+        run: npm run test:db:migrate
+
+      - name: Run PostgreSQL onboarding integration suite
+        working-directory: backend
+        run: npm run test:integration
+
+      - name: Run PostgreSQL Redis email queue integration suite
+        working-directory: backend
+        run: npm run test:queue:postgres
+
+      - name: Run PostgreSQL runtime smoke E2E
+        working-directory: backend
+        run: npm run test:runtime:postgres
+
+      - name: Start private MinIO test storage
+        run: >-
+          docker run --detach --name taskforge-minio-test --publish 9002:9000
+          --env MINIO_ROOT_USER=taskforge-minio-test
+          --env MINIO_ROOT_PASSWORD=taskforge-minio-test-secret
+          minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
+
+      - name: Run PostgreSQL MinIO file-storage integration suite
+        working-directory: backend
+        run: npm run test:storage:minio
+
+      - name: Run PostgreSQL tenant and authorization regression suite
+        working-directory: backend
+        run: npm run test:security:postgres
+
+      - name: Run clean-database critical PostgreSQL E2E regression
+        working-directory: backend
+        run: npm run test:critical:postgres
+
+      - name: Run deterministic portfolio seed verification
+        working-directory: backend
+        run: npm run test:seed:postgres
+
+      - name: Run standalone portfolio seed CLI execution
+        working-directory: backend
+        run: npm run seed:postgres:test
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend workspace and task workflow verification
+        working-directory: frontend
+        run: npm test
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
