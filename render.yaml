@@ -17,7 +17,7 @@ services:
         value: "8001"
       - key: CLIENT_URL
         sync: false
-      # PostgreSQL private / VPC connection string. Migrations run via preDeployCommand or migration job.
+      # PostgreSQL connection string. Migrations run through preDeployCommand.
       - key: POSTGRES_URL
         sync: false
       - key: POSTGRES_SSL
@@ -60,23 +60,3 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false
-
-  # One-shot migration job for controlled or out-of-band database schema updates
-  - type: job
-    name: taskforge-migration-job
-    runtime: docker
-    plan: starter
-    region: singapore
-    rootDir: backend
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    startCommand: node ./node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: POSTGRES_URL
-        sync: false
-      - key: POSTGRES_SSL
-        value: "true"
-      - key: POSTGRES_SYNCHRONIZE
-        value: "false"
