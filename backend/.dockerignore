@@ -3,3 +3,6 @@ dist
 .git
 npm-debug.log
 .env
+uploads
+coverage
+*.log

@@ -87,7 +87,7 @@ jobs:
           docker run --detach --name taskforge-minio-test --publish 9002:9000
           --env MINIO_ROOT_USER=taskforge-minio-test
           --env MINIO_ROOT_PASSWORD=taskforge-minio-test-secret
-          minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
+          quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
 
       - name: Run PostgreSQL MinIO file-storage integration suite
         working-directory: backend
