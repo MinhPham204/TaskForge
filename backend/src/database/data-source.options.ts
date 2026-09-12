@@ -54,7 +54,9 @@ export function createPostgresDataSourceOptions(
   return {
     type: 'postgres',
     url: postgres.url,
-    ssl: postgres.ssl ? { rejectUnauthorized: true } : false,
+    ssl: postgres.ssl
+      ? { rejectUnauthorized: postgres.sslRejectUnauthorized }
+      : false,
     synchronize: false,
     migrationsRun: false,
     migrationsTableName: 'typeorm_migrations',

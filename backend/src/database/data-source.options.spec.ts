@@ -41,13 +41,14 @@ describe('createPostgresDataSourceOptions', () => {
     const options = createPostgresDataSourceOptions({
       POSTGRES_URL: 'postgresql://user:password@db.example.test:5432/taskforge',
       POSTGRES_SSL: 'true',
+      POSTGRES_SSL_REJECT_UNAUTHORIZED: 'false',
       POSTGRES_SYNCHRONIZE: 'false',
     });
 
     expect(options).toMatchObject({
       type: 'postgres',
       url: 'postgresql://user:password@db.example.test:5432/taskforge',
-      ssl: { rejectUnauthorized: true },
+      ssl: { rejectUnauthorized: false },
       synchronize: false,
       migrationsRun: false,
       migrationsTableName: 'typeorm_migrations',
