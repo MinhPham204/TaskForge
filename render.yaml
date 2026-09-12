@@ -49,7 +49,6 @@ services:
     name: taskforge-portfolio-web
     runtime: static
     plan: starter
-    region: singapore
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
