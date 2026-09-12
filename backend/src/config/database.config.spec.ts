@@ -5,6 +5,7 @@ describe('getPostgresConfig', () => {
     expect(getPostgresConfig({})).toEqual({
       url: undefined,
       ssl: false,
+      sslRejectUnauthorized: true,
       synchronize: false,
     });
   });
@@ -15,11 +16,13 @@ describe('getPostgresConfig', () => {
         POSTGRES_URL:
           'postgresql://user:password@db.example.test:5432/taskforge',
         POSTGRES_SSL: 'true',
+        POSTGRES_SSL_REJECT_UNAUTHORIZED: 'false',
         POSTGRES_SYNCHRONIZE: 'false',
       }),
     ).toEqual({
       url: 'postgresql://user:password@db.example.test:5432/taskforge',
       ssl: true,
+      sslRejectUnauthorized: false,
       synchronize: false,
     });
   });
@@ -31,6 +34,9 @@ describe('getPostgresConfig', () => {
     expect(() => getPostgresConfig({ POSTGRES_SSL: 'yes' })).toThrow(
       'POSTGRES_SSL',
     );
+    expect(() =>
+      getPostgresConfig({ POSTGRES_SSL_REJECT_UNAUTHORIZED: 'yes' }),
+    ).toThrow('POSTGRES_SSL_REJECT_UNAUTHORIZED');
     expect(() => getPostgresConfig({ POSTGRES_SYNCHRONIZE: 'true' })).toThrow(
       'POSTGRES_SYNCHRONIZE',
     );

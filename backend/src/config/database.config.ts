@@ -3,6 +3,7 @@ import { registerAs } from '@nestjs/config';
 export interface PostgresConfig {
   url?: string;
   ssl: boolean;
+  sslRejectUnauthorized: boolean;
   synchronize: false;
 }
 
@@ -69,6 +70,11 @@ export function getPostgresConfig(environment: Environment): PostgresConfig {
   return {
     url: parseOptionalPostgresUrl(environment.POSTGRES_URL),
     ssl: parseOptionalBoolean(environment.POSTGRES_SSL, 'POSTGRES_SSL', false),
+    sslRejectUnauthorized: parseOptionalBoolean(
+      environment.POSTGRES_SSL_REJECT_UNAUTHORIZED,
+      'POSTGRES_SSL_REJECT_UNAUTHORIZED',
+      true,
+    ),
     synchronize: false,
   };
 }
