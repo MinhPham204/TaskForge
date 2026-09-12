@@ -38,8 +38,14 @@ function parseRedisUrl(value: string): RedisOptions {
     connection.password = decodeURIComponent(url.password);
   }
 
-  if (url.pathname !== '/') {
-    connection.db = Number.parseInt(url.pathname.slice(1), 10);
+  if (url.pathname && url.pathname !== '/') {
+    const database = Number(url.pathname.slice(1));
+    if (!Number.isInteger(database) || database < 0) {
+      throw new Error(
+        'REDIS_URL path must be a non-negative Redis database index.',
+      );
+    }
+    connection.db = database;
   }
 
   if (url.protocol === 'rediss:') {

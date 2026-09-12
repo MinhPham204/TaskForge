@@ -29,4 +29,26 @@ describe('getRedisConnection', () => {
       password: 'local-password',
     });
   });
+
+  it('defaults to database 0 when a Redis URL has no database path', () => {
+    expect(
+      getRedisConnection({
+        REDIS_URL: 'rediss://default:password@cache.example.test:6380',
+      }),
+    ).toEqual({
+      host: 'cache.example.test',
+      port: 6380,
+      username: 'default',
+      password: 'password',
+      tls: {},
+    });
+  });
+
+  it('rejects a Redis URL with an invalid database path', () => {
+    expect(() =>
+      getRedisConnection({
+        REDIS_URL: 'rediss://default:password@cache.example.test:6380/not-a-db',
+      }),
+    ).toThrow('REDIS_URL path');
+  });
 });
