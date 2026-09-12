@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: taskforge-portfolio-api
+    name: taskforge-api
     runtime: docker
     plan: starter
     region: singapore
@@ -46,7 +46,7 @@ services:
 
   # Frontend static web deployment
   - type: web
-    name: taskforge-portfolio-web
+    name: taskforge-app
     runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
