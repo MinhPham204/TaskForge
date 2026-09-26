@@ -75,7 +75,7 @@ jobs:
           docker run --detach --name taskforge-minio-test --publish 9002:9000
           --env MINIO_ROOT_USER=taskforge-minio-test
           --env MINIO_ROOT_PASSWORD=taskforge-minio-test-secret
-          quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
+          ghcr.io/coollabsio/minio@sha256:a4938f37f1be1841b8e7b627ad0207b265345fd0d063e42d7410c78af0e63e68 server /data
 
       - name: Run clean-database critical PostgreSQL E2E regression
         working-directory: backend
