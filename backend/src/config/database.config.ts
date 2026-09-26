@@ -73,20 +73,22 @@ function parsePositiveInteger(
   return Number(value);
 }
 
-function parseOptionalCertificate(value: string | undefined): string | undefined {
+function parseOptionalCertificate(
+  value: string | undefined,
+): string | undefined {
   if (value === undefined || value.trim() === '') return undefined;
 
   let certificate: string;
   try {
     certificate = Buffer.from(value, 'base64').toString('utf8');
   } catch {
-    throw new Error('DATABASE_SSL_CA_BASE64 must be a valid base64 certificate.');
+    throw new Error(
+      'DATABASE_SSL_CA_BASE64 must be a valid base64 certificate.',
+    );
   }
 
   if (!certificate.includes('-----BEGIN CERTIFICATE-----')) {
-    throw new Error(
-      'DATABASE_SSL_CA_BASE64 must decode to a PEM certificate.',
-    );
+    throw new Error('DATABASE_SSL_CA_BASE64 must decode to a PEM certificate.');
   }
 
   return certificate;
@@ -116,11 +118,7 @@ export function getPostgresConfig(environment: Environment): PostgresConfig {
     true,
   );
 
-  if (
-    environment.NODE_ENV === 'production' &&
-    ssl &&
-    !sslRejectUnauthorized
-  ) {
+  if (environment.NODE_ENV === 'production' && ssl && !sslRejectUnauthorized) {
     throw new Error(
       'Production TLS connections require DATABASE_SSL_REJECT_UNAUTHORIZED=true.',
     );

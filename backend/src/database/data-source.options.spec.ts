@@ -101,7 +101,8 @@ describe('createPostgresDataSourceOptions', () => {
 
   it('uses the optional migration URL only for migration commands', () => {
     const environment = {
-      DATABASE_URL: 'postgresql://user:password@runtime.example.test:5432/taskforge',
+      DATABASE_URL:
+        'postgresql://user:password@runtime.example.test:5432/taskforge',
       MIGRATION_DATABASE_URL:
         'postgresql://user:password@migration.example.test:5432/taskforge',
     };
@@ -109,13 +110,14 @@ describe('createPostgresDataSourceOptions', () => {
     expect(createPostgresDataSourceOptions(environment).url).toContain(
       'migration.example.test',
     );
-    expect(createPostgresDataSourceOptions(environment, 'runtime').url).toContain(
-      'runtime.example.test',
-    );
+    expect(
+      createPostgresDataSourceOptions(environment, 'runtime').url,
+    ).toContain('runtime.example.test');
   });
 
   it('passes an optional trusted CA to pg without disabling verification', () => {
-    const certificate = '-----BEGIN CERTIFICATE-----\nexample\n-----END CERTIFICATE-----';
+    const certificate =
+      '-----BEGIN CERTIFICATE-----\nexample\n-----END CERTIFICATE-----';
     const options = createPostgresDataSourceOptions({
       DATABASE_URL: 'postgresql://user:password@db.example.test:5432/taskforge',
       DATABASE_SSL: 'true',

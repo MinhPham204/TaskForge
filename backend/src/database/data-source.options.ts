@@ -49,7 +49,9 @@ export function createPostgresDataSourceOptions(
 ): DataSourceOptions {
   const postgres = getPostgresConfig(environment);
   const url =
-    purpose === 'migration' ? (postgres.migrationUrl ?? postgres.url) : postgres.url;
+    purpose === 'migration'
+      ? (postgres.migrationUrl ?? postgres.url)
+      : postgres.url;
 
   if (!url) {
     throw new Error(

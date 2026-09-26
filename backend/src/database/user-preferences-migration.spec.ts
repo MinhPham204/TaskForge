@@ -13,10 +13,14 @@ describe('CreateUserPreferences20260913000000', () => {
   it('creates global preferences with safe defaults and constrained week start', async () => {
     await new CreateUserPreferences20260913000000().up(queryRunner);
 
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE user_preferences'));
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE user_preferences'),
+    );
     const sql = query.mock.calls[0][0];
     expect(sql).toContain("timezone varchar(64) NOT NULL DEFAULT 'UTC'");
-    expect(sql).toContain('in_app_notifications_enabled boolean NOT NULL DEFAULT true');
+    expect(sql).toContain(
+      'in_app_notifications_enabled boolean NOT NULL DEFAULT true',
+    );
     expect(sql).toContain('CHECK (week_starts_on IN (0, 1))');
   });
 });

@@ -77,7 +77,8 @@ describe('getPostgresConfig', () => {
   });
 
   it('accepts a base64-encoded PEM root certificate', () => {
-    const certificate = '-----BEGIN CERTIFICATE-----\nexample\n-----END CERTIFICATE-----';
+    const certificate =
+      '-----BEGIN CERTIFICATE-----\nexample\n-----END CERTIFICATE-----';
 
     expect(
       getPostgresConfig({
