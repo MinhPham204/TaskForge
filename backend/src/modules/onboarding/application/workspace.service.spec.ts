@@ -4,6 +4,7 @@ import {
   OrganizationMembershipEntity,
 } from '../persistence/typeorm/onboarding.entities';
 import type { OrganizationRole } from '../persistence/typeorm/onboarding.entities';
+import { AuditLogEntity } from '../../collaboration/persistence/typeorm/collaboration.entities';
 import { PostgresWorkspaceService } from './workspace.service';
 
 describe('PostgresWorkspaceService', () => {
@@ -40,10 +41,15 @@ describe('PostgresWorkspaceService', () => {
     findOneBy: jest.fn(),
     save: jest.fn(),
   };
+  const auditRepository = {
+    create: jest.fn((values) => values),
+    save: jest.fn(),
+  };
   const manager = {
     getRepository: jest.fn((entity) => {
       if (entity === OrganizationEntity) return organizationRepository;
       if (entity === OrganizationMembershipEntity) return membershipRepository;
+      if (entity === AuditLogEntity) return auditRepository;
       throw new Error('Unexpected entity');
     }),
   } as unknown as EntityManager;
@@ -59,6 +65,8 @@ describe('PostgresWorkspaceService', () => {
     membershipRepository.createQueryBuilder.mockReset();
     membershipRepository.findOneBy.mockReset();
     membershipRepository.save.mockReset();
+    auditRepository.create.mockClear();
+    auditRepository.save.mockReset();
     run.mockReset();
 
     organizationQueryBuilder.getOne.mockResolvedValue(organization);
@@ -73,6 +81,7 @@ describe('PostgresWorkspaceService', () => {
     membershipRepository.save.mockImplementation((membership) =>
       Promise.resolve(membership),
     );
+    auditRepository.save.mockResolvedValue({});
     run.mockImplementation((work) => work(manager));
   });
 

@@ -8,6 +8,37 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+export type OutboxEventType =
+  | 'ORGANIZATION_INVITATION_CREATED'
+  | 'TASK_APPROVAL_REQUESTED';
+export type OutboxEventStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'PUBLISHED'
+  | 'PROCESSED'
+  | 'FAILED';
+
+@Entity({ name: 'outbox_events' })
+@Index('uq_outbox_event_aggregate', ['eventType', 'aggregateId'], { unique: true })
+@Index('idx_outbox_ready', ['availableAt', 'createdAt'], {
+  where: "status IN ('PENDING', 'FAILED')",
+})
+export class OutboxEventEntity {
+  @PrimaryGeneratedColumn('uuid') id!: string;
+  @Column({ name: 'organization_id', type: 'uuid' }) organizationId!: string;
+  @Column({ name: 'event_type', type: 'varchar', length: 64 }) eventType!: OutboxEventType;
+  @Column({ name: 'aggregate_id', type: 'uuid' }) aggregateId!: string;
+  @Column({ type: 'jsonb' }) payload!: Record<string, unknown>;
+  @Column({ type: 'varchar', length: 16 }) status!: OutboxEventStatus;
+  @Column({ type: 'integer', default: 0 }) attempts!: number;
+  @Column({ name: 'available_at', type: 'timestamptz' }) availableAt!: Date;
+  @Column({ name: 'claimed_at', type: 'timestamptz', nullable: true }) claimedAt!: Date | null;
+  @Column({ name: 'published_at', type: 'timestamptz', nullable: true }) publishedAt!: Date | null;
+  @Column({ name: 'processed_at', type: 'timestamptz', nullable: true }) processedAt!: Date | null;
+  @Column({ name: 'last_error', type: 'text', nullable: true }) lastError!: string | null;
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
+}
+
 @Entity({ name: 'stored_files' })
 @Check('chk_stored_files_size_nonnegative', 'size_bytes >= 0')
 @Index('uq_stored_files_organization_id', ['organizationId', 'id'], { unique: true })

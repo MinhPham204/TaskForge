@@ -9,7 +9,11 @@
     "lint": "eslint .",
     "test:workspace": "node src/tests/workspace-compatibility.test.js",
     "test:workflow": "node src/tests/task-workflow.test.js",
-    "test": "node src/tests/workspace-compatibility.test.js && node src/tests/task-workflow.test.js",
+    "test:theme": "node src/tests/theme-foundation.test.js",
+    "test:account": "node src/tests/account-contract.test.js",
+    "test:workspace-settings": "node src/tests/workspace-settings-contract.test.js",
+    "test:productivity-navigation": "node src/tests/productivity-navigation-contract.test.js",
+    "test": "node src/tests/workspace-compatibility.test.js && node src/tests/task-workflow.test.js && node src/tests/theme-foundation.test.js && node src/tests/account-contract.test.js && node src/tests/workspace-settings-contract.test.js && node src/tests/productivity-navigation-contract.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

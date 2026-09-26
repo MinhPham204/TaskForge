@@ -12,9 +12,9 @@ services:
     env_file:
       - .env
     environment:
-      POSTGRES_URL: postgresql://taskforge:taskforge@postgres:5432/taskforge
-      POSTGRES_SSL: 'false'
-      POSTGRES_SYNCHRONIZE: 'false'
+      DATABASE_URL: postgresql://taskforge:taskforge@postgres:5432/taskforge
+      DATABASE_SSL: 'false'
+      DATABASE_SYNCHRONIZE: 'false'
       REDIS_HOST: redis
       REDIS_PORT: '6379'
     depends_on:

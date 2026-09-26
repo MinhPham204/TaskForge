@@ -50,9 +50,9 @@ services:
       dockerfile: Dockerfile
     environment:
       NODE_ENV: production
-      POSTGRES_URL: postgresql://${POSTGRES_USER:-taskforge_admin}:${POSTGRES_PASSWORD:-taskforge_secret_pass}@postgres:5432/${POSTGRES_DB:-taskforge_prod}
-      POSTGRES_SSL: 'false'
-      POSTGRES_SYNCHRONIZE: 'false'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-taskforge_admin}:${POSTGRES_PASSWORD:-taskforge_secret_pass}@postgres:5432/${POSTGRES_DB:-taskforge_prod}
+      DATABASE_SSL: 'false'
+      DATABASE_SYNCHRONIZE: 'false'
     command: ['node', './node_modules/typeorm/cli.js', 'migration:run', '-d', 'dist/database/data-source.js']
     networks:
       - taskforge-internal
@@ -69,9 +69,9 @@ services:
       NODE_ENV: production
       PORT: 8001
       CLIENT_URL: ${CLIENT_URL:-http://localhost}
-      POSTGRES_URL: postgresql://${POSTGRES_USER:-taskforge_admin}:${POSTGRES_PASSWORD:-taskforge_secret_pass}@postgres:5432/${POSTGRES_DB:-taskforge_prod}
-      POSTGRES_SSL: 'false'
-      POSTGRES_SYNCHRONIZE: 'false'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-taskforge_admin}:${POSTGRES_PASSWORD:-taskforge_secret_pass}@postgres:5432/${POSTGRES_DB:-taskforge_prod}
+      DATABASE_SSL: 'false'
+      DATABASE_SYNCHRONIZE: 'false'
       REDIS_HOST: redis
       REDIS_PORT: 6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-production-access-secret-minimum-32-chars}

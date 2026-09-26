@@ -5,15 +5,70 @@
   --font-display: "Poppins", "sans-serif";
   --breakpoint-3xl: 1920px;
   --color-primary: #1368EC;
+  --color-app-canvas: var(--app-canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-content: var(--content);
+  --color-content-muted: var(--content-muted);
+  --color-border: var(--border);
+  --color-focus-ring: var(--focus-ring);
+  --color-danger-surface: var(--danger-surface);
+  --color-danger-border: var(--danger-border);
+  --color-danger-content: var(--danger-content);
+  --color-success-surface: var(--success-surface);
+  --color-success-content: var(--success-content);
+  --color-warning-surface: var(--warning-surface);
+  --color-warning-content: var(--warning-content);
 }
 
 @layer base {
+  :root {
+    color-scheme: light;
+    --app-canvas: #fcfbfc;
+    --surface: #ffffff;
+    --surface-muted: #f8fafc;
+    --content: #111827;
+    --content-muted: #475569;
+    --border: #e2e8f0;
+    --focus-ring: rgb(19 104 236 / 0.35);
+    --danger-surface: #fef2f2;
+    --danger-border: #fecaca;
+    --danger-content: #b91c1c;
+    --success-surface: #ecfdf5;
+    --success-content: #047857;
+    --warning-surface: #fffbeb;
+    --warning-content: #b45309;
+  }
+
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --app-canvas: #0f172a;
+    --surface: #172033;
+    --surface-muted: #1e293b;
+    --content: #f8fafc;
+    --content-muted: #cbd5e1;
+    --border: #334155;
+    --focus-ring: rgb(96 165 250 / 0.65);
+    --danger-surface: #451a1a;
+    --danger-border: #7f1d1d;
+    --danger-content: #fecaca;
+    --success-surface: #052e25;
+    --success-content: #a7f3d0;
+    --warning-surface: #451a03;
+    --warning-content: #fde68a;
+  }
+
   html {
     font-family: var(--font-display);
   }
   body {
-    background-color: #fcfbfc;
+    background-color: var(--app-canvas);
+    color: var(--content);
     overflow-x: hidden;
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 }
 button {

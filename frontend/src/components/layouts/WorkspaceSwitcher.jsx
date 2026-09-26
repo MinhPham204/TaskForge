@@ -25,15 +25,19 @@ const WorkspaceSwitcher = () => {
       navigate('/workspace/onboarding');
       return;
     }
+    if (val === '__workspace_settings__') {
+      navigate('/settings/workspace');
+      return;
+    }
     dispatch(switchOrganization(val));
   };
 
   return (
-    <label className="ml-auto flex items-center gap-2 text-sm text-gray-600">
+    <label className="ml-auto flex items-center gap-2 text-sm text-content-muted">
       <span className="hidden sm:inline">Workspace</span>
       <select
         aria-label="Active workspace"
-        className="max-w-52 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
+        className="max-w-52 cursor-pointer rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-content focus:ring-2 focus:ring-focus-ring"
         value={activeOrganizationId || ''}
         disabled={isLoading}
         onChange={handleChange}
@@ -43,6 +47,7 @@ const WorkspaceSwitcher = () => {
             {organization.name}
           </option>
         ))}
+        <option value="__workspace_settings__">Workspace settings...</option>
         <option value="__create_new__">+ New Workspace...</option>
       </select>
     </label>

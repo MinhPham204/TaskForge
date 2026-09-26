@@ -2,6 +2,8 @@ const configuredApiUrl = import.meta.env?.VITE_API_URL?.trim();
 export const BASE_URL = (configuredApiUrl || "http://localhost:8001").replace(/\/$/, "");
 
 export const API_PATHS = {
+    DASHBOARD: "/api/dashboard",
+    SEARCH: "/api/search",
     AUTH: {
         REGISTER: "/api/auth/register",
         LOGIN: "/api/auth/login",
@@ -15,6 +17,7 @@ export const API_PATHS = {
         REQUEST_PASSWORD_RESET: "/api/auth/forgot-password",
         RESET_PASSWORD: "/api/auth/reset-password",
         CHANGE_PASSWORD: "/api/auth/change-password",
+        PREFERENCES: "/api/auth/preferences",
         MY_ORGANIZATIONS: "/api/auth/my-organizations",
     },
 
@@ -123,6 +126,14 @@ export const API_PATHS = {
 
     ORGANIZATIONS: {
         CREATE_ORG: "/api/organizations",
+        GET_BY_ID: (organizationId) => `/api/organizations/${organizationId}`,
+        UPDATE: (organizationId) => `/api/organizations/${organizationId}`,
+        MEMBERS: (organizationId) => `/api/organizations/${organizationId}/members`,
+        INVITATIONS: (organizationId) => `/api/organizations/${organizationId}/invitations`,
+        CREATE_INVITATION: (organizationId) => `/api/organizations/${organizationId}/invitations`,
+        REVOKE_INVITATION: (organizationId, invitationId) => `/api/organizations/${organizationId}/invitations/${invitationId}`,
+        SUSPEND_MEMBER: (organizationId, userId) => `/api/organizations/${organizationId}/members/${userId}/suspend`,
+        REVOKE_MEMBER: (organizationId, userId) => `/api/organizations/${organizationId}/members/${userId}`,
     },
 
     INVITATIONS: {

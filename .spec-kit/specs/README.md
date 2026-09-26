@@ -1,6 +1,6 @@
 # TaskForge Canonical Delivery Plans
 
-> **Revision:** PostgreSQL-first portfolio delivery — 2026-09-04.
+> **Revision:** PostgreSQL-first portfolio delivery with post-release experience polish — 2026-09-13.
 > **Product goal:** Hoàn thiện website end-to-end theo Business Scope v0.3, deploy được và thể hiện tốt năng lực Fresher Backend/Fullstack.
 > **Technical goal:** PostgreSQL/TypeORM là target runtime duy nhất; giữ tenant correctness nhưng không để production hardening nâng cao chặn feature completeness.
 
@@ -26,6 +26,7 @@
 | 5 | [`05-collaboration-files.plan.md`](./05-collaboration-files.plan.md) | Activity/Audit/Notification/Attachment/Files | Phase 4 |
 | 6 | [`06-optional-modules.plan.md`](./06-optional-modules.plan.md) | Milestones/Documents/Risks hoàn thiện breadth v1 | Phase 5 |
 | 7 | [`07-product-release.plan.md`](./07-product-release.plan.md) | Website production-ready cho portfolio, demo URL và docs | Phase 6 |
+| 8 | [`08-experience-account-settings.plan.md`](./08-experience-account-settings.plan.md) | Personal Dashboard, Account Center, Settings và theme hoàn thiện end-to-end | Phase 7 source gates |
 
 ## Definition of feature-complete portfolio v1
 
@@ -70,6 +71,6 @@
 
 - Phase 0: **Complete**; delivery/data/demo/deployment constraints đã chốt và safe baseline verification pass ngày 2026-09-01.
 - Phase 1: **Complete**; `P1-00` through `P1-09` complete.
-- Phase 2: **In progress**; `P2-01` through `P2-08` complete, next `P2-09` local PostgreSQL verification checkpoint.
-- Phase 3–7: **Not started / dependency-gated**.
+- Phase 2–7: **Complete**; PostgreSQL-only source và release verification gates đã pass.
+- Phase 8: **Planned**; next `P8-01` current-contract UX/IA and permission audit.
 - Work `G0-01`–`G0-03` cũ được giữ làm evidence/reference; các Mongo-only follow-up cũ không còn canonical blockers.

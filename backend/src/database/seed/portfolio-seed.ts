@@ -555,7 +555,7 @@ export async function runPortfolioSeed(
       state: RiskState.RESOLVED,
       ownerProjectMembershipId: devProjectMember.id,
       mitigation:
-        'Configured TypeORM pool bounds (min: 2, max: 20) with idle connection reaping.',
+        'Configured TypeORM PostgreSQL connection-pool limits and connection timeout.',
     }),
   );
 

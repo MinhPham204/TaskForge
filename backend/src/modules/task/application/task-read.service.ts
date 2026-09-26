@@ -85,14 +85,14 @@ export class PostgresTaskReadService {
   constructor(private readonly transactions: PostgresTransactionRunner) {}
 
   list(actor: PostgresProjectActor, projectId: string, query: PostgresTaskQuery) {
-    return this.transactions.run(async (manager) => {
+    return this.transactions.read(async (manager) => {
       await this.requireVisibleProject(manager, actor, projectId);
       return this.queryTasks(manager, actor.organizationId, projectId, query);
     });
   }
 
   board(actor: PostgresProjectActor, projectId: string, query: PostgresTaskQuery) {
-    return this.transactions.run(async (manager) => {
+    return this.transactions.read(async (manager) => {
       await this.requireVisibleProject(manager, actor, projectId);
       const statuses = await manager.query<
         Array<{
@@ -122,7 +122,7 @@ export class PostgresTaskReadService {
   }
 
   detail(actor: PostgresProjectActor, projectId: string, taskId: string) {
-    return this.transactions.run(async (manager) => {
+    return this.transactions.read(async (manager) => {
       await this.requireVisibleProject(manager, actor, projectId);
       const tasks = await this.queryTasks(manager, actor.organizationId, projectId, {}, taskId);
       const task = tasks[0];
@@ -158,7 +158,7 @@ export class PostgresTaskReadService {
   }
 
   myTasks(actor: PostgresProjectActor, query: PostgresTaskQuery) {
-    return this.transactions.run(async (manager) => {
+    return this.transactions.read(async (manager) => {
       await this.requireActiveOrganizationMembership(manager, actor);
       const memberships = await manager.query<Array<{ projectId: string; id: string }>>(
         `SELECT project_id AS "projectId", id
@@ -180,7 +180,7 @@ export class PostgresTaskReadService {
   }
 
   approvalQueue(actor: PostgresProjectActor) {
-    return this.transactions.run(async (manager) => {
+    return this.transactions.read(async (manager) => {
       await this.requireActiveOrganizationMembership(manager, actor);
       return manager.query<ApprovalQueueReadRow[]>(
         `SELECT ar.id, ar.task_id AS "taskId", ar.project_id AS "projectId",
@@ -319,7 +319,7 @@ export class PostgresTaskReadService {
   }
 
   private async requireActiveOrganizationMembership(manager: EntityManager, actor: PostgresProjectActor) {
-    const membership = await new PostgresOrganizationMembershipRepository(manager).findActiveByIdForUpdate(actor.organizationId, actor.membershipId);
+    const membership = await new PostgresOrganizationMembershipRepository(manager).findActiveById(actor.organizationId, actor.membershipId);
     if (!membership) throw new ForbiddenException('Active organization membership is required');
     return membership;
   }
@@ -329,7 +329,7 @@ export class PostgresTaskReadService {
     if (!project) throw new NotFoundException('Project not found');
     const organizationMembership = await this.requireActiveOrganizationMembership(manager, actor);
     if ([OrganizationRole.OWNER, OrganizationRole.ADMIN].includes(organizationMembership.role)) return;
-    const projectMembership = await new PostgresProjectMembershipRepository(manager).findActiveByProjectAndOrganizationMembershipForUpdate(actor.organizationId, projectId, actor.membershipId);
+    const projectMembership = await new PostgresProjectMembershipRepository(manager).findActiveByProjectAndOrganizationMembership(actor.organizationId, projectId, actor.membershipId);
     if (!projectMembership) throw new ForbiddenException('Active Project membership is required');
   }
 }

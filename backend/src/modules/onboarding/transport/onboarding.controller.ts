@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
+  Patch,
   Param,
   Post,
   Req,
@@ -28,6 +30,7 @@ import { PostgresTenantInterceptor } from '../tenant/tenant.interceptor';
 import { AcceptPostgresInvitationDto } from './dto/accept-invitation.dto';
 import { CreatePostgresInvitationDto } from './dto/create-invitation.dto';
 import { CreatePostgresOrganizationDto } from './dto/create-organization.dto';
+import { UpdatePostgresOrganizationDto } from './dto/create-organization.dto';
 import { PostgresCurrentUserId } from './current-user.decorator';
 import type { OrganizationRole } from '../persistence/typeorm/onboarding.entities';
 
@@ -68,6 +71,59 @@ export class PostgresOnboardingController {
     return this.organizations.createOrganization(userId, dto);
   }
 
+  @Get('organizations/:organizationId')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  @ApiOperation({ summary: 'Read the verified active Organization settings' })
+  getOrganizationSettings(
+    @PostgresCurrentUserId() userId: string,
+    @Param('organizationId') organizationId: string,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.workspaces.getOrganizationSettings(userId, organizationId);
+  }
+
+  @Patch('organizations/:organizationId')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  @ApiOperation({ summary: 'Update Organization profile as Owner or Admin' })
+  updateOrganization(
+    @PostgresCurrentUserId() userId: string,
+    @Param('organizationId') organizationId: string,
+    @Body() dto: UpdatePostgresOrganizationDto,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.workspaces.updateOrganization(userId, organizationId, dto);
+  }
+
+  @Get('organizations/:organizationId/members')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  @ApiOperation({ summary: 'List Organization memberships as Owner or Admin' })
+  listOrganizationMembers(
+    @PostgresCurrentUserId() userId: string,
+    @Param('organizationId') organizationId: string,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.invitations.listOrganizationMembers(userId, organizationId);
+  }
+
+  @Get('organizations/:organizationId/invitations')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  @ApiOperation({ summary: 'List pending Organization invitations as Owner or Admin' })
+  listOrganizationInvitations(
+    @PostgresCurrentUserId() userId: string,
+    @Param('organizationId') organizationId: string,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.invitations.listOrganizationInvitations(userId, organizationId);
+  }
+
   @Get('invitations')
   @ApiOperation({
     summary: 'List pending invitations for the authenticated user',
@@ -102,11 +158,7 @@ export class PostgresOnboardingController {
     @Body() dto: CreatePostgresInvitationDto,
     @Req() request: PostgresTenantRequest,
   ) {
-    if (request.postgresTenant?.organizationId !== organizationId) {
-      throw new ForbiddenException(
-        'Invitation target must match the verified workspace',
-      );
-    }
+    this.requireVerifiedOrganization(request, organizationId);
     const { invitation } = await this.invitations.createInvitation(
       userId,
       organizationId,
@@ -123,5 +175,66 @@ export class PostgresOnboardingController {
       state: invitation.state,
       expiresAt: invitation.expiresAt,
     };
+  }
+
+  @Delete('organizations/:organizationId/invitations/:invitationId')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  @ApiOperation({ summary: 'Revoke a pending Organization invitation as Owner or Admin' })
+  async revokeInvitation(
+    @PostgresCurrentUserId() userId: string,
+    @Param('organizationId') organizationId: string,
+    @Param('invitationId') invitationId: string,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    this.requireVerifiedOrganization(request, organizationId);
+    await this.invitations.revokeInvitation(userId, organizationId, invitationId);
+  }
+
+  @Post('organizations/:organizationId/members/:userId/suspend')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  @ApiOperation({ summary: 'Suspend a non-owner Organization membership as Owner or Admin' })
+  suspendMembership(
+    @PostgresCurrentUserId() actorUserId: string,
+    @Param('organizationId') organizationId: string,
+    @Param('userId') targetUserId: string,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.invitations.suspendMembership(
+      actorUserId,
+      organizationId,
+      targetUserId,
+    );
+  }
+
+  @Delete('organizations/:organizationId/members/:userId')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  @ApiOperation({ summary: 'Revoke a non-owner Organization membership as Owner or Admin' })
+  revokeMembership(
+    @PostgresCurrentUserId() actorUserId: string,
+    @Param('organizationId') organizationId: string,
+    @Param('userId') targetUserId: string,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.invitations.revokeMembership(
+      actorUserId,
+      organizationId,
+      targetUserId,
+    );
+  }
+
+  private requireVerifiedOrganization(
+    request: PostgresTenantRequest,
+    organizationId: string,
+  ): void {
+    if (request.postgresTenant?.organizationId !== organizationId) {
+      throw new ForbiddenException(
+        'Organization target must match the verified workspace',
+      );
+    }
   }
 }

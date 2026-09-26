@@ -21,6 +21,8 @@ import { PostgresDocumentService } from '../projects/application/document.servic
 import { PostgresRiskService } from '../projects/application/risk.service';
 import { PostgresTaskService } from '../task/application/task.service';
 import { PostgresTaskReadService } from '../task/application/task-read.service';
+import { PostgresDashboardReadService } from '../dashboard/application/dashboard-read.service';
+import { PostgresGlobalSearchService } from '../search/application/search.service';
 import { PostgresJwtAuthGuard } from './tenant/jwt-auth.guard';
 import { PostgresTenantAccessService } from './tenant/tenant-access.service';
 import { PostgresTenantContextService } from './tenant/tenant-context';
@@ -44,6 +46,8 @@ import { PostgresNotificationController } from '../collaboration/transport/notif
 import { PostgresProjectActivityController } from '../collaboration/transport/project-activity.controller';
 import { PostgresProjectFileController } from '../collaboration/transport/project-file.controller';
 import { PostgresTaskAttachmentController } from '../collaboration/transport/task-attachment.controller';
+import { PostgresDashboardController } from '../dashboard/transport/dashboard.controller';
+import { PostgresSearchController } from '../search/transport/search.controller';
 import { PostgresNotificationService } from '../collaboration/application/notification.service';
 import {
   LocalFileStorageAdapter,
@@ -55,6 +59,15 @@ import { PostgresCollaborationService } from '../collaboration/application/colla
 import { join } from 'node:path';
 import { Client } from 'minio';
 import { getMinioConfig } from '../../config/minio.config';
+import { Queue } from 'bullmq';
+import { getRedisConnection } from '../../config/redis.config';
+import {
+  POSTGRES_OUTBOX_QUEUE,
+  PostgresOutboxDispatcher,
+  PostgresOutboxProcessor,
+  PostgresOutboxRuntime,
+  type PostgresOutboxJob,
+} from '../collaboration/application/outbox-runtime';
 
 /** The served PostgreSQL-only composition root introduced by P2-10. */
 @Module({
@@ -76,6 +89,8 @@ import { getMinioConfig } from '../../config/minio.config';
     PostgresProjectActivityController,
     PostgresProjectFileController,
     PostgresTaskAttachmentController,
+    PostgresDashboardController,
+    PostgresSearchController,
   ],
   providers: [
     PostgresTransactionRunner,
@@ -184,11 +199,44 @@ import { getMinioConfig } from '../../config/minio.config';
       inject: [PostgresTransactionRunner],
     },
     {
+      provide: PostgresDashboardReadService,
+      useFactory: (transactions: PostgresTransactionRunner) =>
+        new PostgresDashboardReadService(transactions),
+      inject: [PostgresTransactionRunner],
+    },
+    {
+      provide: PostgresGlobalSearchService,
+      useFactory: (transactions: PostgresTransactionRunner) =>
+        new PostgresGlobalSearchService(transactions),
+      inject: [PostgresTransactionRunner],
+    },
+    {
       provide: PostgresNotificationService,
       useFactory: (transactions: PostgresTransactionRunner) =>
         new PostgresNotificationService(transactions),
       inject: [PostgresTransactionRunner],
     },
+    {
+      provide: PostgresOutboxDispatcher,
+      useFactory: (dataSource: DataSource) =>
+        new PostgresOutboxDispatcher(
+          dataSource,
+          new Queue<PostgresOutboxJob>(POSTGRES_OUTBOX_QUEUE, {
+            connection: { ...getRedisConnection(process.env), maxRetriesPerRequest: null },
+          }),
+        ),
+      inject: [DataSource],
+    },
+    {
+      provide: PostgresOutboxProcessor,
+      useFactory: (
+        dataSource: DataSource,
+        email: EmailService,
+        notifications: PostgresNotificationService,
+      ) => new PostgresOutboxProcessor(dataSource, email, notifications),
+      inject: [DataSource, EmailService, PostgresNotificationService],
+    },
+    PostgresOutboxRuntime,
     {
       provide: PostgresFileStorageService,
       useFactory: (transactions: PostgresTransactionRunner) => {

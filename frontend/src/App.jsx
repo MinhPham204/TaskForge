@@ -13,15 +13,18 @@ import Login from "./pages/Auth/Login";
 import SignUp from "./pages/Auth/SignUp";
 import ForgotPassword from './pages/Auth/ForgotPassword';
 import Profile from './pages/Account/Profile'
+import PersonalSettings from './pages/Account/PersonalSettings'
 import MyTasks from "./pages/User/MyTasks";
 import AcceptInvitePage from "./pages/User/AcceptInvitePage";
 import WorkspaceOnboarding from "./pages/Workspace/WorkspaceOnboarding";
+import WorkspaceSettingsPage from "./pages/Workspace/WorkspaceSettingsPage";
 import NotificationInbox from "./pages/Workspace/NotificationInbox";
 import TeamListPage from "./pages/Teams/TeamListPage";
 import TeamDetailPage from "./pages/Teams/TeamDetailPage";
 import ProjectListPage from "./pages/Projects/ProjectListPage";
 import ProjectDetailPage from "./pages/Projects/ProjectDetailPage";
 import ProjectDocumentPage from "./pages/Projects/ProjectDocumentPage";
+import DashboardPage from "./pages/Dashboard/DashboardPage";
 import DevReviewBanner from "./components/common/DevReviewBanner";
 import { isDevMockActive, enableDevMockSession } from "./utils/devMockHandler";
 import {
@@ -62,17 +65,21 @@ const App = () => {
             <Route path="/login" element={<Login />}/>
             <Route path="/signup" element={<SignUp />}/>
             <Route path="/forgot-password" element={<ForgotPassword />}/>
-            <Route path="/profile" element={<Profile />}/>
-
             {/* Retired route aliases redirect bookmarks to canonical v0.3 paths. */}
+            <Route element={<PrivateRoute requireWorkspace={false} />}>
+              <Route path="/account" element={<Profile />} />
+              <Route path="/profile" element={<Navigate to="/account" replace />} />
+              <Route path="/settings/personal" element={<PersonalSettings />} />
+            </Route>
+
             <Route element={<PrivateRoute />}>
-              <Route path="/admin/dashboard" element={<Navigate to="/projects" replace />} />
-              <Route path="/user/dashboard" element={<Navigate to="/projects" replace />} />
+              <Route path="/admin/dashboard" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/user/dashboard" element={<Navigate to="/dashboard" replace />} />
               <Route path="/admin/tasks" element={<Navigate to="/tasks/my" replace />} />
               <Route path="/admin/create-task" element={<Navigate to="/projects" replace />} />
               <Route path="/admin/tasks/edit/:taskId" element={<Navigate to="/projects" replace />} />
               <Route path="/admin/users" element={<Navigate to="/teams" replace />} />
-              <Route path="/owner/organization" element={<Navigate to="/teams" replace />} />
+              <Route path="/owner/organization" element={<Navigate to="/settings/workspace" replace />} />
               <Route path="/user/my-task" element={<Navigate to="/tasks/my" replace />} />
               <Route path="/user/my-team" element={<Navigate to="/teams" replace />} />
               <Route path="/user/task-detail/:id" element={<Navigate to="/tasks/my" replace />} />
@@ -80,7 +87,9 @@ const App = () => {
               {/* Canonical v0.3 Workspace, Team, Project, and Task Routes */}
               <Route path="/accept-invite" element={<AcceptInvitePage />} />
               <Route path="/workspace/onboarding" element={<WorkspaceOnboarding />} />
+              <Route path="/settings/workspace" element={<WorkspaceSettingsPage />} />
               <Route path="/inbox" element={<NotificationInbox />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/teams" element={<TeamListPage />} />
               <Route path="/teams/:teamId" element={<TeamDetailPage />} />
               <Route path="/projects" element={<ProjectListPage />} />
@@ -111,7 +120,7 @@ const Root = () => {
     return <Navigate to="/login" replace />;
   }
   if (activeOrganizationId) {
-    return <Navigate to="/projects" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
   return <Navigate to="/workspace/onboarding" replace />;
 };

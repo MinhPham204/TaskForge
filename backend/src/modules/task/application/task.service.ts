@@ -40,6 +40,7 @@ import {
 import { PostgresTeamMemberRepository } from '../../onboarding/persistence/typeorm/onboarding.repositories';
 import { writePostgresActivity } from '../../collaboration/application/activity.writer';
 import { writePostgresAudit } from '../../collaboration/application/audit.writer';
+import { writePostgresOutbox } from '../../collaboration/application/outbox.writer';
 
 export interface CreatePostgresTaskInput {
   owningTeamId: string;
@@ -635,6 +636,12 @@ export class PostgresTaskService {
       const request = await approvals.save(approvals.create({ organizationId: actor.organizationId, projectId, taskId: task.id, requestNumber: await approvals.nextRequestNumber(actor.organizationId, projectId, task.id), requestedByMembershipId: actor.membershipId, approverProjectMembershipId: task.approverProjectMembershipId, state: ApprovalRequestState.PENDING, requestReason: reason?.trim() || null, resolutionReason: null, resolvedByMembershipId: null, requestedAt: new Date(), resolvedAt: null, idempotencyKey: null }));
       await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_APPROVAL_REQUESTED', subjectType: 'TASK_APPROVAL_REQUEST', subjectId: request.id, safeMetadata: { taskId: task.id } });
       await writePostgresAudit(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_APPROVAL_REQUESTED', targetType: 'TASK_APPROVAL_REQUEST', targetId: request.id, afterData: { taskId: task.id, state: request.state } });
+      await writePostgresOutbox(manager, {
+        organizationId: actor.organizationId,
+        eventType: 'TASK_APPROVAL_REQUESTED',
+        aggregateId: request.id,
+        payload: { approvalRequestId: request.id },
+      });
       return request;
     });
   }
@@ -656,7 +663,13 @@ export class PostgresTaskService {
       }
       request.resolutionReason = reason?.trim() || null; request.resolvedByMembershipId = actor.membershipId; request.resolvedAt = new Date();
       const saved = await new PostgresApprovalRequestRepository(manager).save(request);
-      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: `TASK_APPROVAL_${action.toUpperCase()}D`, subjectType: 'TASK_APPROVAL_REQUEST', subjectId: request.id, safeMetadata: { taskId: task.id } });
+      const activityAction =
+        action === 'approve'
+          ? 'TASK_APPROVAL_APPROVED'
+          : action === 'reject'
+            ? 'TASK_APPROVAL_REJECTED'
+            : 'TASK_APPROVAL_CANCELLED';
+      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: activityAction, subjectType: 'TASK_APPROVAL_REQUEST', subjectId: request.id, safeMetadata: { taskId: task.id } });
       await writePostgresAudit(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: `TASK_APPROVAL_${action.toUpperCase()}`, targetType: 'TASK_APPROVAL_REQUEST', targetId: request.id, beforeData: { state: ApprovalRequestState.PENDING }, afterData: { taskId: task.id, state: saved.state } });
       return saved;
     });

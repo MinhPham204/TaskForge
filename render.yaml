@@ -18,15 +18,19 @@ services:
       - key: CLIENT_URL
         sync: false
       # PostgreSQL connection string. Migrations run through preDeployCommand.
-      - key: POSTGRES_URL
+      - key: DATABASE_URL
         sync: false
-      - key: POSTGRES_SSL
+      - key: DATABASE_SSL
         value: "true"
-      # Supabase shared Session Pooler encrypts traffic; its CA is not present
-      # in the Render image. Keep this explicit until a CA secret file is added.
-      - key: POSTGRES_SSL_REJECT_UNAUTHORIZED
-        value: "false"
-      - key: POSTGRES_SYNCHRONIZE
+      - key: DATABASE_SSL_REJECT_UNAUTHORIZED
+        value: "true"
+      - key: DATABASE_SSL_CA_BASE64
+        sync: false
+      - key: DATABASE_POOL_MAX
+        value: "5"
+      - key: DATABASE_CONNECTION_TIMEOUT_MS
+        value: "5000"
+      - key: DATABASE_SYNCHRONIZE
         value: "false"
       # Upstash / private Redis URL. URL takes precedence over individual host fields.
       - key: REDIS_URL

@@ -11,6 +11,8 @@ import { organizationApi } from "../services/organizationApi.js";
 import { authApi } from "../services/authApi.js";
 import { projectApi } from "../services/projectApi.js";
 import { collaborationApi } from "../services/collaborationApi.js";
+import { dashboardApi } from "../services/dashboardApi.js";
+import { searchApi } from "../services/searchApi.js";
 import { ACTIVE_ORG_KEY } from "../utils/axiosInstance.js";
 
 const workspaceListener = createListenerMiddleware();
@@ -42,6 +44,8 @@ const resetTenantBoundState = (listenerApi) => {
   listenerApi.dispatch(organizationApi.util.resetApiState());
   listenerApi.dispatch(projectApi.util.resetApiState());
   listenerApi.dispatch(collaborationApi.util.resetApiState());
+  listenerApi.dispatch(dashboardApi.util.resetApiState());
+  listenerApi.dispatch(searchApi.util.resetApiState());
 };
 
 workspaceListener.startListening({
@@ -66,6 +70,7 @@ workspaceListener.startListening({
   effect: (_, listenerApi) => {
     removeAuthStorage();
     resetTenantBoundState(listenerApi);
+    listenerApi.dispatch(authApi.util.resetApiState());
   },
 });
 
@@ -78,6 +83,8 @@ export const store = configureStore({
     [organizationApi.reducerPath]: organizationApi.reducer,
     [projectApi.reducerPath]: projectApi.reducer,
     [collaborationApi.reducerPath]: collaborationApi.reducer,
+    [dashboardApi.reducerPath]: dashboardApi.reducer,
+    [searchApi.reducerPath]: searchApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware()
@@ -88,6 +95,8 @@ export const store = configureStore({
         teamApi.middleware,
         organizationApi.middleware,
         projectApi.middleware,
-        collaborationApi.middleware
+        collaborationApi.middleware,
+        dashboardApi.middleware,
+        searchApi.middleware
       ),
 });

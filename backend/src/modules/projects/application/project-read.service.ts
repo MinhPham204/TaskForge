@@ -25,7 +25,7 @@ export class PostgresProjectReadService {
   constructor(private readonly transactions: PostgresTransactionRunner) {}
 
   list(actor: PostgresProjectActor) {
-    return this.transactions.run(async (manager) => {
+    return this.transactions.read(async (manager) => {
       const membership = await this.requireActiveMembership(manager, actor);
       const projects = new PostgresProjectRepository(manager);
       if (
@@ -60,7 +60,7 @@ export class PostgresProjectReadService {
   }
 
   get(actor: PostgresProjectActor, projectId: string) {
-    return this.transactions.run(async (manager) => {
+    return this.transactions.read(async (manager) => {
       const visible = await this.requireVisibleProject(
         manager,
         actor,
@@ -142,7 +142,7 @@ export class PostgresProjectReadService {
     projectId: string,
     action: (manager: EntityManager) => Promise<T>,
   ): Promise<T> {
-    return this.transactions.run(async (manager) => {
+    return this.transactions.read(async (manager) => {
       await this.requireVisibleProject(manager, actor, projectId);
       return action(manager);
     });
@@ -154,7 +154,7 @@ export class PostgresProjectReadService {
   ) {
     const membership = await new PostgresOrganizationMembershipRepository(
       manager,
-    ).findActiveByIdForUpdate(actor.organizationId, actor.membershipId);
+    ).findActiveById(actor.organizationId, actor.membershipId);
     if (!membership)
       throw new ForbiddenException(
         'Active organization membership is required',
@@ -176,7 +176,7 @@ export class PostgresProjectReadService {
     const membership = await this.requireActiveMembership(manager, actor);
     const projectMembership = await new PostgresProjectMembershipRepository(
       manager,
-    ).findActiveByProjectAndOrganizationMembershipForUpdate(
+    ).findActiveByProjectAndOrganizationMembership(
       actor.organizationId,
       projectId,
       actor.membershipId,

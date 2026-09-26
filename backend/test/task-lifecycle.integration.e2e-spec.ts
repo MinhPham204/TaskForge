@@ -27,6 +27,7 @@ import {
 } from '../src/modules/task/persistence/typeorm/task.entities';
 import { PostgresNotificationService } from '../src/modules/collaboration/application/notification.service';
 import { ActivityEntryEntity, AuditLogEntity, NotificationEntity } from '../src/modules/collaboration/persistence/typeorm/collaboration.entities';
+import { PostgresAuditLogRepository } from '../src/modules/collaboration/persistence/typeorm/collaboration.repositories';
 import { PostgresOnboardingTestModule } from '../src/testing/onboarding-test.module';
 
 describe('PostgreSQL Task create/update/archive integration', () => {
@@ -699,6 +700,65 @@ describe('PostgreSQL Task create/update/archive integration', () => {
     const rows = await dataSource.query('SELECT state FROM task_approval_requests WHERE task_id = $1', [task.body.id]);
     expect(rows).toHaveLength(1);
     expect(['APPROVED', 'REJECTED']).toContain(rows[0].state);
+    const terminalActivities = await dataSource.getRepository(ActivityEntryEntity).find({
+      where: { subjectType: 'TASK_APPROVAL_REQUEST' },
+    });
+    const terminalAudits = await dataSource.getRepository(AuditLogEntity).find({
+      where: { targetType: 'TASK_APPROVAL_REQUEST' },
+    });
+    expect(
+      terminalActivities.filter((entry) =>
+        ['TASK_APPROVAL_APPROVED', 'TASK_APPROVAL_REJECTED'].includes(
+          entry.actionCode,
+        ),
+      ),
+    ).toHaveLength(1);
+    expect(
+      terminalAudits.filter((entry) =>
+        ['TASK_APPROVAL_APPROVE', 'TASK_APPROVAL_REJECT'].includes(
+          entry.actionCode,
+        ),
+      ),
+    ).toHaveLength(1);
+    await expect(dataSource.getRepository(NotificationEntity).count()).resolves.toBe(0);
+  });
+
+  it('rolls back an approval decision when its transaction-scoped audit write fails', async () => {
+    const workspace = await createWorkspace('approval-rollback');
+    const actor = { organizationId: workspace.organizationId, membershipId: workspace.membershipId };
+    const project = await projects.create(actor, { name: 'Approval rollback project' });
+    const status = await dataSource.getRepository(ProjectTaskStatusEntity).findOneByOrFail({ projectId: project.id });
+    const approverMembership = await createMember(workspace.organizationId, 'rollback-approver');
+    await teams.addMember(actor, workspace.generalTeamId, approverMembership.id);
+    const approverProjectMembership = await participants.addMember(actor, project.id, approverMembership.id, ProjectRole.CONTRIBUTOR);
+    const ownerToken = await accessToken(workspace.userId, workspace.email);
+    const task = await request(app.getHttpServer()).post(`/api/projects/${project.id}/tasks`).set('Authorization', `Bearer ${ownerToken}`).set('x-organization-id', workspace.organizationId).send({ owningTeamId: workspace.generalTeamId, statusId: status.id, title: 'Approval rollback task', priorityCode: 'HIGH' }).expect(201);
+    await request(app.getHttpServer()).patch(`/api/projects/${project.id}/tasks/${task.body.id}/approval`).set('Authorization', `Bearer ${ownerToken}`).set('x-organization-id', workspace.organizationId).send({ approverProjectMembershipId: approverProjectMembership.id }).expect(200);
+    await request(app.getHttpServer()).post(`/api/projects/${project.id}/tasks/${task.body.id}/approval-requests`).set('Authorization', `Bearer ${ownerToken}`).set('x-organization-id', workspace.organizationId).send({}).expect(201);
+    const approver = await dataSource.getRepository(UserEntity).findOneByOrFail({ id: approverMembership.userId });
+    const auditFailure = jest
+      .spyOn(PostgresAuditLogRepository.prototype, 'save')
+      .mockRejectedValueOnce(new Error('forced approval audit failure'));
+
+    try {
+      await request(app.getHttpServer()).post(`/api/projects/${project.id}/tasks/${task.body.id}/approval-requests/approve`).set('Authorization', `Bearer ${await accessToken(approver.id, approver.email)}`).set('x-organization-id', workspace.organizationId).send({}).expect(500);
+    } finally {
+      auditFailure.mockRestore();
+    }
+
+    await expect(
+      dataSource.query('SELECT state FROM task_approval_requests WHERE task_id = $1', [task.body.id]),
+    ).resolves.toEqual([{ state: 'PENDING' }]);
+    await expect(
+      dataSource.getRepository(ActivityEntryEntity).count({
+        where: { actionCode: 'TASK_APPROVAL_APPROVED' },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      dataSource.getRepository(AuditLogEntity).count({
+        where: { actionCode: 'TASK_APPROVAL_APPROVE' },
+      }),
+    ).resolves.toBe(0);
   });
 
   async function createWorkspace(prefix: string) {

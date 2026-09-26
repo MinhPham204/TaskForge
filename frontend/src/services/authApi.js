@@ -5,7 +5,7 @@ import { API_PATHS } from '../utils/apiPaths.js';
 export const authApi = createApi({
     reducerPath: 'authApi',
     baseQuery: axiosBaseQuery(),
-    tagTypes: ['User'],
+    tagTypes: ['User', 'Preferences'],
     endpoints: (builder) => ({
         getProfile: builder.query({
             query: () => ({ url: API_PATHS.AUTH.GET_PROFILE, method: 'get' }),
@@ -26,6 +26,18 @@ export const authApi = createApi({
                 data: passwordData,
             }),
         }),
+        getPersonalPreferences: builder.query({
+            query: () => ({ url: API_PATHS.AUTH.PREFERENCES, method: 'get' }),
+            providesTags: ['Preferences'],
+        }),
+        updatePersonalPreferences: builder.mutation({
+            query: (preferences) => ({
+                url: API_PATHS.AUTH.PREFERENCES,
+                method: 'patch',
+                data: preferences,
+            }),
+            invalidatesTags: ['Preferences'],
+        }),
     }),
 });
 
@@ -33,4 +45,6 @@ export const {
     useGetProfileQuery,
     useUpdateProfileMutation,
     useChangePasswordMutation,
+    useGetPersonalPreferencesQuery,
+    useUpdatePersonalPreferencesMutation,
 } = authApi;

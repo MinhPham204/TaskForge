@@ -7,7 +7,7 @@ import { API_PATHS } from '../utils/apiPaths.js';
 export const organizationApi = createApi({
     reducerPath: 'organizationApi',
     baseQuery: axiosBaseQuery(),
-    tagTypes: ['Organization', 'PendingInvitations'],
+    tagTypes: ['Organization', 'PendingInvitations', 'OrganizationMembers', 'OrganizationInvitations'],
     endpoints: (builder) => ({
         createOrganization: builder.mutation({
             query: (orgData) => ({
@@ -34,6 +34,72 @@ export const organizationApi = createApi({
             }),
             providesTags: ['PendingInvitations'],
         }),
+
+        getOrganizationSettings: builder.query({
+            query: (organizationId) => ({
+                url: API_PATHS.ORGANIZATIONS.GET_BY_ID(organizationId),
+                method: 'get',
+            }),
+            providesTags: (result, error, organizationId) => [{ type: 'Organization', id: organizationId }],
+        }),
+
+        updateOrganization: builder.mutation({
+            query: ({ organizationId, ...data }) => ({
+                url: API_PATHS.ORGANIZATIONS.UPDATE(organizationId),
+                method: 'patch',
+                data,
+            }),
+            invalidatesTags: (result, error, { organizationId }) => [{ type: 'Organization', id: organizationId }],
+        }),
+
+        getOrganizationMembers: builder.query({
+            query: (organizationId) => ({
+                url: API_PATHS.ORGANIZATIONS.MEMBERS(organizationId),
+                method: 'get',
+            }),
+            providesTags: (result, error, organizationId) => [{ type: 'OrganizationMembers', id: organizationId }],
+        }),
+
+        getOrganizationInvitations: builder.query({
+            query: (organizationId) => ({
+                url: API_PATHS.ORGANIZATIONS.INVITATIONS(organizationId),
+                method: 'get',
+            }),
+            providesTags: (result, error, organizationId) => [{ type: 'OrganizationInvitations', id: organizationId }],
+        }),
+
+        createOrganizationInvitation: builder.mutation({
+            query: ({ organizationId, ...data }) => ({
+                url: API_PATHS.ORGANIZATIONS.CREATE_INVITATION(organizationId),
+                method: 'post',
+                data,
+            }),
+            invalidatesTags: (result, error, { organizationId }) => [{ type: 'OrganizationInvitations', id: organizationId }],
+        }),
+
+        revokeOrganizationInvitation: builder.mutation({
+            query: ({ organizationId, invitationId }) => ({
+                url: API_PATHS.ORGANIZATIONS.REVOKE_INVITATION(organizationId, invitationId),
+                method: 'delete',
+            }),
+            invalidatesTags: (result, error, { organizationId }) => [{ type: 'OrganizationInvitations', id: organizationId }],
+        }),
+
+        suspendOrganizationMember: builder.mutation({
+            query: ({ organizationId, userId }) => ({
+                url: API_PATHS.ORGANIZATIONS.SUSPEND_MEMBER(organizationId, userId),
+                method: 'post',
+            }),
+            invalidatesTags: (result, error, { organizationId }) => [{ type: 'OrganizationMembers', id: organizationId }],
+        }),
+
+        revokeOrganizationMember: builder.mutation({
+            query: ({ organizationId, userId }) => ({
+                url: API_PATHS.ORGANIZATIONS.REVOKE_MEMBER(organizationId, userId),
+                method: 'delete',
+            }),
+            invalidatesTags: (result, error, { organizationId }) => [{ type: 'OrganizationMembers', id: organizationId }],
+        }),
     }),
 });
 
@@ -41,4 +107,12 @@ export const {
     useCreateOrganizationMutation,
     useAcceptInvitationByTokenMutation,
     useGetPendingInvitationsQuery,
+    useGetOrganizationSettingsQuery,
+    useUpdateOrganizationMutation,
+    useGetOrganizationMembersQuery,
+    useGetOrganizationInvitationsQuery,
+    useCreateOrganizationInvitationMutation,
+    useRevokeOrganizationInvitationMutation,
+    useSuspendOrganizationMemberMutation,
+    useRevokeOrganizationMemberMutation,
 } = organizationApi;

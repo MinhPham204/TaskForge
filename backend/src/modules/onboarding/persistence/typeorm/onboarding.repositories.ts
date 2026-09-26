@@ -9,6 +9,7 @@ import {
   TeamEntity,
   TeamMemberEntity,
   UserEntity,
+  UserPreferenceEntity,
 } from './onboarding.entities';
 import type { OrganizationRole } from './onboarding.entities';
 
@@ -55,12 +56,37 @@ export class PostgresUserRepository {
       .getOne();
   }
 
+  findByIdWithCredentials(id: string): Promise<UserEntity | null> {
+    return this.manager
+      .getRepository(UserEntity)
+      .createQueryBuilder('user')
+      .addSelect(['user.passwordHash', 'user.refreshTokenHash'])
+      .where('user.id = :id', { id })
+      .getOne();
+  }
+
   create(values: DeepPartial<UserEntity>): UserEntity {
     return this.manager.getRepository(UserEntity).create(values);
   }
 
   save(user: UserEntity): Promise<UserEntity> {
     return this.manager.getRepository(UserEntity).save(user);
+  }
+}
+
+export class PostgresUserPreferenceRepository {
+  constructor(private readonly manager: EntityManager) {}
+
+  findByUserId(userId: string): Promise<UserPreferenceEntity | null> {
+    return this.manager.getRepository(UserPreferenceEntity).findOneBy({ userId });
+  }
+
+  create(values: DeepPartial<UserPreferenceEntity>): UserPreferenceEntity {
+    return this.manager.getRepository(UserPreferenceEntity).create(values);
+  }
+
+  save(preferences: UserPreferenceEntity): Promise<UserPreferenceEntity> {
+    return this.manager.getRepository(UserPreferenceEntity).save(preferences);
   }
 }
 
@@ -94,6 +120,17 @@ export class PostgresOrganizationRepository {
 
 export class PostgresOrganizationMembershipRepository {
   constructor(private readonly manager: EntityManager) {}
+
+  findActiveById(
+    organizationId: string,
+    id: string,
+  ): Promise<OrganizationMembershipEntity | null> {
+    return this.manager.getRepository(OrganizationMembershipEntity).findOneBy({
+      id,
+      organizationId,
+      state: OrganizationMembershipState.ACTIVE,
+    });
+  }
 
   findByIdForUpdate(
     organizationId: string,
@@ -241,6 +278,41 @@ export class PostgresOrganizationMembershipRepository {
         organizationId,
       })
       .getOne();
+  }
+
+  async listByOrganization(
+    organizationId: string,
+  ): Promise<
+    Array<{
+      membershipId: string;
+      userId: string;
+      name: string;
+      email: string;
+      profileImageUrl: string | null;
+      role: OrganizationRole;
+      state: OrganizationMembershipState;
+      joinedAt: Date;
+      stateChangedAt: Date;
+    }>
+  > {
+    return this.manager
+      .getRepository(OrganizationMembershipEntity)
+      .createQueryBuilder('membership')
+      .innerJoin(UserEntity, 'user', 'user.id = membership.user_id')
+      .select('membership.id', 'membershipId')
+      .addSelect('membership.user_id', 'userId')
+      .addSelect('user.name', 'name')
+      .addSelect('user.email', 'email')
+      .addSelect('user.profile_image_url', 'profileImageUrl')
+      .addSelect('membership.role', 'role')
+      .addSelect('membership.state', 'state')
+      .addSelect('membership.joined_at', 'joinedAt')
+      .addSelect('membership.state_changed_at', 'stateChangedAt')
+      .where('membership.organization_id = :organizationId', {
+        organizationId,
+      })
+      .orderBy('membership.created_at', 'ASC')
+      .getRawMany();
   }
 
   create(

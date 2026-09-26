@@ -50,7 +50,7 @@ flowchart LR
 
 The served API is a NestJS modular monolith. PostgreSQL is the canonical persistence layer, and versioned migrations own schema changes. Redis is used selectively instead of as a second source of truth. MinIO is private: browsers receive files only through authorized TaskForge download endpoints and never receive object keys or public bucket URLs.
 
-The BullMQ email producer/processor boundary is integration-tested for stable-ID jobs, retries, stale-recipient checks, and operational events. Wiring that worker into the final hosted runtime is intentionally reported as remaining release work rather than represented as already deployed.
+The served runtime includes a selective transactional Outbox for invitation and approval-request delivery. Its Dispatcher claims durable PostgreSQL events before enqueueing stable BullMQ job IDs; the Worker provides at-least-once email delivery and idempotent internal approval notifications. SMTP may still duplicate after a provider-side accept followed by a process crash.
 
 ## Simplified data model
 
@@ -182,7 +182,7 @@ npm run start:dev
 
 On macOS/Linux, use `cp .env.example .env` instead of `Copy-Item`.
 
-Configure `backend/.env` with the local PostgreSQL URL `postgresql://taskforge:taskforge@localhost:54329/taskforge`, `POSTGRES_SSL=false`, Redis at `localhost:6379`, and strong JWT secrets. Leave every `MINIO_*` value empty to use the local `backend/uploads/` adapter during hot reload; supply all six MinIO variables together when testing MinIO.
+Configure `backend/.env` with `DATABASE_URL=postgresql://taskforge:taskforge@localhost:54329/taskforge`, `DATABASE_SSL=false`, Redis at `localhost:6379`, and strong JWT secrets. Leave every `MINIO_*` value empty to use the local `backend/uploads/` adapter during hot reload; supply all six MinIO variables together when testing MinIO.
 
 ### Frontend
 
@@ -219,7 +219,7 @@ npm test
 npm run build
 ```
 
-`test:critical:postgres` currently covers 12 PostgreSQL capability suites and 43 tests across onboarding, multi-organization access, Teams, Projects, Tasks/Approval, collaboration/files, optional modules, MinIO, and email-job behavior. CI repeats migrations from an empty database and gates backend/frontend builds in `.github/workflows/verify.yml`.
+`test:critical:postgres` covers 28 PostgreSQL/Redis/MinIO Integration/E2E suites and 78 tests, measured from a clean run on 2026-09-17. It includes tenant/authorization boundaries, invitation and approval concurrency/rollback, Outbox recovery and duplicate Worker processing, served-runtime lifecycle, files, optional modules and deterministic seed safeguards. CI repeats migrations from an empty database, then runs this gate before backend/frontend builds in `.github/workflows/verify.yml`.
 
 The test database teardown command removes the disposable test volumes. Run it only when that target is intentional:
 
@@ -250,7 +250,7 @@ npm run test:db:down
 
 - OpenFGA and PostgreSQL RLS are deferred; application authorization and tenant-scoped queries are the v0.3 correctness boundary.
 - No full Outbox, CQRS, event sourcing, realtime transport, or microservice split.
-- BullMQ email jobs are integration-tested, but the final production worker composition and advanced DLQ/alerting remain release/backlog work.
+- The selective Outbox is intentionally limited to invitations and approval requests. It is not a general event bus, and SMTP remains at-least-once; advanced alerting and operational runbooks remain release work.
 - Local MinIO avoids provider cost and keeps files private, but a hosted demo cannot demonstrate file operations without a later approved storage provider.
 - Metrics, distributed tracing, centralized logs, backup/restore rehearsal, malware scanning, load testing, autoscaling, and measured pool/query tuning require a real production requirement.
 - PostgreSQL/TypeORM is the only served persistence path; historical migration documents may still describe the retired architecture.

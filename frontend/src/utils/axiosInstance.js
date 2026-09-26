@@ -58,7 +58,11 @@ export const isTenantScopedRequest = (url = "") => {
     cleanUrl.startsWith("/api/projects") ||
     cleanUrl.startsWith("api/projects") ||
     cleanUrl.startsWith("/api/notifications") ||
-    cleanUrl.startsWith("api/notifications")
+    cleanUrl.startsWith("api/notifications") ||
+    cleanUrl.startsWith("/api/dashboard") ||
+    cleanUrl.startsWith("api/dashboard") ||
+    cleanUrl.startsWith("/api/search") ||
+    cleanUrl.startsWith("api/search")
   );
 };
 

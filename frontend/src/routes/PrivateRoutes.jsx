@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { selectActiveOrganizationId } from '../store/authSlice.js'
 
-const PrivateRoutes = () => {
+const PrivateRoutes = ({ requireWorkspace = true }) => {
   const location = useLocation();
   const { user, loading, isOrganizationsLoading, organizationsInitialized } = useSelector((state) => state.auth);
   const activeOrganizationId = useSelector(selectActiveOrganizationId);
@@ -35,7 +35,7 @@ const PrivateRoutes = () => {
     return <Navigate to={`/login?from=${encodeURIComponent(from)}`} replace />;
   }
 
-  if (!activeOrganizationId && location.pathname !== '/workspace/onboarding') {
+  if (requireWorkspace && !activeOrganizationId && location.pathname !== '/workspace/onboarding') {
     return <Navigate to="/workspace/onboarding" replace />;
   }
 

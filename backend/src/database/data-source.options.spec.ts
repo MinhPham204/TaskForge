@@ -6,6 +6,7 @@ import {
   TeamEntity,
   TeamMemberEntity,
   UserEntity,
+  UserPreferenceEntity,
 } from '../modules/onboarding/persistence/typeorm/onboarding.entities';
 import {
   ProjectEntity,
@@ -31,6 +32,7 @@ import {
   ActivityEntryEntity,
   AuditLogEntity,
   NotificationEntity,
+  OutboxEventEntity,
   ProjectFileEntity,
   StoredFileEntity,
   TaskAttachmentEntity,
@@ -39,10 +41,12 @@ import {
 describe('createPostgresDataSourceOptions', () => {
   it('creates migration-only options without runtime schema synchronization', () => {
     const options = createPostgresDataSourceOptions({
-      POSTGRES_URL: 'postgresql://user:password@db.example.test:5432/taskforge',
-      POSTGRES_SSL: 'true',
-      POSTGRES_SSL_REJECT_UNAUTHORIZED: 'false',
-      POSTGRES_SYNCHRONIZE: 'false',
+      DATABASE_URL: 'postgresql://user:password@db.example.test:5432/taskforge',
+      DATABASE_SSL: 'true',
+      DATABASE_SSL_REJECT_UNAUTHORIZED: 'false',
+      DATABASE_POOL_MAX: '7',
+      DATABASE_CONNECTION_TIMEOUT_MS: '2500',
+      DATABASE_SYNCHRONIZE: 'false',
     });
 
     expect(options).toMatchObject({
@@ -52,9 +56,11 @@ describe('createPostgresDataSourceOptions', () => {
       synchronize: false,
       migrationsRun: false,
       migrationsTableName: 'typeorm_migrations',
+      extra: { max: 7, connectionTimeoutMillis: 2500 },
     });
     expect(options.entities).toEqual([
       UserEntity,
+      UserPreferenceEntity,
       OrganizationEntity,
       OrganizationMembershipEntity,
       OrganizationInvitationEntity,
@@ -77,6 +83,7 @@ describe('createPostgresDataSourceOptions', () => {
       ActivityEntryEntity,
       AuditLogEntity,
       NotificationEntity,
+      OutboxEventEntity,
       StoredFileEntity,
       TaskAttachmentEntity,
       ProjectFileEntity,
@@ -88,7 +95,33 @@ describe('createPostgresDataSourceOptions', () => {
 
   it('does not permit the CLI to run without a PostgreSQL target', () => {
     expect(() => createPostgresDataSourceOptions({})).toThrow(
-      'POSTGRES_URL is required',
+      'DATABASE_URL is required',
     );
+  });
+
+  it('uses the optional migration URL only for migration commands', () => {
+    const environment = {
+      DATABASE_URL: 'postgresql://user:password@runtime.example.test:5432/taskforge',
+      MIGRATION_DATABASE_URL:
+        'postgresql://user:password@migration.example.test:5432/taskforge',
+    };
+
+    expect(createPostgresDataSourceOptions(environment).url).toContain(
+      'migration.example.test',
+    );
+    expect(createPostgresDataSourceOptions(environment, 'runtime').url).toContain(
+      'runtime.example.test',
+    );
+  });
+
+  it('passes an optional trusted CA to pg without disabling verification', () => {
+    const certificate = '-----BEGIN CERTIFICATE-----\nexample\n-----END CERTIFICATE-----';
+    const options = createPostgresDataSourceOptions({
+      DATABASE_URL: 'postgresql://user:password@db.example.test:5432/taskforge',
+      DATABASE_SSL: 'true',
+      DATABASE_SSL_CA_BASE64: Buffer.from(certificate).toString('base64'),
+    });
+
+    expect(options.ssl).toEqual({ rejectUnauthorized: true, ca: certificate });
   });
 });

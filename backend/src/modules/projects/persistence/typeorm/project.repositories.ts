@@ -217,6 +217,19 @@ export class PostgresProjectTeamRepository {
 export class PostgresProjectMembershipRepository {
   constructor(private readonly manager: EntityManager) {}
 
+  findActiveByProjectAndOrganizationMembership(
+    organizationId: string,
+    projectId: string,
+    organizationMembershipId: string,
+  ): Promise<ProjectMembershipEntity | null> {
+    return this.manager.getRepository(ProjectMembershipEntity).findOneBy({
+      organizationId,
+      projectId,
+      organizationMembershipId,
+      removedAt: IsNull(),
+    });
+  }
+
   findActiveByProjectAndOrganizationMembershipForUpdate(
     organizationId: string,
     projectId: string,

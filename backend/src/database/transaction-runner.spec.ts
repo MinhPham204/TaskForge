@@ -6,7 +6,8 @@ import {
 
 describe('PostgresTransactionRunner', () => {
   const transaction = jest.fn();
-  const dataSource = { transaction } as unknown as DataSource;
+  const manager = {};
+  const dataSource = { transaction, manager } as unknown as DataSource;
   beforeEach(() => {
     transaction.mockReset();
   });
@@ -19,6 +20,16 @@ describe('PostgresTransactionRunner', () => {
     await expect(runner.run(work)).resolves.toBe('committed');
 
     expect(transaction).toHaveBeenCalledWith(work);
+  });
+
+  it('uses the shared manager for a read without opening a transaction', async () => {
+    const runner = new PostgresTransactionRunner(dataSource);
+    const work = jest.fn().mockResolvedValue('read');
+
+    await expect(runner.read(work)).resolves.toBe('read');
+
+    expect(work).toHaveBeenCalledWith(manager);
+    expect(transaction).not.toHaveBeenCalled();
   });
 
   it('passes an explicit isolation level only when the caller requires one', async () => {

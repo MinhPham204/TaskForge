@@ -67,6 +67,30 @@ export class UserEntity {
   updatedAt!: Date;
 }
 
+@Entity({ name: 'user_preferences' })
+export class UserPreferenceEntity {
+  @PrimaryColumn({ name: 'user_id', type: 'uuid' })
+  userId!: string;
+
+  @Column({ type: 'varchar', length: 64, default: 'UTC' })
+  timezone!: string;
+
+  @Column({ type: 'varchar', length: 35, default: 'en-US' })
+  locale!: string;
+
+  @Column({ name: 'week_starts_on', type: 'smallint', default: 1 })
+  weekStartsOn!: number;
+
+  @Column({ name: 'in_app_notifications_enabled', type: 'boolean', default: true })
+  inAppNotificationsEnabled!: boolean;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt!: Date;
+}
+
 @Entity({ name: 'organizations' })
 export class OrganizationEntity {
   @PrimaryGeneratedColumn('uuid')

@@ -7,6 +7,7 @@ import {
   useMarkNotificationReadMutation,
   useMarkNotificationUnreadMutation,
 } from '../../services/collaborationApi';
+import { getNotificationDestination } from '../../utils/navigation.js';
 
 const NotificationInbox = () => {
   const navigate = useNavigate();
@@ -21,10 +22,8 @@ const NotificationInbox = () => {
 
   const openNotification = async (notification) => {
     if (!notification.readAt) await markRead(notification.id).unwrap();
-    const projectId = notification.projectId || (
-      notification.resourceType === 'PROJECT' ? notification.resourceId : null
-    );
-    if (projectId) navigate(`/projects/${projectId}`);
+    const destination = getNotificationDestination(notification);
+    if (destination) navigate(destination);
   };
 
   return (
@@ -44,14 +43,13 @@ const NotificationInbox = () => {
           <div className="overflow-hidden rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
             {notifications.map((notification) => {
               const unread = !notification.readAt;
-              const hasProject = notification.projectId || (
-                notification.resourceType === 'PROJECT' && notification.resourceId
-              );
+              const destination = getNotificationDestination(notification);
+              const canNavigate = Boolean(destination);
               const message = notification.safePayload?.message || notification.safePayload?.taskTitle || notification.safePayload?.projectName || notification.typeCode?.replace(/_/g, ' ') || 'Workspace update';
               return (
                 <div key={notification.id} className={`flex gap-3 p-4 ${unread ? 'bg-blue-50/40' : 'bg-white'}`}>
                   <div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${unread ? 'bg-primary' : 'bg-transparent'}`} />
-                  <button type="button" onClick={() => hasProject && openNotification(notification)} className={`min-w-0 flex-1 text-left ${hasProject ? 'cursor-pointer' : 'cursor-default'}`}>
+                  <button type="button" onClick={() => canNavigate && openNotification(notification)} className={`min-w-0 flex-1 text-left ${canNavigate ? 'cursor-pointer' : 'cursor-default'}`}>
                     <p className={`text-sm ${unread ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>{message}</p>
                     <p className="mt-1 text-xs text-gray-500">{notification.typeCode?.replace(/_/g, ' ') || 'Notification'} · {new Date(notification.createdAt).toLocaleString()}</p>
                   </button>

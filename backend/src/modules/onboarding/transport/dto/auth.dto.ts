@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEmail,
+  IsBoolean,
+  IsIn,
   IsOptional,
   IsString,
   IsUrl,
@@ -8,6 +10,9 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+
+const SUPPORTED_TIMEZONES = ['UTC', 'Asia/Ho_Chi_Minh', 'Asia/Tokyo', 'Europe/London', 'America/New_York'];
+const SUPPORTED_LOCALES = ['en-US', 'vi-VN', 'ja-JP'];
 
 export class PostgresRegisterDto {
   @ApiProperty({ example: 'member@example.com' })
@@ -60,4 +65,44 @@ export class UpdatePostgresProfileDto {
   @IsOptional()
   @IsUrl()
   profileImageUrl?: string | null;
+}
+
+export class ChangePostgresPasswordDto {
+  @ApiProperty({ minLength: 1, maxLength: 128 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  currentPassword!: string;
+
+  @ApiProperty({ minLength: 8, maxLength: 128 })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  newPassword!: string;
+
+  @ApiProperty({ minLength: 8, maxLength: 128 })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  confirmPassword!: string;
+}
+
+export class UpdatePostgresPersonalPreferencesDto {
+  @ApiProperty({ enum: SUPPORTED_TIMEZONES })
+  @IsString()
+  @IsIn(SUPPORTED_TIMEZONES)
+  timezone!: string;
+
+  @ApiProperty({ enum: SUPPORTED_LOCALES })
+  @IsString()
+  @IsIn(SUPPORTED_LOCALES)
+  locale!: string;
+
+  @ApiProperty({ enum: [0, 1], description: '0 is Sunday and 1 is Monday' })
+  @IsIn([0, 1])
+  weekStartsOn!: number;
+
+  @ApiProperty()
+  @IsBoolean()
+  inAppNotificationsEnabled!: boolean;
 }

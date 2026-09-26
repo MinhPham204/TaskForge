@@ -63,9 +63,9 @@ For a host-run API, update the local-only `.env` values to use the ports exposed
 by Compose:
 
 ```dotenv
-POSTGRES_URL=postgresql://taskforge:taskforge@localhost:54329/taskforge
-POSTGRES_SSL=false
-POSTGRES_SYNCHRONIZE=false
+DATABASE_URL=postgresql://taskforge:taskforge@localhost:54329/taskforge
+DATABASE_SSL=false
+DATABASE_SYNCHRONIZE=false
 REDIS_HOST=localhost
 REDIS_PORT=6379
 ```
@@ -114,14 +114,35 @@ The local defaults expose PostgreSQL on `localhost:54329` and Redis on
 intended disposable local target, then set these local-only values in `.env`:
 
 ```dotenv
-POSTGRES_URL=postgresql://taskforge:taskforge@localhost:54329/taskforge
-POSTGRES_SSL=false
-POSTGRES_SYNCHRONIZE=false
+DATABASE_URL=postgresql://taskforge:taskforge@localhost:54329/taskforge
+DATABASE_SSL=false
+DATABASE_SYNCHRONIZE=false
 ```
 
 The Compose credentials are development-only and must never be reused for
-Supabase or Render. `POSTGRES_SYNCHRONIZE=true` is rejected; schema changes are
+Supabase or Render. `DATABASE_SYNCHRONIZE=true` is rejected; schema changes are
 always versioned migrations.
+
+### Supabase connection contract
+
+Use `DATABASE_URL` for the long-running API. On Render IPv4, set it to the
+Supabase Session Pooler URL. `MIGRATION_DATABASE_URL` is optional: set it to a
+direct Supabase connection only when that network path is reachable; otherwise
+leave it unset and the one-shot migration command uses `DATABASE_URL`.
+
+Hosted Supabase connections require `DATABASE_SSL=true` and
+`DATABASE_SSL_REJECT_UNAUTHORIZED=true`. The API's conservative defaults are
+`DATABASE_POOL_MAX=5` and `DATABASE_CONNECTION_TIMEOUT_MS=5000`; total database
+connections equal the pool maximum times the number of running API instances.
+After an approved remote target is configured, run `npm run test:supabase:smoke`.
+It initializes TypeORM, performs `SELECT 1`, and fails if any migration remains
+pending without printing the connection URL or credentials.
+
+If the Node host cannot validate the certificate chain, download the root
+certificate from Supabase **Database Settings**, base64-encode the PEM, and set
+that value as the `DATABASE_SSL_CA_BASE64` secret. This retains server identity
+verification; never work around the error by setting
+`DATABASE_SSL_REJECT_UNAUTHORIZED=false`.
 
 Inspect migration status first:
 
@@ -169,8 +190,13 @@ target Supabase, Render, or another remote database.
 ```bash
 npm run test:db:up
 npm run test:db:migrate
-npm run test:integration
+npm run test:critical:postgres
 ```
+
+`test:critical:postgres` runs the complete PostgreSQL/Redis/MinIO Integration/E2E
+inventory in isolated processes. The clean run on 2026-09-17 passed 28 suites and
+78 tests; it covers tenant and authorization boundaries, concurrency/rollback,
+Outbox recovery/idempotency, served runtime, files and cross-module workflows.
 
 The fixed test target is `localhost:54330/taskforge_test`. The test scripts
 fail closed if `POSTGRES_TEST_URL` points anywhere else. Remove only that test
@@ -240,6 +266,7 @@ deployment and must not be described as a public durable object-storage service.
 - `npm run test:integration`
 - `npm run test:e2e:postgres`
 - `npm run test:runtime:postgres`
+- `npm run test:critical:postgres`
 - `npm run test:storage:minio`
 - `npm run test:db:down`
 - `npm run verify:local`
@@ -247,15 +274,23 @@ deployment and must not be described as a public durable object-storage service.
 - `npm run migration:run`
 - `npm run migration:revert`
 - `npm run migration:run:compiled`
+- `npm run test:supabase:smoke`
 
 ## Notes
 
 - Global API prefix is `api`.
 - CORS origin is read from `CLIENT_URL`.
 - Redis is required for OTP/session support and the tested BullMQ email boundary.
-- BullMQ email jobs are integration-tested but are not registered in the served
-  runtime; do not present asynchronous invitation/assignment/approval/reminder
-  email as a deployed capability until worker composition is implemented.
+- The served runtime registers the selective Outbox Dispatcher and Worker for
+  invitation and approval-request events. Delivery is at-least-once; SMTP can
+  still duplicate after provider acceptance, while internal approval
+  notifications use the Outbox ID as a deduplication key. Assignment and due
+  reminder queue helpers remain integration-test-only boundaries.
+- `DATABASE_POOL_MAX` defaults to 5 and `DATABASE_CONNECTION_TIMEOUT_MS` defaults
+  to 5000 ms. Total PostgreSQL connections are pool maximum multiplied by the
+  number of running API instances; set both deliberately before scaling.
+- `MIGRATION_DATABASE_URL` is optional and used only by one-shot migration and
+  smoke commands. When absent, they use `DATABASE_URL`.
 - Render deployment configuration is in `../render.yaml`. It keeps auto-deploy
   disabled and requires user-provided PostgreSQL, Redis, email, CORS, and frontend
   API URL configuration; do not provision external services from this guide.

@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule, JwtService } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { createPostgresDataSourceOptions } from '../database/data-source.options';
 import { PostgresTransactionRunner } from '../database/transaction-runner';
+import { EmailService } from '../common/services/email.service';
+import { RedisService } from '../common/services/redis.service';
+import { PostgresAuthService } from '../modules/onboarding/application/auth.service';
 import { PostgresInvitationMembershipService } from '../modules/onboarding/application/invitation-membership.service';
 import { PostgresOrganizationOnboardingService } from '../modules/onboarding/application/organization-onboarding.service';
 import { PostgresWorkspaceService } from '../modules/onboarding/application/workspace.service';
@@ -19,6 +22,8 @@ import { PostgresDocumentService } from '../modules/projects/application/documen
 import { PostgresRiskService } from '../modules/projects/application/risk.service';
 import { PostgresTaskService } from '../modules/task/application/task.service';
 import { PostgresTaskReadService } from '../modules/task/application/task-read.service';
+import { PostgresDashboardReadService } from '../modules/dashboard/application/dashboard-read.service';
+import { PostgresGlobalSearchService } from '../modules/search/application/search.service';
 import { PostgresNotificationService } from '../modules/collaboration/application/notification.service';
 import { PostgresJwtAuthGuard } from '../modules/onboarding/tenant/jwt-auth.guard';
 import { PostgresTenantAccessService } from '../modules/onboarding/tenant/tenant-access.service';
@@ -26,6 +31,7 @@ import { PostgresTenantContextService } from '../modules/onboarding/tenant/tenan
 import { PostgresTenantInterceptor } from '../modules/onboarding/tenant/tenant.interceptor';
 import { PostgresTenantMembershipGuard } from '../modules/onboarding/tenant/tenant-membership.guard';
 import { PostgresOnboardingController } from '../modules/onboarding/transport/onboarding.controller';
+import { PostgresAuthController } from '../modules/onboarding/transport/auth.controller';
 import { PostgresTeamController } from '../modules/projects/transport/team.controller';
 import { PostgresProjectController } from '../modules/projects/transport/project.controller';
 import { PostgresProjectParticipantController } from '../modules/projects/transport/project-participant.controller';
@@ -38,6 +44,8 @@ import { PostgresNotificationController } from '../modules/collaboration/transpo
 import { PostgresProjectActivityController } from '../modules/collaboration/transport/project-activity.controller';
 import { PostgresProjectFileController } from '../modules/collaboration/transport/project-file.controller';
 import { PostgresTaskAttachmentController } from '../modules/collaboration/transport/task-attachment.controller';
+import { PostgresDashboardController } from '../modules/dashboard/transport/dashboard.controller';
+import { PostgresSearchController } from '../modules/search/transport/search.controller';
 import {
   PostgresTaskController,
   PostgresWorkspaceTaskReadController,
@@ -54,9 +62,9 @@ import { requirePostgresTestUrl } from './database-test.config';
 const testPostgresUrl = requirePostgresTestUrl(process.env);
 const testDataSourceOptions = createPostgresDataSourceOptions({
   ...process.env,
-  POSTGRES_URL: testPostgresUrl,
-  POSTGRES_SSL: 'false',
-  POSTGRES_SYNCHRONIZE: 'false',
+  DATABASE_URL: testPostgresUrl,
+  DATABASE_SSL: 'false',
+  DATABASE_SYNCHRONIZE: 'false',
 });
 
 /**
@@ -70,6 +78,7 @@ const testDataSourceOptions = createPostgresDataSourceOptions({
     TypeOrmModule.forRoot({ ...testDataSourceOptions, migrations: [] }),
   ],
   controllers: [
+    PostgresAuthController,
     PostgresOnboardingController,
     PostgresTeamController,
     PostgresProjectController,
@@ -85,14 +94,35 @@ const testDataSourceOptions = createPostgresDataSourceOptions({
     PostgresProjectActivityController,
     PostgresProjectFileController,
     PostgresTaskAttachmentController,
+    PostgresDashboardController,
+    PostgresSearchController,
   ],
   providers: [
+    {
+      provide: RedisService,
+      useValue: {},
+    },
+    {
+      provide: EmailService,
+      useValue: {},
+    },
     PostgresTransactionRunner,
     PostgresTenantContextService,
     PostgresTenantAccessService,
     PostgresJwtAuthGuard,
     PostgresTenantMembershipGuard,
     PostgresTenantInterceptor,
+    {
+      provide: PostgresAuthService,
+      useFactory: (
+        dataSource: DataSource,
+        jwt: JwtService,
+        redis: RedisService,
+        email: EmailService,
+        config: ConfigService,
+      ) => new PostgresAuthService(dataSource.manager, jwt, redis, email, config),
+      inject: [DataSource, JwtService, RedisService, EmailService, ConfigService],
+    },
     {
       provide: PostgresOrganizationOnboardingService,
       useFactory: (transactions: PostgresTransactionRunner) =>
@@ -172,6 +202,17 @@ const testDataSourceOptions = createPostgresDataSourceOptions({
       provide: PostgresTaskReadService,
       useFactory: (transactions: PostgresTransactionRunner) =>
         new PostgresTaskReadService(transactions),
+      inject: [PostgresTransactionRunner],
+    },
+    {
+      provide: PostgresDashboardReadService,
+      useFactory: (transactions: PostgresTransactionRunner) =>
+        new PostgresDashboardReadService(transactions),
+      inject: [PostgresTransactionRunner],
+    },
+    {
+      provide: PostgresGlobalSearchService,
+      useFactory: (transactions: PostgresTransactionRunner) => new PostgresGlobalSearchService(transactions),
       inject: [PostgresTransactionRunner],
     },
     {

@@ -17,11 +17,14 @@ import {
   useMarkNotificationReadMutation,
   useMarkNotificationUnreadMutation,
 } from '../../services/collaborationApi';
+import useUserAuth from '../../hooks/useUserAuth.jsx';
+import { getNotificationDestination } from '../../utils/navigation.js';
 
 const NotificationCenter = () => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
   const navigate = useNavigate();
+  const { activeOrganizationId } = useUserAuth();
 
   const {
     data: notifications = [],
@@ -29,7 +32,7 @@ const NotificationCenter = () => {
     isError,
     error,
     refetch,
-  } = useGetNotificationsQuery();
+  } = useGetNotificationsQuery(undefined, { skip: !activeOrganizationId });
 
   const [markRead, { isLoading: isMarkingRead }] = useMarkNotificationReadMutation();
   const [markUnread, { isLoading: isMarkingUnread }] = useMarkNotificationUnreadMutation();
@@ -73,12 +76,10 @@ const NotificationCenter = () => {
   };
 
   const handleNavigate = (notification) => {
-    if (notification.projectId) {
+    const destination = getNotificationDestination(notification);
+    if (destination) {
       setIsOpen(false);
-      navigate(`/projects/${notification.projectId}`);
-    } else if (notification.resourceType === 'PROJECT' && notification.resourceId) {
-      setIsOpen(false);
-      navigate(`/projects/${notification.resourceId}`);
+      navigate(destination);
     }
   };
 
@@ -183,10 +184,8 @@ const NotificationCenter = () => {
             ) : (
               notifications.map((notification) => {
                 const isUnread = !notification.readAt;
-                const canNavigate = Boolean(
-                  notification.projectId ||
-                    (notification.resourceType === 'PROJECT' && notification.resourceId),
-                );
+                const destination = getNotificationDestination(notification);
+                const canNavigate = Boolean(destination);
 
                 return (
                   <div

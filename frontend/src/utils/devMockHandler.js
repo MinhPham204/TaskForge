@@ -352,7 +352,7 @@ export const enableDevMockSession = (dispatch, navigate) => {
   }
 
   if (navigate) {
-    navigate('/projects');
+    navigate('/dashboard');
   }
 };
 
@@ -772,6 +772,364 @@ export const handleDevMockRequest = async ({ url = '', method = 'get', data = {}
         },
       ],
     };
+  }
+
+  // 10. Dashboard
+  if (cleanUrl === '/api/dashboard' && m === 'get') {
+    const today = new Date();
+    const todayDateStr = today.toISOString().split('T')[0];
+    const tomorrow = new Date(Date.now() + 86400000);
+    const tomorrowDateStr = tomorrow.toISOString().split('T')[0];
+    const in3Days = new Date(Date.now() + 3 * 86400000);
+    const in3DaysDateStr = in3Days.toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000);
+
+    const focus = {
+      total: 3,
+      active: 2,
+      completed: 1,
+      cancelled: 0,
+      overdue: 0,
+      dueToday: 1,
+      upcoming: 1,
+    };
+
+    const assignedTasks = [
+      {
+        id: 'task-dev-1',
+        projectId: 'p-dev-1',
+        projectName: 'TaskForge SaaS Core Platform',
+        title: 'Implement project task board',
+        priorityCode: 'HIGH',
+        dueAt: today.toISOString(),
+        statusName: 'In Progress',
+        semanticCategory: 'IN_PROGRESS',
+        effectiveProgress: 60,
+        updatedAt: today.toISOString(),
+      },
+      {
+        id: 'task-dev-2',
+        projectId: 'p-dev-1',
+        projectName: 'TaskForge SaaS Core Platform',
+        title: 'Finalize review acceptance checklist',
+        priorityCode: 'MEDIUM',
+        dueAt: in3Days.toISOString(),
+        statusName: 'Backlog',
+        semanticCategory: 'NOT_STARTED',
+        effectiveProgress: 0,
+        updatedAt: yesterday.toISOString(),
+      },
+      {
+        id: 'task-dev-3',
+        projectId: 'p-dev-1',
+        projectName: 'TaskForge SaaS Core Platform',
+        title: 'Validate PostgreSQL task read models',
+        priorityCode: 'URGENT',
+        dueAt: yesterday.toISOString(),
+        statusName: 'Done',
+        semanticCategory: 'COMPLETED',
+        effectiveProgress: 100,
+        updatedAt: yesterday.toISOString(),
+      },
+      {
+        id: 'task-dev-4',
+        projectId: 'p-dev-1',
+        projectName: 'TaskForge SaaS Core Platform',
+        title: 'Document architecture decision records',
+        priorityCode: 'LOW',
+        dueAt: in3Days.toISOString(),
+        statusName: 'In Review',
+        semanticCategory: 'IN_REVIEW',
+        effectiveProgress: 85,
+        updatedAt: today.toISOString(),
+      },
+    ];
+
+    const pendingApprovals = [
+      {
+        id: 'approval-dev-1',
+        taskId: 'task-dev-2',
+        projectId: 'p-dev-1',
+        projectName: 'TaskForge SaaS Core Platform',
+        title: 'Finalize review acceptance checklist',
+        priorityCode: 'MEDIUM',
+        dueAt: in3Days.toISOString(),
+        requestedAt: yesterday.toISOString(),
+      },
+    ];
+
+    const recentProjects = projectsStore.slice(0, 6).map((p) => ({
+      id: p.id,
+      name: p.name,
+      state: p.state,
+      dueDate: p.dueDate,
+      updatedAt: p.updatedAt,
+    }));
+
+    const calendarItems = [
+      {
+        type: 'TASK',
+        id: 'task-dev-1',
+        projectId: 'p-dev-1',
+        projectName: 'TaskForge SaaS Core Platform',
+        title: 'Implement project task board',
+        date: todayDateStr,
+        statusCode: 'In Progress',
+        priorityCode: 'HIGH',
+      },
+      {
+        type: 'MILESTONE',
+        id: 'ms-dev-1',
+        projectId: 'p-dev-1',
+        projectName: 'TaskForge SaaS Core Platform',
+        title: 'Phase 8 Experience Milestone',
+        date: tomorrowDateStr,
+        statusCode: 'PENDING',
+      },
+      {
+        type: 'TASK',
+        id: 'task-dev-2',
+        projectId: 'p-dev-1',
+        projectName: 'TaskForge SaaS Core Platform',
+        title: 'Finalize review acceptance checklist',
+        date: in3DaysDateStr,
+        statusCode: 'Backlog',
+        priorityCode: 'MEDIUM',
+      },
+    ];
+
+    return {
+      data: {
+        generatedAt: today.toISOString(),
+        focus,
+        assignedTasks,
+        pendingApprovals,
+        recentProjects,
+        calendarItems,
+      },
+    };
+  }
+
+  // 11. Notifications
+  if (cleanUrl === '/api/notifications' && m === 'get') {
+    return {
+      data: [
+        {
+          id: 'notif-dev-1',
+          typeCode: 'TASK_ASSIGNED',
+          title: 'Task Assigned',
+          target: {
+            resourceType: 'TASK',
+            resourceId: 'task-dev-1',
+            projectId: 'p-dev-1',
+          },
+          safePayload: {
+            taskTitle: 'Implement project task board',
+            projectName: 'TaskForge SaaS Core Platform',
+          },
+          readAt: null,
+          createdAt: new Date(Date.now() - 3600000).toISOString(),
+        },
+        {
+          id: 'notif-dev-2',
+          typeCode: 'APPROVAL_REQUESTED',
+          title: 'Approval Requested',
+          target: {
+            resourceType: 'TASK',
+            resourceId: 'task-dev-2',
+            projectId: 'p-dev-1',
+          },
+          safePayload: {
+            taskTitle: 'Finalize review acceptance checklist',
+            projectName: 'TaskForge SaaS Core Platform',
+          },
+          readAt: null,
+          createdAt: new Date(Date.now() - 7200000).toISOString(),
+        },
+      ],
+    };
+  }
+
+  const notifReadMatch = cleanUrl.match(/^\/api\/notifications\/([a-zA-Z0-9_-]+)\/(read|unread)$/);
+  if (notifReadMatch && m === 'patch') {
+    return { data: { success: true } };
+  }
+
+  // 12. Search
+  if (cleanUrl === '/api/search' && m === 'get') {
+    const q = String(params.query || '').toLowerCase().trim();
+    const results = [];
+    if (q) {
+      for (const p of projectsStore) {
+        if (p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q))) {
+          results.push({
+            kind: 'PROJECT',
+            id: p.id,
+            projectId: p.id,
+            title: p.name,
+            description: p.description,
+            updatedAt: p.updatedAt,
+          });
+        }
+      }
+      for (const t of Object.values(projectTasksStore).flat()) {
+        if (t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q))) {
+          results.push({
+            kind: 'TASK',
+            id: t.id,
+            projectId: t.projectId,
+            title: t.title,
+            description: t.description,
+            updatedAt: t.updatedAt,
+          });
+        }
+      }
+      for (const tm of teamsStore) {
+        if (tm.name.toLowerCase().includes(q) || (tm.description && tm.description.toLowerCase().includes(q))) {
+          results.push({
+            kind: 'TEAM',
+            id: tm.id,
+            projectId: null,
+            title: tm.name,
+            description: tm.description,
+            updatedAt: tm.createdAt,
+          });
+        }
+      }
+    }
+    return {
+      data: {
+        query: params.query || '',
+        results: results.slice(0, Number(params.limit) || 8),
+        quickCreate: {
+          canCreateProject: true,
+          canCreateTeam: true,
+          taskProjectIds: ['p-dev-1'],
+        },
+      },
+    };
+  }
+
+  // 13. Preferences
+  if (cleanUrl === '/api/auth/preferences') {
+    if (m === 'get') {
+      return {
+        data: {
+          theme: 'SYSTEM',
+          timezone: 'UTC',
+          locale: 'en-US',
+          weekStart: 'MONDAY',
+          inAppNotifications: true,
+        },
+      };
+    }
+    if (m === 'patch') {
+      return {
+        data: {
+          theme: 'SYSTEM',
+          timezone: 'UTC',
+          locale: 'en-US',
+          weekStart: 'MONDAY',
+          inAppNotifications: true,
+          ...data,
+        },
+      };
+    }
+  }
+
+  // 14. Workspace Settings & Members
+  const orgDetailMatch = cleanUrl.match(/^\/api\/organizations\/([a-zA-Z0-9_-]+)$/);
+  if (orgDetailMatch) {
+    if (m === 'get') {
+      return {
+        data: {
+          id: 'org-dev-1',
+          name: 'TaskForge HQ (Review Workspace)',
+          slug: 'taskforge-hq',
+          logoUrl: null,
+          myRole: 'OWNER',
+          owner: {
+            id: 'u-dev-1',
+            name: 'Alex Johnson',
+            email: 'alex@taskforge.dev',
+          },
+          createdAt: '2026-09-01T08:00:00.000Z',
+        },
+      };
+    }
+    if (m === 'patch') {
+      return {
+        data: {
+          id: 'org-dev-1',
+          name: data.name || 'TaskForge HQ (Review Workspace)',
+          slug: 'taskforge-hq',
+          logoUrl: data.logoUrl || null,
+          myRole: 'OWNER',
+          owner: {
+            id: 'u-dev-1',
+            name: 'Alex Johnson',
+            email: 'alex@taskforge.dev',
+          },
+          createdAt: '2026-09-01T08:00:00.000Z',
+        },
+      };
+    }
+  }
+
+  const orgMembersMatch = cleanUrl.match(/^\/api\/organizations\/([a-zA-Z0-9_-]+)\/members$/);
+  if (orgMembersMatch && m === 'get') {
+    return {
+      data: [
+        {
+          membershipId: 'm-dev-1',
+          userId: 'u-dev-1',
+          name: 'Alex Johnson',
+          email: 'alex@taskforge.dev',
+          profileImageUrl: null,
+          role: 'OWNER',
+          state: 'ACTIVE',
+          joinedAt: '2026-09-01T08:00:00.000Z',
+        },
+        {
+          membershipId: 'm-dev-2',
+          userId: 'u-dev-2',
+          name: 'Sarah Miller',
+          email: 'sarah@taskforge.dev',
+          profileImageUrl: null,
+          role: 'ADMIN',
+          state: 'ACTIVE',
+          joinedAt: '2026-09-02T09:00:00.000Z',
+        },
+        {
+          membershipId: 'm-dev-3',
+          userId: 'u-dev-3',
+          name: 'David Chen',
+          email: 'david@taskforge.dev',
+          profileImageUrl: null,
+          role: 'MEMBER',
+          state: 'ACTIVE',
+          joinedAt: '2026-09-03T11:00:00.000Z',
+        },
+      ],
+    };
+  }
+
+  const orgInvitationsMatch = cleanUrl.match(/^\/api\/organizations\/([a-zA-Z0-9_-]+)\/invitations$/);
+  if (orgInvitationsMatch) {
+    if (m === 'get') {
+      return { data: [] };
+    }
+    if (m === 'post') {
+      return {
+        data: {
+          id: `inv-${Date.now()}`,
+          email: data.email,
+          role: data.role || 'MEMBER',
+          status: 'PENDING',
+          createdAt: new Date().toISOString(),
+        },
+      };
+    }
   }
 
   return null;

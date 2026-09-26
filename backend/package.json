@@ -28,6 +28,7 @@
     "test:runtime:postgres": "node scripts/run-test-command.mjs node node_modules/jest/bin/jest.js test/runtime.e2e-spec.ts --config test/jest-e2e.json --runInBand",
     "test:seed:postgres": "node scripts/run-test-command.mjs node node_modules/jest/bin/jest.js test/seed.integration.e2e-spec.ts --config test/jest-e2e.json --runInBand",
     "test:queue:postgres": "node scripts/run-test-command.mjs node node_modules/jest/bin/jest.js test/email-queue.integration.e2e-spec.ts --config test/jest-e2e.json --runInBand",
+    "test:outbox:postgres": "node scripts/run-test-command.mjs node node_modules/jest/bin/jest.js test/outbox.integration.e2e-spec.ts --config test/jest-e2e.json --runInBand",
     "test:storage:minio": "node scripts/run-test-command.mjs node node_modules/jest/bin/jest.js test/file-storage.integration.e2e-spec.ts --config test/jest-e2e.json --runInBand",
     "test:security:postgres": "node scripts/run-test-command.mjs node node_modules/jest/bin/jest.js test/project-authorization.integration.e2e-spec.ts test/task-read-models.integration.e2e-spec.ts test/file-storage.integration.e2e-spec.ts test/email-queue.integration.e2e-spec.ts --config test/jest-e2e.json --runInBand",
     "test:critical:postgres": "node scripts/run-critical-suite.mjs",
@@ -38,7 +39,8 @@
     "migration:run": "node --env-file=.env ./node_modules/typeorm/cli-ts-node-commonjs.js migration:run -d src/database/data-source.ts",
     "migration:run:ci": "node ./node_modules/typeorm/cli-ts-node-commonjs.js migration:run -d src/database/data-source.ts",
     "migration:revert": "node --env-file=.env ./node_modules/typeorm/cli-ts-node-commonjs.js migration:revert -d src/database/data-source.ts",
-    "migration:run:compiled": "node --env-file=.env ./node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js"
+    "migration:run:compiled": "node --env-file=.env ./node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js",
+    "test:supabase:smoke": "node --env-file=.env -r ts-node/register -r tsconfig-paths/register scripts/supabase-smoke.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

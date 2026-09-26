@@ -22,10 +22,12 @@ import { PostgresWorkspaceService } from '../application/workspace.service';
 import { PostgresJwtAuthGuard } from '../tenant/jwt-auth.guard';
 import {
   PostgresCompleteSignupDto,
+  ChangePostgresPasswordDto,
   PostgresLoginDto,
   PostgresRegisterDto,
   PostgresVerifyOtpDto,
   UpdatePostgresProfileDto,
+  UpdatePostgresPersonalPreferencesDto,
 } from './dto/auth.dto';
 import { PostgresCurrentUserId } from './current-user.decorator';
 
@@ -107,6 +109,34 @@ export class PostgresAuthController {
     @Body() dto: UpdatePostgresProfileDto,
   ) {
     return this.auth.updateProfile(userId, dto);
+  }
+
+  @UseGuards(PostgresJwtAuthGuard)
+  @ApiBearerAuth('accessToken')
+  @Get('preferences')
+  getPersonalPreferences(@PostgresCurrentUserId() userId: string) {
+    return this.auth.getPersonalPreferences(userId);
+  }
+
+  @UseGuards(PostgresJwtAuthGuard)
+  @ApiBearerAuth('accessToken')
+  @Patch('preferences')
+  updatePersonalPreferences(
+    @PostgresCurrentUserId() userId: string,
+    @Body() dto: UpdatePostgresPersonalPreferencesDto,
+  ) {
+    return this.auth.updatePersonalPreferences(userId, dto);
+  }
+
+  @UseGuards(PostgresJwtAuthGuard)
+  @ApiBearerAuth('accessToken')
+  @Patch('change-password')
+  @ApiOkResponse({ description: 'Password changed and refresh credential revoked' })
+  changePassword(
+    @PostgresCurrentUserId() userId: string,
+    @Body() dto: ChangePostgresPasswordDto,
+  ) {
+    return this.auth.changePassword(userId, dto);
   }
 
   /** Compatibility route used by the current workspace selector. */

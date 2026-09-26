@@ -12,8 +12,14 @@ import type { EntityManager } from 'typeorm';
 import type { StringValue } from 'ms';
 import type { EmailService } from '../../../common/services/email.service';
 import type { RedisService } from '../../../common/services/redis.service';
-import { PostgresUserRepository } from '../persistence/typeorm/onboarding.repositories';
-import type { UserEntity } from '../persistence/typeorm/onboarding.entities';
+import {
+  PostgresUserPreferenceRepository,
+  PostgresUserRepository,
+} from '../persistence/typeorm/onboarding.repositories';
+import type {
+  UserEntity,
+  UserPreferenceEntity,
+} from '../persistence/typeorm/onboarding.entities';
 import { writePostgresAudit } from '../../collaboration/application/audit.writer';
 
 export interface CompletePostgresSignupInput {
@@ -31,6 +37,36 @@ export interface UpdatePostgresProfileInput {
   name?: string;
   profileImageUrl?: string | null;
 }
+
+export interface ChangePostgresPasswordInput {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface UpdatePostgresPersonalPreferencesInput {
+  timezone: string;
+  locale: string;
+  weekStartsOn: number;
+  inAppNotificationsEnabled: boolean;
+}
+
+export interface PostgresPersonalPreferencesResponse
+  extends UpdatePostgresPersonalPreferencesInput {}
+
+const DEFAULT_PERSONAL_PREFERENCES: PostgresPersonalPreferencesResponse = {
+  timezone: 'UTC',
+  locale: 'en-US',
+  weekStartsOn: 1,
+  inAppNotificationsEnabled: true,
+};
+
+export const DEMO_USER_EMAILS = new Set([
+  'owner@taskforge.dev',
+  'pm@taskforge.dev',
+  'dev@taskforge.dev',
+  'designer@taskforge.dev',
+]);
 
 export interface PostgresAuthUserResponse {
   id: string;
@@ -125,6 +161,7 @@ export class PostgresAuthService {
     input: CompletePostgresSignupInput,
   ): Promise<PostgresAuthResult> {
     const email = this.verifyVerifiedEmail(verifiedToken);
+    ensurePasswordPolicy(input.password);
     const existing = await this.users.findByEmail(email);
     if (existing) {
       throw new ConflictException('Email is already registered');
@@ -250,6 +287,78 @@ export class PostgresAuthService {
     return sanitizeUser(saved);
   }
 
+  async getPersonalPreferences(
+    userId: string,
+  ): Promise<PostgresPersonalPreferencesResponse> {
+    await this.requireEnabledUser(userId);
+    const preferences = await new PostgresUserPreferenceRepository(
+      this.manager,
+    ).findByUserId(userId);
+    return preferences
+      ? sanitizePersonalPreferences(preferences)
+      : DEFAULT_PERSONAL_PREFERENCES;
+  }
+
+  async updatePersonalPreferences(
+    userId: string,
+    input: UpdatePostgresPersonalPreferencesInput,
+  ): Promise<PostgresPersonalPreferencesResponse> {
+    const user = await this.requireEnabledUser(userId);
+    const preferences = new PostgresUserPreferenceRepository(this.manager);
+    const existing = await preferences.findByUserId(user.id);
+    const next = existing ?? preferences.create({ userId: user.id });
+    next.timezone = input.timezone;
+    next.locale = input.locale;
+    next.weekStartsOn = input.weekStartsOn;
+    next.inAppNotificationsEnabled = input.inAppNotificationsEnabled;
+    const saved = await preferences.save(next);
+    await writePostgresAudit(this.manager, {
+      actorUserId: user.id,
+      actionCode: 'AUTH_PERSONAL_PREFERENCES_UPDATED',
+      targetType: 'USER',
+      targetId: user.id,
+      afterData: { ...sanitizePersonalPreferences(saved) },
+    });
+    return sanitizePersonalPreferences(saved);
+  }
+
+  async changePassword(
+    userId: string,
+    input: ChangePostgresPasswordInput,
+  ): Promise<{ message: string }> {
+    if (input.newPassword !== input.confirmPassword) {
+      throw new BadRequestException('Password confirmation does not match');
+    }
+    ensurePasswordPolicy(input.newPassword);
+
+    const user = await this.users.findByIdWithCredentials(userId);
+    if (!user || user.disabledAt) {
+      throw new NotFoundException('User not found');
+    }
+    if (DEMO_USER_EMAILS.has(user.email.toLowerCase())) {
+      throw new ForbiddenException(
+        'Password change is disabled for demo accounts in portfolio mode.',
+      );
+    }
+    if (!user.passwordHash || !(await bcrypt.compare(input.currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    user.passwordHash = await bcrypt.hash(input.newPassword, 10);
+    // The current persistence model permits one active refresh credential.
+    // Clearing it revokes that credential immediately; no raw credential is audited.
+    user.refreshTokenHash = null;
+    await this.users.save(user);
+    await writePostgresAudit(this.manager, {
+      actorUserId: user.id,
+      actionCode: 'AUTH_PASSWORD_CHANGED',
+      targetType: 'USER',
+      targetId: user.id,
+    });
+
+    return { message: 'Password changed successfully. Please sign in again.' };
+  }
+
   private verifyVerifiedEmail(verifiedToken: string | undefined): string {
     if (!verifiedToken) {
       throw new BadRequestException('Verified token is required');
@@ -316,6 +425,12 @@ function generateOtp(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+function ensurePasswordPolicy(password: string): void {
+  if (password.length < 8 || password.length > 128) {
+    throw new BadRequestException('Password must be between 8 and 128 characters');
+  }
+}
+
 function requiredConfig(config: ConfigService, key: string): string {
   const value = config.get<string>(key);
   if (!value) {
@@ -330,5 +445,16 @@ function sanitizeUser(user: UserEntity): PostgresAuthUserResponse {
     name: user.name,
     email: user.email,
     profileImageUrl: user.profileImageUrl,
+  };
+}
+
+function sanitizePersonalPreferences(
+  preferences: UserPreferenceEntity,
+): PostgresPersonalPreferencesResponse {
+  return {
+    timezone: preferences.timezone,
+    locale: preferences.locale,
+    weekStartsOn: preferences.weekStartsOn,
+    inAppNotificationsEnabled: preferences.inAppNotificationsEnabled,
   };
 }

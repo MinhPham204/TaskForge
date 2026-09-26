@@ -13,6 +13,7 @@ import {
   PostgresOrganizationMembershipRepository,
   PostgresOrganizationRepository,
 } from '../persistence/typeorm/onboarding.repositories';
+import { writePostgresAudit } from '../../collaboration/application/audit.writer';
 
 export interface WorkspaceSummary {
   organizationId: string;
@@ -30,6 +31,13 @@ export interface UpdatePostgresOrganizationInput {
 export interface TransferPostgresOrganizationOwnerInput {
   targetUserId: string;
   previousOwnerRole: OrganizationRole.ADMIN | OrganizationRole.MEMBER;
+}
+
+export interface OrganizationSettingsSummary {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+  role: OrganizationRole;
 }
 
 /**
@@ -75,17 +83,31 @@ export class PostgresWorkspaceService {
     );
   }
 
+  async getOrganizationSettings(
+    userId: string,
+    organizationId: string,
+  ): Promise<OrganizationSettingsSummary> {
+    const workspace = await this.selectWorkspace(userId, organizationId);
+    return {
+      id: workspace.organizationId,
+      name: workspace.name,
+      logoUrl: workspace.logoUrl,
+      role: workspace.role,
+    };
+  }
+
   updateOrganization(
     actorUserId: string,
     organizationId: string,
     input: UpdatePostgresOrganizationInput,
   ): Promise<OrganizationEntity> {
     return this.transactions.run(async (manager) => {
-      const organization = await this.requireOwnerAndOrganization(
+      const { organization, actor } = await this.requireAdministratorAndOrganization(
         manager,
         actorUserId,
         organizationId,
       );
+      const beforeData = { name: organization.name, logoUrl: organization.logoUrl };
 
       if (input.name !== undefined) {
         const name = input.name.trim();
@@ -98,7 +120,20 @@ export class PostgresWorkspaceService {
         organization.logoUrl = input.logoUrl;
       }
 
-      return new PostgresOrganizationRepository(manager).save(organization);
+      const saved = await new PostgresOrganizationRepository(manager).save(
+        organization,
+      );
+      await writePostgresAudit(manager, {
+        organizationId,
+        actorUserId,
+        actorMembershipId: actor.id,
+        actionCode: 'ORGANIZATION_PROFILE_UPDATED',
+        targetType: 'ORGANIZATION',
+        targetId: saved.id,
+        beforeData,
+        afterData: { name: saved.name, logoUrl: saved.logoUrl },
+      });
+      return saved;
     });
   }
 
@@ -113,7 +148,17 @@ export class PostgresWorkspaceService {
         organizationId,
       );
       organization.archivedAt = new Date();
-      return new PostgresOrganizationRepository(manager).save(organization);
+      const saved = await new PostgresOrganizationRepository(manager).save(
+        organization,
+      );
+      await writePostgresAudit(manager, {
+        organizationId,
+        actorUserId,
+        actionCode: 'ORGANIZATION_ARCHIVED',
+        targetType: 'ORGANIZATION',
+        targetId: saved.id,
+      });
+      return saved;
     });
   }
 
@@ -167,6 +212,19 @@ export class PostgresWorkspaceService {
       target.role = 'OWNER' as OrganizationRole;
       await memberships.save(currentOwner);
       await memberships.save(target);
+      await writePostgresAudit(manager, {
+        organizationId,
+        actorUserId,
+        actorMembershipId: currentOwner.id,
+        actionCode: 'ORGANIZATION_OWNERSHIP_TRANSFERRED',
+        targetType: 'ORGANIZATION_MEMBERSHIP',
+        targetId: target.id,
+        beforeData: { previousOwnerUserId: actorUserId },
+        afterData: {
+          ownerUserId: target.userId,
+          previousOwnerRole: currentOwner.role,
+        },
+      });
     });
   }
 
@@ -190,6 +248,29 @@ export class PostgresWorkspaceService {
     }
 
     return organization;
+  }
+
+  private async requireAdministratorAndOrganization(
+    manager: EntityManager,
+    actorUserId: string,
+    organizationId: string,
+  ): Promise<{ organization: OrganizationEntity; actor: { id: string } }> {
+    const organizations = new PostgresOrganizationRepository(manager);
+    const memberships = new PostgresOrganizationMembershipRepository(manager);
+    const organization = await organizations.findByIdForUpdate(organizationId);
+    if (!organization || organization.archivedAt) {
+      throw new NotFoundException('Organization not found');
+    }
+    const actor = await memberships.findActiveByUserAndOrganizationForUpdate(
+      actorUserId,
+      organizationId,
+    );
+    if (!actor || (actor.role !== 'OWNER' && actor.role !== 'ADMIN')) {
+      throw new ForbiddenException(
+        'An active organization owner or admin is required',
+      );
+    }
+    return { organization, actor };
   }
 }
 

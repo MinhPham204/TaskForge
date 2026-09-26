@@ -8,6 +8,7 @@ import {
 } from '../../utils/devMockHandler';
 import {
   LuSparkles,
+  LuLayoutDashboard,
   LuFolderKanban,
   LuUsersRound,
   LuX,
@@ -69,7 +70,7 @@ const DevReviewBanner = () => {
             className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 font-semibold text-white rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow"
           >
             <LuSparkles className="w-3.5 h-3.5 text-yellow-300" />
-            Enable Mock Session & View Projects
+            Enable Mock Session & View Dashboard
           </button>
         </div>
       ) : (
@@ -87,6 +88,19 @@ const DevReviewBanner = () => {
           </div>
 
           <div className="grid grid-cols-2 gap-1.5 pt-1">
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard')}
+              className={`col-span-2 px-2.5 py-1.5 rounded text-left transition-colors flex items-center gap-1.5 cursor-pointer ${
+                location.pathname === '/dashboard'
+                  ? 'bg-blue-600 text-white font-semibold'
+                  : 'bg-gray-800 text-gray-200 hover:bg-gray-700'
+              }`}
+            >
+              <LuLayoutDashboard className="w-3.5 h-3.5" />
+              <span>Dashboard</span>
+            </button>
+
             <button
               type="button"
               onClick={() => navigate('/projects')}

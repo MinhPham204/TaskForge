@@ -18,6 +18,7 @@ import {
   TeamMemberEntity,
   UserEntity,
 } from '../src/modules/onboarding/persistence/typeorm/onboarding.entities';
+import { AuditLogEntity } from '../src/modules/collaboration/persistence/typeorm/collaboration.entities';
 import { PostgresOnboardingTestModule } from '../src/testing/onboarding-test.module';
 
 describe('PostgreSQL onboarding integration', () => {
@@ -218,6 +219,104 @@ describe('PostgreSQL onboarding integration', () => {
     ).resolves.toBe(0);
   });
 
+  it('serves workspace settings with member read access and Owner/Admin governance boundaries', async () => {
+    const owner = await createUser('settings-owner');
+    const admin = await createUser('settings-admin');
+    const member = await createUser('settings-member');
+    const workspace = await onboarding.createOrganization(owner.id, {
+      name: 'Governed Workspace',
+    });
+    await dataSource.getRepository(OrganizationMembershipEntity).save([
+      {
+        organizationId: workspace.organizationId,
+        userId: admin.id,
+        role: OrganizationRole.ADMIN,
+        state: OrganizationMembershipState.ACTIVE,
+        joinedAt: new Date(),
+        stateChangedAt: new Date(),
+      },
+      {
+        organizationId: workspace.organizationId,
+        userId: member.id,
+        role: OrganizationRole.MEMBER,
+        state: OrganizationMembershipState.ACTIVE,
+        joinedAt: new Date(),
+        stateChangedAt: new Date(),
+      },
+    ]);
+    const memberToken = await accessToken(member.id);
+    const adminToken = await accessToken(admin.id);
+    const ownerToken = await accessToken(owner.id);
+
+    await request(httpServer)
+      .get(`/organizations/${workspace.organizationId}`)
+      .set('authorization', `Bearer ${memberToken}`)
+      .set('x-organization-id', workspace.organizationId)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          id: workspace.organizationId,
+          name: 'Governed Workspace',
+          role: OrganizationRole.MEMBER,
+        });
+      });
+
+    await request(httpServer)
+      .get(`/organizations/${workspace.organizationId}/members`)
+      .set('authorization', `Bearer ${memberToken}`)
+      .set('x-organization-id', workspace.organizationId)
+      .expect(403);
+
+    await request(httpServer)
+      .patch(`/organizations/${workspace.organizationId}`)
+      .set('authorization', `Bearer ${adminToken}`)
+      .set('x-organization-id', workspace.organizationId)
+      .send({ name: 'Admin Updated Workspace' })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ name: 'Admin Updated Workspace' });
+      });
+
+    await request(httpServer)
+      .get(`/organizations/${workspace.organizationId}/members`)
+      .set('authorization', `Bearer ${adminToken}`)
+      .set('x-organization-id', workspace.organizationId)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ userId: owner.id, role: OrganizationRole.OWNER }),
+            expect.objectContaining({ userId: member.id, role: OrganizationRole.MEMBER }),
+          ]),
+        );
+      });
+
+    await request(httpServer)
+      .delete(`/organizations/${workspace.organizationId}/members/${owner.id}`)
+      .set('authorization', `Bearer ${adminToken}`)
+      .set('x-organization-id', workspace.organizationId)
+      .expect(409);
+
+    await request(httpServer)
+      .delete(`/organizations/${workspace.organizationId}/members/${member.id}`)
+      .set('authorization', `Bearer ${ownerToken}`)
+      .set('x-organization-id', workspace.organizationId)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          userId: member.id,
+          state: OrganizationMembershipState.REVOKED,
+        });
+      });
+
+    await expect(
+      dataSource.getRepository(AuditLogEntity).findOneByOrFail({
+        actionCode: 'ORGANIZATION_PROFILE_UPDATED',
+        organizationId: workspace.organizationId,
+      }),
+    ).resolves.toMatchObject({ actorUserId: admin.id });
+  });
+
   it('enforces the database same-Organization foreign key for TeamMember', async () => {
     const firstUser = await createUser('first-owner');
     const secondUser = await createUser('second-owner');
@@ -292,6 +391,92 @@ describe('PostgreSQL onboarding integration', () => {
       .set('authorization', `Bearer ${await accessToken(recipient.id)}`)
       .expect(200);
     expect(workspaces.body).toHaveLength(2);
+  });
+
+  it('serializes concurrent invitation acceptance with one membership and audit record', async () => {
+    const owner = await createUser('concurrent-invitation-owner');
+    const recipient = await createUser('concurrent-invitation-recipient');
+    const workspace = await onboarding.createOrganization(owner.id, {
+      name: 'Concurrent invitation workspace',
+    });
+    const created = await invitations.createInvitation(owner.id, workspace.organizationId, {
+      email: recipient.email,
+      expiresAt: new Date('2026-12-01T00:00:00.000Z'),
+      role: OrganizationRole.MEMBER,
+    });
+    const token = await accessToken(recipient.id);
+
+    const responses = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        request(httpServer)
+          .post('/invitations/accept')
+          .set('authorization', `Bearer ${token}`)
+          .send({ token: created.token }),
+      ),
+    );
+
+    expect(responses.map((response) => response.status)).toEqual(
+      Array(12).fill(201),
+    );
+    expect(new Set(responses.map((response) => response.body.id)).size).toBe(1);
+    await expect(
+      dataSource.getRepository(OrganizationMembershipEntity).count({
+        where: { userId: recipient.id, organizationId: workspace.organizationId },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      dataSource.getRepository(OrganizationInvitationEntity).findOneByOrFail({
+        id: created.invitation.id,
+      }),
+    ).resolves.toMatchObject({
+      state: 'ACCEPTED',
+      acceptedUserId: recipient.id,
+    });
+    await expect(
+      dataSource.getRepository(AuditLogEntity).count({
+        where: {
+          actionCode: 'ORGANIZATION_INVITATION_ACCEPTED',
+        },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      dataSource.getRepository(TeamMemberEntity).count({
+        where: { organizationMembershipId: responses[0].body.id },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it('persists an expired invitation lifecycle before rejecting acceptance', async () => {
+    const owner = await createUser('expired-invitation-owner');
+    const recipient = await createUser('expired-invitation-recipient');
+    const workspace = await onboarding.createOrganization(owner.id, {
+      name: 'Expired invitation workspace',
+    });
+    const created = await invitations.createInvitation(owner.id, workspace.organizationId, {
+      email: recipient.email,
+      expiresAt: new Date('2026-12-01T00:00:00.000Z'),
+    });
+    await dataSource.getRepository(OrganizationInvitationEntity).update(
+      created.invitation.id,
+      { expiresAt: new Date(Date.now() - 1_000) },
+    );
+
+    await request(httpServer)
+      .post('/invitations/accept')
+      .set('authorization', `Bearer ${await accessToken(recipient.id)}`)
+      .send({ token: created.token })
+      .expect(409);
+
+    await expect(
+      dataSource.getRepository(OrganizationInvitationEntity).findOneByOrFail({
+        id: created.invitation.id,
+      }),
+    ).resolves.toMatchObject({ state: 'EXPIRED' });
+    await expect(
+      dataSource.getRepository(OrganizationMembershipEntity).count({
+        where: { userId: recipient.id, organizationId: workspace.organizationId },
+      }),
+    ).resolves.toBe(0);
   });
 
   async function createUser(prefix: string): Promise<UserEntity> {

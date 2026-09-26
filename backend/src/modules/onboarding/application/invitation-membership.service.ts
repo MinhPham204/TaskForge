@@ -21,6 +21,8 @@ import {
   PostgresUserRepository,
 } from '../persistence/typeorm/onboarding.repositories';
 import { writePostgresAudit } from '../../collaboration/application/audit.writer';
+import { writePostgresOutbox } from '../../collaboration/application/outbox.writer';
+import { encryptOutboxInvitationCredential } from '../../collaboration/application/outbox-credential';
 
 const OWNER_ROLE = 'OWNER' as OrganizationRole;
 const ADMIN_ROLE = 'ADMIN' as OrganizationRole;
@@ -55,6 +57,18 @@ export interface InvitationSummary {
   state: InvitationState;
   expiresAt: Date;
   createdAt: Date;
+}
+
+export interface OrganizationMemberSummary {
+  membershipId: string;
+  userId: string;
+  name: string;
+  email: string;
+  profileImageUrl: string | null;
+  role: OrganizationRole;
+  state: OrganizationMembershipState;
+  joinedAt: Date;
+  stateChangedAt: Date;
 }
 
 /**
@@ -146,6 +160,15 @@ export class PostgresInvitationMembershipService {
         targetId: created.id,
         afterData: { email: created.email, role: created.invitedRole, expiresAt: created.expiresAt.toISOString() },
       });
+      await writePostgresOutbox(manager, {
+        organizationId,
+        eventType: 'ORGANIZATION_INVITATION_CREATED',
+        aggregateId: created.id,
+        payload: {
+          invitationId: created.id,
+          credential: encryptOutboxInvitationCredential(token),
+        },
+      });
       return created;
     });
 
@@ -167,6 +190,20 @@ export class PostgresInvitationMembershipService {
     return invitations
       .filter((invitation) => !isExpired(invitation))
       .map(toSummary);
+  }
+
+  async listOrganizationMembers(
+    actorUserId: string,
+    organizationId: string,
+  ): Promise<OrganizationMemberSummary[]> {
+    await this.requireActiveAdministratorForRead(
+      this.manager,
+      actorUserId,
+      organizationId,
+    );
+    return new PostgresOrganizationMembershipRepository(
+      this.manager,
+    ).listByOrganization(organizationId);
   }
 
   async listMyPendingInvitations(userId: string): Promise<InvitationSummary[]> {
@@ -307,7 +344,7 @@ export class PostgresInvitationMembershipService {
     if (!token) {
       throw new BadRequestException('Invitation token is required');
     }
-    return this.transactions.run(async (manager) => {
+    const result = await this.transactions.run(async (manager) => {
       const users = new PostgresUserRepository(manager);
       const user = await users.findByIdForUpdate(userId);
       if (!user || user.disabledAt) {
@@ -338,6 +375,12 @@ export class PostgresInvitationMembershipService {
           );
         }
         return membership;
+      }
+      if (isExpired(invitation)) {
+        invitation.state = EXPIRED_INVITATION;
+        invitation.respondedAt = new Date();
+        await invitations.save(invitation);
+        return null;
       }
       await this.requirePendingInvitation(invitations, invitation);
       if (response === 'REJECTED') {
@@ -402,6 +445,10 @@ export class PostgresInvitationMembershipService {
       });
       return savedMembership;
     });
+    if (result === null) {
+      throw new ConflictException('Invitation has expired');
+    }
+    return result;
   }
 
   private async setMembershipState(

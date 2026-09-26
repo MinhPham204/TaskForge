@@ -18,6 +18,15 @@ export type PostgresIsolationLevel =
 export class PostgresTransactionRunner {
   constructor(private readonly dataSource: DataSource) {}
 
+  /**
+   * Executes a read-only operation through the shared manager without opening a
+   * database transaction. Read paths must not hold a connection or row locks
+   * while serializing a response.
+   */
+  read<T>(work: PostgresTransactionWork<T>): Promise<T> {
+    return work(this.dataSource.manager);
+  }
+
   run<T>(work: PostgresTransactionWork<T>): Promise<T>;
   run<T>(
     work: PostgresTransactionWork<T>,

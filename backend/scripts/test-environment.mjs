@@ -17,9 +17,15 @@ export function postgresTestEnvironment() {
   return {
     ...process.env,
     POSTGRES_TEST_URL: url.toString(),
-    POSTGRES_URL: url.toString(),
-    POSTGRES_SSL: 'false',
-    POSTGRES_SYNCHRONIZE: 'false',
+    DATABASE_URL: url.toString(),
+    DATABASE_SSL: 'false',
+    DATABASE_SYNCHRONIZE: 'false',
+    REDIS_URL: 'redis://127.0.0.1:6380',
+    REDIS_HOST: '127.0.0.1',
+    REDIS_PORT: '6380',
+    OUTBOX_INVITATION_CREDENTIAL_KEY_BASE64:
+      process.env.OUTBOX_INVITATION_CREDENTIAL_KEY_BASE64 ??
+      'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=',
     MINIO_ENDPOINT: '127.0.0.1',
     MINIO_PORT: '9002',
     MINIO_USE_SSL: 'false',

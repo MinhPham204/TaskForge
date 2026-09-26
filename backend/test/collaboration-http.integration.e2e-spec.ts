@@ -14,6 +14,7 @@ import {
 import { PostgresProjectService } from '../src/modules/projects/application/project.service';
 import { PostgresProjectParticipantService } from '../src/modules/projects/application/project-participant.service';
 import { PostgresProjectModuleService } from '../src/modules/projects/application/project-module.service';
+import { PostgresTeamService } from '../src/modules/projects/application/team.service';
 import {
   ProjectModuleCode,
   ProjectRole,
@@ -31,6 +32,7 @@ describe('PostgreSQL Collaboration & Files HTTP Integration', () => {
   let onboarding: PostgresOrganizationOnboardingService;
   let projects: PostgresProjectService;
   let participants: PostgresProjectParticipantService;
+  let teams: PostgresTeamService;
   let modules: PostgresProjectModuleService;
   let tasks: PostgresTaskService;
   let notifications: PostgresNotificationService;
@@ -55,6 +57,7 @@ describe('PostgreSQL Collaboration & Files HTTP Integration', () => {
     onboarding = app.get(PostgresOrganizationOnboardingService);
     projects = app.get(PostgresProjectService);
     participants = app.get(PostgresProjectParticipantService);
+    teams = app.get(PostgresTeamService);
     modules = app.get(PostgresProjectModuleService);
     tasks = app.get(PostgresTaskService);
     notifications = app.get(PostgresNotificationService);
@@ -149,6 +152,11 @@ describe('PostgreSQL Collaboration & Files HTTP Integration', () => {
       contributor.id,
       workspace.organizationId,
       OrganizationRole.MEMBER,
+    );
+    await teams.addMember(
+      pmActor,
+      workspace.generalTeamId,
+      contributorMembership.id,
     );
     await participants.addMember(
       pmActor,

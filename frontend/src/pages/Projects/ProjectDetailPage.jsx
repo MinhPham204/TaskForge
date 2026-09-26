@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LuFolderKanban,
@@ -80,6 +80,8 @@ const ProjectDetailPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const setupTab = searchParams.get('setup');
   const requestedTab = setupTab || searchParams.get('tab');
+  const requestedTaskId = searchParams.get('task');
+  const shouldCreateTask = searchParams.get('createTask') === 'true';
 
   const [activeTab, setActiveTab] = useState(
     () => (PROJECT_TAB_KEYS.has(requestedTab) ? requestedTab : 'board')
@@ -90,6 +92,21 @@ const ProjectDetailPage = () => {
 
   // Queries & Mutations
   const { data: project, isLoading, isError, error, refetch } = useGetProjectByIdQuery(projectId);
+
+  const canManage = Boolean(project?.viewer?.canManage);
+
+  useEffect(() => {
+    if (PROJECT_TAB_KEYS.has(requestedTab)) setActiveTab(requestedTab);
+    if (requestedTaskId) {
+      setActiveTab('tasks');
+      setSelectedTaskId(requestedTaskId);
+    }
+    if (shouldCreateTask && canManage) {
+      setActiveTab('tasks');
+      setTaskToEdit(null);
+      setIsTaskFormOpen(true);
+    }
+  }, [requestedTab, requestedTaskId, shouldCreateTask, canManage]);
 
   const [updateProject, { isLoading: isUpdating }] = useUpdateProjectMutation();
   const [transitionLifecycle, { isLoading: isTransitioning }] =
@@ -106,8 +123,6 @@ const ProjectDetailPage = () => {
   // Lifecycle Confirmation Modal State
   const [lifecycleAction, setLifecycleAction] = useState(null); // { type, title, message }
   const [lifecycleError, setLifecycleError] = useState('');
-
-  const canManage = Boolean(project?.viewer?.canManage);
 
   const handleOpenEdit = () => {
     if (!project) return;

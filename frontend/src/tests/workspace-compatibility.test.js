@@ -29,6 +29,9 @@ import { teamApi } from '../services/teamApi.js';
 import { organizationApi } from '../services/organizationApi.js';
 import { projectApi } from '../services/projectApi.js';
 import { collaborationApi } from '../services/collaborationApi.js';
+import { dashboardApi } from '../services/dashboardApi.js';
+import { searchApi } from '../services/searchApi.js';
+import { authApi } from '../services/authApi.js';
 import { API_PATHS } from '../utils/apiPaths.js';
 
 console.log('Starting PostgreSQL workspace compatibility verification...');
@@ -39,6 +42,8 @@ assert.equal(API_PATHS.INVITATIONS.LIST, '/api/invitations');
 assert.equal(API_PATHS.INVITATIONS.ACCEPT, '/api/invitations/accept');
 assert.equal(API_PATHS.TASKS.MY, '/api/tasks/my');
 assert.equal(API_PATHS.TASKS.APPROVAL_QUEUE, '/api/tasks/approval-queue');
+assert.equal(API_PATHS.DASHBOARD, '/api/dashboard');
+assert.equal(API_PATHS.SEARCH, '/api/search');
 
 for (const url of [
   '/api/auth/login',
@@ -56,9 +61,11 @@ for (const url of [
   '/api/projects/project-1/tasks',
   '/api/tasks/my',
   '/api/tasks/approval-queue',
+  '/api/dashboard',
   '/api/teams',
   '/api/organizations/org-1/invitations',
   '/api/notifications',
+  '/api/search',
 ]) {
   assert.equal(isTenantScopedRequest(url), true, `${url} must be tenant-scoped`);
 }
@@ -161,20 +168,24 @@ await Promise.all([
   store.dispatch(organizationApi.util.upsertQueryData('getPendingInvitations', undefined, [])),
   store.dispatch(projectApi.util.upsertQueryData('getProjects', undefined, [{ id: 'project-1' }])),
   store.dispatch(collaborationApi.util.upsertQueryData('getNotifications', undefined, [])),
+  store.dispatch(dashboardApi.util.upsertQueryData('getDashboard', undefined, { focus: {} })),
+  store.dispatch(searchApi.util.upsertQueryData('search', { query: 'test', limit: 8 }, { results: [] })),
 ]);
 
 const queryCount = (api) => Object.keys(store.getState()[api.reducerPath].queries).length;
-for (const api of [taskApi, teamApi, organizationApi, projectApi, collaborationApi]) {
+for (const api of [taskApi, teamApi, organizationApi, projectApi, collaborationApi, dashboardApi, searchApi]) {
   assert.ok(queryCount(api) > 0, `${api.reducerPath} should contain seeded tenant data`);
 }
 
 store.dispatch(switchOrganization('org-2'));
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.equal(localStorage.getItem(ACTIVE_ORG_KEY), 'org-2');
-for (const api of [taskApi, teamApi, organizationApi, projectApi, collaborationApi]) {
+for (const api of [taskApi, teamApi, organizationApi, projectApi, collaborationApi, dashboardApi, searchApi]) {
   assert.equal(queryCount(api), 0, `${api.reducerPath} must reset on workspace switch`);
 }
 
+await store.dispatch(authApi.util.upsertQueryData('getProfile', undefined, { id: 'user-1' }));
+assert.ok(queryCount(authApi) > 0, 'authApi should contain cached account data before logout');
 localStorage.setItem('refreshToken', 'refresh-token');
 localStorage.setItem('authUser', JSON.stringify({ id: 'user-1' }));
 store.dispatch(logout());
@@ -182,5 +193,6 @@ await new Promise((resolve) => setTimeout(resolve, 0));
 for (const key of ['token', 'refreshToken', 'authUser', ACTIVE_ORG_KEY]) {
   assert.equal(localStorage.getItem(key), null, `${key} must be removed on logout`);
 }
+assert.equal(queryCount(authApi), 0, 'authApi must reset on logout');
 
 console.log('PostgreSQL workspace compatibility verification PASSED.');

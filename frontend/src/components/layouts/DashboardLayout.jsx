@@ -1,15 +1,14 @@
-import React, {useContext} from 'react'
+import React from 'react'
 import Navbar from './Navbar';
 import SideMenu from './SideMenu';
-import { setUser, clearUser, fetchProfile } from '../../store/authSlice';
-import { useSelector, useDispatch } from 'react-redux';
+import { useSelector } from 'react-redux';
 
 
 const DashboardLayout = ({ children, activeMenu }) => {
   const { user } = useSelector((state) => state.auth);
 
   return (
-    <div className="min-h-screen bg-slate-50/50">
+    <div className="min-h-screen bg-app-canvas text-content">
       <Navbar activeMenu={activeMenu} />
       {user && (
         <div className="flex">

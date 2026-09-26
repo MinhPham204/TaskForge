@@ -13,10 +13,17 @@ import {
 import { ProjectMembershipEntity } from '../../projects/persistence/typeorm/project.entities';
 import { NotificationEntity } from '../persistence/typeorm/collaboration.entities';
 import { PostgresNotificationRepository } from '../persistence/typeorm/collaboration.repositories';
+import { UserPreferenceEntity } from '../../onboarding/persistence/typeorm/onboarding.entities';
 
 export interface PostgresNotificationActor {
   organizationId: string;
   membershipId: string;
+}
+
+export interface PostgresNotificationTarget {
+  resourceType: 'PROJECT' | 'TASK' | 'TEAM';
+  resourceId: string;
+  projectId: string | null;
 }
 
 export interface CreatePostgresNotificationInput {
@@ -49,6 +56,11 @@ export class PostgresNotificationService {
         input.projectId ?? null,
       );
       if (!recipient) return null;
+      const preferences = await manager
+        .getRepository(UserPreferenceEntity)
+        .findOneBy({ userId: recipient.userId });
+      // No row means a pre-preference user and preserves the default opt-in.
+      if (preferences && !preferences.inAppNotificationsEnabled) return null;
 
       const notifications = new PostgresNotificationRepository(manager);
       const notification = notifications.create({
@@ -75,16 +87,24 @@ export class PostgresNotificationService {
     });
   }
 
-  listInbox(actor: PostgresNotificationActor): Promise<NotificationEntity[]> {
+  listInbox(
+    actor: PostgresNotificationActor,
+  ): Promise<Array<NotificationEntity & { target: PostgresNotificationTarget | null }>> {
     return this.transactions.run(async (manager) => {
       const membership = await this.requireActiveMembership(manager, actor);
-      return manager.getRepository(NotificationEntity).find({
+      const notifications = await manager.getRepository(NotificationEntity).find({
         where: {
           organizationId: actor.organizationId,
           recipientUserId: membership.userId,
         },
         order: { readAt: 'ASC', createdAt: 'DESC' },
       });
+      return Promise.all(
+        notifications.map(async (notification) => ({
+          ...notification,
+          target: await this.resolveTarget(manager, membership, notification),
+        })),
+      );
     });
   }
 
@@ -160,6 +180,81 @@ export class PostgresNotificationService {
       removedAt: IsNull(),
     });
     return projectMembership ? membership : null;
+  }
+
+  private async resolveTarget(
+    manager: EntityManager,
+    membership: OrganizationMembershipEntity,
+    notification: NotificationEntity,
+  ): Promise<PostgresNotificationTarget | null> {
+    if (!notification.resourceType || !notification.resourceId) return null;
+
+    if (notification.resourceType === 'PROJECT') {
+      const projectId = notification.resourceId;
+      if (!(await this.canViewProject(manager, membership, projectId))) return null;
+      return { resourceType: 'PROJECT', resourceId: projectId, projectId };
+    }
+
+    if (notification.resourceType === 'TASK' && notification.projectId) {
+      const visible = await this.canViewProject(
+        manager,
+        membership,
+        notification.projectId,
+      );
+      if (!visible) return null;
+      const task = await manager.query<Array<{ id: string }>>(
+        `SELECT id FROM tasks
+          WHERE organization_id = $1 AND project_id = $2 AND id = $3 AND archived_at IS NULL`,
+        [notification.organizationId, notification.projectId, notification.resourceId],
+      );
+      if (!task[0]) return null;
+      return {
+        resourceType: 'TASK',
+        resourceId: notification.resourceId,
+        projectId: notification.projectId,
+      };
+    }
+
+    if (notification.resourceType === 'TEAM') {
+      const team = await manager.query<Array<{ id: string }>>(
+        `SELECT id FROM teams
+          WHERE organization_id = $1 AND id = $2 AND archived_at IS NULL`,
+        [notification.organizationId, notification.resourceId],
+      );
+      if (!team[0]) return null;
+      return {
+        resourceType: 'TEAM',
+        resourceId: notification.resourceId,
+        projectId: null,
+      };
+    }
+
+    return null;
+  }
+
+  private async canViewProject(
+    manager: EntityManager,
+    membership: OrganizationMembershipEntity,
+    projectId: string,
+  ): Promise<boolean> {
+    if (
+      membership.role === OrganizationRole.OWNER ||
+      membership.role === OrganizationRole.ADMIN
+    ) {
+      const project = await manager.query<Array<{ id: string }>>(
+        `SELECT id FROM projects
+          WHERE organization_id = $1 AND id = $2 AND archived_at IS NULL`,
+        [membership.organizationId, projectId],
+      );
+      return Boolean(project[0]);
+    }
+    const projectMembership = await manager.getRepository(ProjectMembershipEntity).findOneBy({
+      organizationId: membership.organizationId,
+      projectId,
+      organizationMembershipId: membership.id,
+      removedAt: IsNull(),
+    });
+    return Boolean(projectMembership);
   }
 }
 

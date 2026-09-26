@@ -7,7 +7,7 @@ export function validateEnvironment(
   const postgres = getPostgresConfig(environment);
   getMinioConfig(environment);
   if (!postgres.url) {
-    throw new Error('POSTGRES_URL is required for the PostgreSQL runtime.');
+    throw new Error('DATABASE_URL is required for the PostgreSQL runtime.');
   }
   return environment;
 }

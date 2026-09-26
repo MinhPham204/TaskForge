@@ -129,6 +129,122 @@ describe('PostgresAuthService', () => {
       expect.any(Object),
     );
   });
+
+  it('applies the signup password policy before creating a User', async () => {
+    const service = createService(manager, jwt, redis, email, config);
+    (jwt.verify as jest.Mock).mockReturnValue({ email: 'new@example.test' });
+
+    await expect(
+      service.completeSignup('verified-token', {
+        fullName: 'New User',
+        password: 'short',
+      }),
+    ).rejects.toThrow('Password must be between 8 and 128 characters');
+
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('changes a password only after the current password matches and revokes the refresh credential', async () => {
+    const service = createService(manager, jwt, redis, email, config);
+    const user = makeUser({
+      passwordHash: await awaitPasswordHash('current-password'),
+      refreshTokenHash: await awaitPasswordHash('refresh-token'),
+    });
+    getOne.mockResolvedValue(user);
+    save.mockImplementation(async (entity) => entity);
+
+    await expect(
+      service.changePassword(user.id, {
+        currentPassword: 'current-password',
+        newPassword: 'new-password',
+        confirmPassword: 'new-password',
+      }),
+    ).resolves.toEqual({
+      message: 'Password changed successfully. Please sign in again.',
+    });
+
+    expect(await bcrypt.compare('new-password', user.passwordHash)).toBe(true);
+    expect(user.refreshTokenHash).toBeNull();
+    expect(create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ actionCode: 'AUTH_PASSWORD_CHANGED' }),
+    );
+    expect(create.mock.calls.at(-1)?.[0]).not.toHaveProperty('password');
+    expect(create.mock.calls.at(-1)?.[0]).not.toHaveProperty('currentPassword');
+    expect(create.mock.calls.at(-1)?.[0]).not.toHaveProperty('newPassword');
+  });
+
+  it('rejects an incorrect current password without mutating credentials', async () => {
+    const service = createService(manager, jwt, redis, email, config);
+    const passwordHash = await awaitPasswordHash('current-password');
+    const user = makeUser({ passwordHash, refreshTokenHash: 'refresh-hash' });
+    getOne.mockResolvedValue(user);
+
+    await expect(
+      service.changePassword(user.id, {
+        currentPassword: 'wrong-password',
+        newPassword: 'new-password',
+        confirmPassword: 'new-password',
+      }),
+    ).rejects.toThrow('Current password is incorrect');
+
+    expect(user.passwordHash).toBe(passwordHash);
+    expect(user.refreshTokenHash).toBe('refresh-hash');
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('returns safe default personal preferences until a User saves them', async () => {
+    const service = createService(manager, jwt, redis, email, config);
+    findOneBy.mockResolvedValueOnce(makeUser()).mockResolvedValueOnce(null);
+
+    await expect(service.getPersonalPreferences('user-id')).resolves.toEqual({
+      timezone: 'UTC',
+      locale: 'en-US',
+      weekStartsOn: 1,
+      inAppNotificationsEnabled: true,
+    });
+  });
+
+  it('persists personal preferences without recording credentials in audit data', async () => {
+    const service = createService(manager, jwt, redis, email, config);
+    const user = makeUser();
+    findOneBy.mockResolvedValueOnce(user).mockResolvedValueOnce(null);
+    create.mockImplementation((value) => value);
+    save.mockImplementation(async (entity) => entity);
+
+    await expect(
+      service.updatePersonalPreferences(user.id, {
+        timezone: 'Asia/Ho_Chi_Minh',
+        locale: 'vi-VN',
+        weekStartsOn: 1,
+        inAppNotificationsEnabled: false,
+      }),
+    ).resolves.toEqual({
+      timezone: 'Asia/Ho_Chi_Minh',
+      locale: 'vi-VN',
+      weekStartsOn: 1,
+      inAppNotificationsEnabled: false,
+    });
+
+    expect(create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ actionCode: 'AUTH_PERSONAL_PREFERENCES_UPDATED' }),
+    );
+    expect(create.mock.calls.at(-1)?.[0]).not.toHaveProperty('password');
+    expect(create.mock.calls.at(-1)?.[0]).not.toHaveProperty('token');
+  });
+
+  it('prohibits password change on portfolio demo accounts', async () => {
+    const service = createService(manager, jwt, redis, email, config);
+    const demoUser = makeUser({ email: 'owner@taskforge.dev' });
+    getOne.mockResolvedValueOnce(demoUser);
+
+    await expect(
+      service.changePassword('demo-user-id', {
+        currentPassword: 'Password123!',
+        newPassword: 'NewPassword123!',
+        confirmPassword: 'NewPassword123!',
+      }),
+    ).rejects.toThrow('Password change is disabled for demo accounts in portfolio mode.');
+  });
 });
 
 function createService(

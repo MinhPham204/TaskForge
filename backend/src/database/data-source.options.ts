@@ -8,6 +8,7 @@ import {
   TeamEntity,
   TeamMemberEntity,
   UserEntity,
+  UserPreferenceEntity,
 } from '../modules/onboarding/persistence/typeorm/onboarding.entities';
 import {
   ProjectEntity,
@@ -33,35 +34,48 @@ import {
   ActivityEntryEntity,
   AuditLogEntity,
   NotificationEntity,
+  OutboxEventEntity,
   ProjectFileEntity,
   StoredFileEntity,
   TaskAttachmentEntity,
 } from '../modules/collaboration/persistence/typeorm/collaboration.entities';
 
 type Environment = Record<string, string | undefined>;
+type DataSourcePurpose = 'runtime' | 'migration';
 
 export function createPostgresDataSourceOptions(
   environment: Environment,
+  purpose: DataSourcePurpose = 'migration',
 ): DataSourceOptions {
   const postgres = getPostgresConfig(environment);
+  const url =
+    purpose === 'migration' ? (postgres.migrationUrl ?? postgres.url) : postgres.url;
 
-  if (!postgres.url) {
+  if (!url) {
     throw new Error(
-      'POSTGRES_URL is required to run the PostgreSQL migration CLI.',
+      'DATABASE_URL is required to run the PostgreSQL migration CLI.',
     );
   }
 
   return {
     type: 'postgres',
-    url: postgres.url,
+    url,
     ssl: postgres.ssl
-      ? { rejectUnauthorized: postgres.sslRejectUnauthorized }
+      ? {
+          rejectUnauthorized: postgres.sslRejectUnauthorized,
+          ...(postgres.sslCa ? { ca: postgres.sslCa } : {}),
+        }
       : false,
     synchronize: false,
     migrationsRun: false,
     migrationsTableName: 'typeorm_migrations',
+    extra: {
+      max: postgres.poolMax,
+      connectionTimeoutMillis: postgres.connectionTimeoutMs,
+    },
     entities: [
       UserEntity,
+      UserPreferenceEntity,
       OrganizationEntity,
       OrganizationMembershipEntity,
       OrganizationInvitationEntity,
@@ -84,6 +98,7 @@ export function createPostgresDataSourceOptions(
       ActivityEntryEntity,
       AuditLogEntity,
       NotificationEntity,
+      OutboxEventEntity,
       StoredFileEntity,
       TaskAttachmentEntity,
       ProjectFileEntity,

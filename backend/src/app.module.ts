@@ -19,7 +19,7 @@ import { PostgresOnboardingRuntimeModule } from './modules/onboarding/onboarding
     }),
     TypeOrmModule.forRootAsync({
       useFactory: () => ({
-        ...createPostgresDataSourceOptions(process.env),
+        ...createPostgresDataSourceOptions(process.env, 'runtime'),
         migrations: [],
       }),
     }),
