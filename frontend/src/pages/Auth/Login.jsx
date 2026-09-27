@@ -13,8 +13,11 @@ import {
   LuCode,
   LuCopy,
   LuCrown,
+  LuLayers,
   LuLoaderCircle,
   LuLogIn,
+  LuPalette,
+  LuShieldCheck,
   LuSparkles,
   LuX,
 } from 'react-icons/lu';
@@ -43,11 +46,38 @@ const DEMO_ACCOUNTS = [
   {
     roleId: 'dev',
     name: 'Jordan Lee',
-    roleTitle: 'Developer / Member',
+    roleTitle: 'Lead Backend Engineer',
     email: 'dev@taskforge.dev',
     badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    description: 'Task execution, subtask checklists & review submission',
+    description: 'Architecture, PostgreSQL migrations & backend endpoints',
     icon: LuCode,
+  },
+  {
+    roleId: 'designer',
+    name: 'Morgan Chen',
+    roleTitle: 'Product Designer',
+    email: 'designer@taskforge.dev',
+    badgeClass: 'bg-pink-50 text-pink-700 border-pink-200',
+    description: 'UI/UX design systems, Figma wireframes & review submissions',
+    icon: LuPalette,
+  },
+  {
+    roleId: 'fullstack',
+    name: 'Sam Rivera',
+    roleTitle: 'Full-Stack Engineer',
+    email: 'fullstack@taskforge.dev',
+    badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+    description: 'End-to-end features, mobile companion & offline sync protocol',
+    icon: LuLayers,
+  },
+  {
+    roleId: 'qa',
+    name: 'Elena Rostova',
+    roleTitle: 'QA & Site Reliability',
+    email: 'qa@taskforge.dev',
+    badgeClass: 'bg-teal-50 text-teal-700 border-teal-200',
+    description: 'Automated regression test suites, CI pipelines & health probes',
+    icon: LuShieldCheck,
   },
 ];
 
@@ -229,10 +259,10 @@ const Login = () => {
           onClick={() => !loadingDemoEmail && setShowDemoModal(false)}
         >
           <div
-            className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg p-5 relative"
+            className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg p-5 relative max-h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100 shrink-0">
               <div>
                 <h4 className="text-base font-semibold text-slate-900">
                   Demo Accounts
@@ -251,7 +281,7 @@ const Login = () => {
               </button>
             </div>
 
-            <div className="space-y-2.5 my-4">
+            <div className="space-y-2.5 my-4 overflow-y-auto pr-1 flex-1">
               {DEMO_ACCOUNTS.map((acc) => {
                 const Icon = acc.icon;
                 const isLoggingInThis = loadingDemoEmail === acc.email;
@@ -308,7 +338,7 @@ const Login = () => {
               })}
             </div>
 
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 shrink-0">
               <span>Password for all accounts:</span>
               <button
                 type="button"
