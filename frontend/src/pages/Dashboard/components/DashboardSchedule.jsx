@@ -94,7 +94,7 @@ export const DashboardSchedule = ({
         <div className="border border-border rounded-xl overflow-hidden bg-surface divide-y sm:divide-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-7 sm:divide-x divide-border/60">
           {week.map((day) => {
             const items = calendarItemsByDay.get(day.key) || [];
-            const dayName = day.date.toLocaleDateString(undefined, { weekday: 'short' });
+            const dayName = day.date.toLocaleDateString('en-US', { weekday: 'short' });
             const dayNumber = day.date.getDate();
 
             return (
@@ -190,7 +190,7 @@ export const DashboardSchedule = ({
               const items = calendarItemsByDay.get(day.key) || [];
               if (items.length === 0) return null;
 
-              const fullDayLabel = day.date.toLocaleDateString(undefined, {
+              const fullDayLabel = day.date.toLocaleDateString('en-US', {
                 weekday: 'long',
                 month: 'short',
                 day: 'numeric',

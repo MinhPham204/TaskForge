@@ -192,7 +192,7 @@ export const WeeklyActivityMiniBar = ({ week = [], calendarItemsByDay = new Map(
             </div>
             {/* Day letter */}
             <span className={`text-[9px] font-semibold ${day.isToday ? 'text-primary font-bold' : 'text-content-muted'}`}>
-              {day.date.toLocaleDateString(undefined, { weekday: 'narrow' })}
+              {day.date.toLocaleDateString('en-US', { weekday: 'narrow' })}
             </span>
           </div>
         );

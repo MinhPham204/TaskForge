@@ -23,7 +23,7 @@ import { useGetDashboardQuery } from '../../services/dashboardApi.js';
 import { CustomBarchart, CustomPieChart } from '../../components/Charts/index.js';
 import { DashboardSchedule } from './components/DashboardSchedule.jsx';
 
-const DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
+const DATE_FORMAT = new Intl.DateTimeFormat('en-US', {
   month: 'short',
   day: 'numeric',
 });
@@ -184,7 +184,7 @@ const DashboardPage = () => {
   const recentProjects = data?.recentProjects || [];
   const calendarItems = data?.calendarItems || [];
 
-  const todayLabel = new Intl.DateTimeFormat(undefined, {
+  const todayLabel = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     month: 'short',
     day: 'numeric',

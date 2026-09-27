@@ -212,7 +212,10 @@ export class PostgresProjectReadService {
       viewer: {
         projectRole,
         organizationRole: organizationRole ?? null,
-        canManage: projectRole === ProjectRole.PROJECT_MANAGER,
+        canManage:
+          projectRole === ProjectRole.PROJECT_MANAGER ||
+          organizationRole === OrganizationRole.OWNER ||
+          organizationRole === OrganizationRole.ADMIN,
       },
     };
   }

@@ -1,190 +1,107 @@
 # TaskForge
 
-TaskForge is a multi-tenant SaaS workspace for planning projects, coordinating teams, and moving tasks through configurable workflows. It is built as an end-to-end portfolio project: the React client, NestJS API, PostgreSQL schema, Redis-backed asynchronous boundaries, private object storage, tests, and deployment manifests evolve together as vertical slices.
+TaskForge is a web app for managing projects across teams and workspaces. Members can track assigned work, discuss tasks, request approval, and keep project documents and milestones alongside their board.
 
-> Release status: Phase 7 implementation and verification are complete. The frontend and PostgreSQL API are ready for a controlled deployment; no public demo has been provisioned yet.
+This is a full-stack portfolio project built with React, NestJS and PostgreSQL. Its main focus is the work behind a shared task board: who can see a project, who can change a task, and what happens when work needs someone else's approval.
 
-## The problem
+## What you can do
 
-Generic task lists become difficult to govern once several organizations, teams, and projects share one application. TaskForge models those boundaries explicitly:
+| Area | Features in the application |
+| --- | --- |
+| Workspaces | Create and switch organizations, invite members, manage teams, and suspend or revoke workspace membership. |
+| Projects | Add participating teams and members, assign Project Managers, configure task statuses, and manage the project lifecycle. |
+| Tasks | Use list and drag-and-drop board views; assign members, set dates and priorities, track progress, maintain checklists, and discuss work in comments. |
+| Approval | Choose a designated approver, submit a request, approve or reject it, and review pending requests in an approval queue. |
+| Project context | Track milestones and risks, link mitigation tasks, write Markdown wiki documents, and attach files. These four project modules can be enabled or disabled. |
+| Personal work | See assigned and overdue work, pending approvals, recent projects, and task/milestone dates on the dashboard. Filter tasks and view project reports or export task data. |
+| Navigation and updates | Search projects, tasks and teams with `Ctrl+K` / `Cmd+K`, read project activity, and open notifications in a personal inbox. |
+| Account and settings | Register with an email OTP, reset or change a password, edit a profile, choose Light/Dark/System appearance, and save personal preferences. |
 
-- an Organization is the tenant and an active Organization Membership grants workspace access;
-- Organization roles (`OWNER`, `ADMIN`, `MEMBER`) and Project roles (`PROJECT_MANAGER`, `CONTRIBUTOR`) are separate scopes;
-- Teams group people, while Project Membership determines project permissions;
-- each Project owns its statuses, task workflow, participants, and optional modules;
-- approval is an independent business workflow rather than a hard-coded task status;
-- every tenant-scoped request is checked against the active membership and filtered by `organizationId`.
+These features have API and frontend implementations. That does not mean every browser flow or hosted integration has been verified. The deployment and testing sections below describe those limits.
 
-## Product capabilities
+## How work is organized
 
-- JWT access/refresh authentication, OTP registration, password reset, and multi-workspace switching.
-- Organization onboarding and opaque-token invitations.
-- Team lifecycle, membership, Project participation, and Project Manager invariants.
-- Project list/detail/setup, configurable task statuses, board drag-and-drop, task search/report/export, assignees, checklists, comments, and approval requests.
-- Four fixed optional Project modules: Milestones, Wiki Documents, Risks, and Files.
-- Activity timeline, append-only audit records, and a tenant/recipient-scoped notification inbox.
-- Authorized Project files and Task attachments backed by private local MinIO in Docker.
-- Health/readiness endpoints and safe JSON operational events with HTTP request IDs.
-- PostgreSQL migrations, deterministic demo data, tenant-negative security tests, and clean-database critical E2E regression.
+A user can belong to more than one organization. Each organization is a separate workspace with its own teams, projects and tasks.
 
-## Architecture
+Organization roles (`OWNER`, `ADMIN`, `MEMBER`) govern workspace administration. Project roles (`PROJECT_MANAGER`, `CONTRIBUTOR`) govern work inside a project. Owner/Admin can see the organization's projects, but project management permissions are checked separately. Belonging to a team does not automatically make someone a Project Manager.
 
-```mermaid
-flowchart LR
-    Browser[React 18 SPA<br/>Redux Toolkit + RTK Query] -->|REST / JWT / x-organization-id| API[NestJS 11 modular monolith]
-    API -->|TypeORM migrations and transactions| PG[(PostgreSQL 18)]
-    API -->|OTP, refresh/session support| Redis[(Redis 7)]
-    API -->|Authorized object operations| MinIO[(Private local MinIO)]
-    API -->|SMTP| Email[Email provider]
-    Jobs[BullMQ email job boundary<br/>integration tested] --> Redis
-    Jobs --> PG
-    Jobs --> Email
+Tasks belong to a project and an owning team. An assignee must be an active project member and belong to that team. Each project defines its task statuses; approval requests have their own state and history rather than being another board column.
 
-    subgraph Local production-like Docker network
-        API
-        PG
-        Redis
-        MinIO
-    end
-```
+For example, a contributor can complete a checklist and submit work to the designated approver. The backend checks eligibility and completion rules. Competing approval decisions are serialized, and a failed transaction does not leave a partial decision or audit record.
 
-The served API is a NestJS modular monolith. PostgreSQL is the canonical persistence layer, and versioned migrations own schema changes. Redis is used selectively instead of as a second source of truth. MinIO is private: browsers receive files only through authorized TaskForge download endpoints and never receive object keys or public bucket URLs.
+## Stack and implementation
 
-The served runtime includes a selective transactional Outbox for invitation and approval-request delivery. Its Dispatcher claims durable PostgreSQL events before enqueueing stable BullMQ job IDs; the Worker provides at-least-once email delivery and idempotent internal approval notifications. SMTP may still duplicate after a provider-side accept followed by a process crash.
+| Layer | Technology |
+| --- | --- |
+| Client | React 18, Vite 7, Redux Toolkit / RTK Query, Tailwind CSS 4 |
+| API | Node.js 24, TypeScript, NestJS 11, REST and Swagger |
+| Database | PostgreSQL 18, TypeORM, versioned migrations |
+| Background work | Redis and BullMQ |
+| Files | Private MinIO in the local Docker stack; filesystem fallback for development |
+| Delivery | Docker Compose, GitHub Actions, Render blueprint |
 
-## Simplified data model
+The API runs as one NestJS application. PostgreSQL is the only application database; MongoDB is no longer part of the runtime.
 
-```mermaid
-erDiagram
-    USER ||--o{ ORGANIZATION_MEMBERSHIP : has
-    ORGANIZATION ||--o{ ORGANIZATION_MEMBERSHIP : contains
-    ORGANIZATION ||--o{ ORGANIZATION_INVITATION : issues
-    ORGANIZATION ||--o{ TEAM : owns
-    ORGANIZATION_MEMBERSHIP ||--o{ TEAM_MEMBER : joins
-    TEAM ||--o{ TEAM_MEMBER : contains
+- Tenant routes validate the user's active organization membership before querying data. Queries use an explicit organization ID, and switching workspaces clears tenant query caches in the client.
+- Schema changes run through migrations. The application does not synchronize tables at startup.
+- Invitations and approval requests write selected delivery events into a PostgreSQL Outbox in the same transaction as the business change. A dispatcher passes them to BullMQ for processing. Email delivery can still be duplicated if the provider accepts a message immediately before a worker crashes.
+- File downloads go through the application's authorization checks. The browser does not receive private object keys.
+- Project activity and audit records are separate; audit records are append-only at the database level.
 
-    ORGANIZATION ||--o{ PROJECT : owns
-    PROJECT ||--o{ PROJECT_TEAM : includes
-    TEAM ||--o{ PROJECT_TEAM : participates
-    PROJECT ||--o{ PROJECT_MEMBERSHIP : grants
-    ORGANIZATION_MEMBERSHIP ||--o{ PROJECT_MEMBERSHIP : qualifies
-    PROJECT ||--o{ PROJECT_TASK_STATUS : configures
-    PROJECT ||--o{ PROJECT_MODULE_SETTING : enables
+The migrations in [backend/src/database/migrations](backend/src/database/migrations) define the schema. The application modules live under [backend/src/modules](backend/src/modules).
 
-    PROJECT ||--o{ TASK : contains
-    TEAM ||--o{ TASK : owns
-    PROJECT_TASK_STATUS ||--o{ TASK : classifies
-    TASK ||--o{ TASK_ASSIGNEE : assigns
-    PROJECT_MEMBERSHIP ||--o{ TASK_ASSIGNEE : receives
-    TASK ||--o{ TASK_CHECKLIST_ITEM : contains
-    TASK ||--o{ APPROVAL_REQUEST : requests
-    TASK ||--o{ COMMENT : discusses
+## Run locally
 
-    PROJECT ||--o{ MILESTONE : plans
-    PROJECT ||--o{ DOCUMENT : documents
-    PROJECT ||--o{ RISK : tracks
-    PROJECT ||--o{ PROJECT_FILE : links
-    TASK ||--o{ TASK_ATTACHMENT : links
-    STORED_FILE ||--o{ PROJECT_FILE : backs
-    STORED_FILE ||--o{ TASK_ATTACHMENT : backs
-```
+You need Node.js 24, npm, and Docker with Compose. Run backend and frontend commands from their respective directories; there is no root npm workspace command. On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`.
 
-The diagram is intentionally compact. The versioned migrations under `backend/src/database/migrations/` are the executable schema source.
-
-## Technology
-
-| Area | Stack |
-|---|---|
-| Frontend | React 18, Vite 7, Redux Toolkit, RTK Query, Tailwind CSS 4 |
-| Backend | Node.js 24, TypeScript, NestJS 11, REST, Swagger/OpenAPI |
-| Persistence | PostgreSQL 18, TypeORM 0.3, UUID identifiers |
-| Async/cache | Redis 7, BullMQ |
-| Files | MinIO S3-compatible private object storage; local Docker only |
-| Delivery | Docker multi-stage images, Docker Compose, GitHub Actions, Render blueprint |
-| Verification | Jest, Supertest, integration/E2E contract suites, frontend Node contract tests |
-
-## Demo and screenshots
-
-| Artifact | Current status |
-|---|---|
-| Public demo URL | Not deployed. Provisioning remains a separate, explicitly authorized action. |
-| Local interactive review | Available through the frontend development helper: start Vite, open `/login`, then choose **Enable Mock Session & View Projects**. This is UI review data, not backend evidence. |
-| Screenshots | Capture and commit the final Project Board, Task Detail/Approval, Wiki, and Risk views from the released UI. |
-| API documentation | `http://localhost:8001/api/docs` when the backend is running. |
-
-The deterministic PostgreSQL seed creates these local demo accounts with password `Password123!`:
-
-| Account | Workspace role | Project role |
-|---|---|---|
-| `owner@taskforge.dev` | Owner | Project Manager |
-| `pm@taskforge.dev` | Admin | Project Manager |
-| `dev@taskforge.dev` | Member | Contributor |
-| `designer@taskforge.dev` | Member | Contributor |
-
-These credentials are for local portfolio data only. Do not reuse them for a public environment.
-
-## Run the full local stack with Docker
-
-Prerequisites: Docker Desktop with Docker Compose. The images use Node.js 24 internally.
-
-1. Create a root `.env` file that is not committed and provide at least the required MinIO credentials. Replace every example secret before use:
-
-   ```dotenv
-   MINIO_ACCESS_KEY=taskforge-local
-   MINIO_SECRET_KEY=replace-with-a-long-random-local-secret
-   MINIO_BUCKET=taskforge-files
-   JWT_ACCESS_SECRET=replace-with-at-least-32-characters
-   JWT_REFRESH_SECRET=replace-with-at-least-32-characters
-   JWT_VERIFIED_SECRET=replace-with-at-least-32-characters
-   ```
-
-2. Build and start the private PostgreSQL, Redis, MinIO, migration, API, and web services:
-
-   ```bash
-   docker compose -f docker-compose.prod.yml up --build -d
-   ```
-
-3. Check the application:
-
-   - Web: `http://localhost`
-   - API liveness: `http://localhost:8001/api/health`
-   - API dependency readiness: `http://localhost:8001/api/health/ready`
-   - Swagger UI: `http://localhost:8001/api/docs`
-
-The migration container runs once before the API starts. PostgreSQL, Redis, and MinIO are attached only to the private Compose network; their ports are not published to the host.
-
-### Optional local demo seed
-
-The seed deletes and recreates only its deterministic demo organization, so run it only against a disposable local target you have checked. It never runs automatically and requires both production-mode confirmations inside the Compose stack:
-
-```bash
-docker compose -f docker-compose.prod.yml exec -e ALLOW_PRODUCTION_DEMO_SEED=true api node dist/database/seed/portfolio-seed.js --confirm-seed
-```
-
-Stop the containers without deleting their named volumes:
-
-```bash
-docker compose -f docker-compose.prod.yml down
-```
-
-## Run in development mode
-
-### Backend
+### 1. Install and configure the backend
 
 ```powershell
 cd backend
 npm ci
 Copy-Item .env.example .env
+```
+
+On Linux/macOS, use `cp .env.example .env`. Only copy the example when you do not already have a local configuration.
+
+Edit `backend/.env` before starting anything:
+
+| Variable | Local value or requirement |
+| --- | --- |
+| `DATABASE_URL` | `postgresql://taskforge:taskforge@localhost:54329/taskforge` |
+| `DATABASE_SSL` | `false` for the local PostgreSQL container |
+| `DATABASE_SYNCHRONIZE` | `false` |
+| `MIGRATION_DATABASE_URL` | Leave empty to use `DATABASE_URL` for migrations. |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379`; leave `REDIS_URL` empty. |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_VERIFIED_SECRET` | Set distinct random secrets. |
+| `OUTBOX_INVITATION_CREDENTIAL_KEY_BASE64` | A base64-encoded 32-byte key, required when creating invitations. Keep it stable so pending invitation events remain decryptable. |
+| `CLIENT_URL` | `http://localhost:5173` |
+| `EMAIL_USER` / `EMAIL_PASS` | Gmail address and app password; the current mail service uses Gmail. Required for real registration, password-reset and invitation delivery. |
+| All six `MINIO_*` variables | Clear them for filesystem storage. The example contains partial MinIO settings, which must be cleared or completed. |
+
+Generate the Outbox key locally and copy the result into your configuration:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+```
+
+With MinIO unset, files are written to `backend/uploads/` by default. `STORAGE_LOCAL_ROOT` can override that directory. Never commit credentials or uploaded files.
+
+### 2. Start local infrastructure and the API
+
+Confirm that your database URLs point to the disposable local database before running migrations:
+
+```bash
 docker compose -f docker-compose.infrastructure.yml up -d --wait
 npm run migration:run
 npm run start:dev
 ```
 
-On macOS/Linux, use `cp .env.example .env` instead of `Copy-Item`.
+The infrastructure file starts PostgreSQL on port `54329` and Redis on `6379`. The API listens on `8001` by default.
 
-Configure `backend/.env` with `DATABASE_URL=postgresql://taskforge:taskforge@localhost:54329/taskforge`, `DATABASE_SSL=false`, Redis at `localhost:6379`, and strong JWT secrets. Leave every `MINIO_*` value empty to use the local `backend/uploads/` adapter during hot reload; supply all six MinIO variables together when testing MinIO.
+### 3. Start the frontend
 
-### Frontend
+In another terminal, from the repository root:
 
 ```bash
 cd frontend
@@ -192,90 +109,91 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:5173`. The client uses `VITE_API_URL` when configured and otherwise defaults to `http://localhost:8001` for local development.
+Open `http://localhost:5173`. The API base URL defaults to `http://localhost:8001`. Set `VITE_API_URL` to override it; do not append `/api`, because the client endpoint paths already include that prefix.
 
-## Verification
+Swagger is available at `http://localhost:8001/api/docs`. `/api/health` checks liveness; `/api/health/ready` checks PostgreSQL and Redis.
 
-The disposable test stack uses PostgreSQL on `54330`, Redis on `6380`, and MinIO on `9002`.
+### Optional demo data
+
+After migrating a disposable local database, run this from `backend/`:
 
 ```bash
-cd backend
-npm ci
+node --env-file=.env -r ts-node/register -r tsconfig-paths/register src/database/seed/portfolio-seed.ts --confirm-seed
+```
+
+This recreates the deterministic demo workspace and creates or updates its demo users, including their passwords. Do not run it against a database whose demo data or matching user accounts you need to preserve.
+
+The accounts are `owner@taskforge.dev`, `pm@taskforge.dev`, `dev@taskforge.dev`, and `designer@taskforge.dev`, all with password `Password123!`. They are local demo credentials, not public deployment credentials.
+
+A useful walkthrough is to open the seeded project as a Project Manager, inspect its participants and statuses, then use a contributor account to work through an assigned task and its approval flow. Compare what each account can see and change.
+
+## Docker and hosted deployment
+
+[docker-compose.prod.yml](docker-compose.prod.yml) defines a local stack with the web client, API, a one-shot migration service, PostgreSQL, Redis and private MinIO. MinIO currently uses a digest-pinned third-party mirror at `ghcr.io/coollabsio/minio`.
+
+Treat this Compose file as a demo topology, not a ready-to-use production configuration. It contains fallback database/JWT/email values. It also does **not** currently pass `OUTBOX_INVITATION_CREDENTIAL_KEY_BASE64` into the API container; invitation support needs that environment mapping. Setting a variable in the root Compose `.env` alone does not inject it into the container.
+
+[render.yaml](render.yaml) defines the Docker API and a static frontend. The API runs migrations in its pre-deploy command. Hosted deployment is being configured; a working public demo URL has not yet been verified for this README.
+
+For the hosted setup:
+
+- Set `DATABASE_URL` to the intended PostgreSQL endpoint. `MIGRATION_DATABASE_URL` is an optional separate migration target; without it, migrations use the runtime URL.
+- Keep `DATABASE_SSL=true` and `DATABASE_SSL_REJECT_UNAUTHORIZED=true`. Supply the provider's PEM root CA as `DATABASE_SSL_CA_BASE64` when needed for certificate verification.
+- Configure `REDIS_URL`, JWT secrets, Gmail credentials, the Outbox encryption key and `CLIENT_URL` on the API service. The Render manifest currently omits the Outbox key, so add it explicitly.
+- Set `VITE_API_URL` on the frontend before building it. This value is embedded in the client bundle.
+- Provision persistent storage before relying on hosted uploads. The Render blueprint contains no MinIO service or persistent upload disk. Without MinIO, the API falls back to its local filesystem; uploads are not automatically disabled and should not be treated as durable hosted storage.
+
+## Tests
+
+Checks that do not require a running database, from `backend/`:
+
+```bash
+npm run lint:check
+npm run typecheck
+npm test -- --runInBand
+npm run build
+```
+
+`lint:check` covers `src/config` and `src/database`, not the entire backend. The separate `lint` script includes auto-fix. `typecheck` uses the build configuration, which excludes test files.
+
+Integration tests use a separate disposable stack: PostgreSQL on `54330`, Redis on `6380`, and MinIO on `9002`. These suites modify and clear test data:
+
+```bash
 npm run test:db:up
 npm run test:db:migrate
-npm run typecheck
-npm run test -- --runInBand
-npm run test:security:postgres
 npm run test:critical:postgres
-npm run build
 ```
 
-Frontend verification:
+The critical suite includes tenant isolation, project permissions, task and approval transitions, transaction rollback, Outbox recovery, file access and seed safeguards. Its explicit suite list is in [run-critical-suite.mjs](backend/scripts/run-critical-suite.mjs). `npm run test:db:down` removes the disposable test containers **and their volumes**.
+
+From `frontend/`:
 
 ```bash
-cd frontend
-npm ci
 npm test
+npm run lint
 npm run build
 ```
 
-`test:critical:postgres` covers 28 PostgreSQL/Redis/MinIO Integration/E2E suites and 78 tests, measured from a clean run on 2026-09-17. It includes tenant/authorization boundaries, invitation and approval concurrency/rollback, Outbox recovery and duplicate Worker processing, served-runtime lifecycle, files, optional modules and deterministic seed safeguards. CI repeats migrations from an empty database, then runs this gate before backend/frontend builds in `.github/workflows/verify.yml`.
+Frontend tests are Node-based contract and state checks, not a browser E2E suite. The [CI workflow](.github/workflows/verify.yml) runs scoped backend lint, type checking, unit tests, migrations twice, critical integration tests, seed checks and both builds, plus frontend contract tests. A green run does not prove that external email, hosted storage or all browser interactions work.
 
-The test database teardown command removes the disposable test volumes. Run it only when that target is intentional:
+## Current limits
 
-```bash
-cd backend
-npm run test:db:down
-```
+- The product covers general project coordination. It does not yet have a workflow tailored to a specific industry or team type.
+- The calendar displays existing task and milestone dates. It is not a scheduling engine or a Gantt chart.
+- Wiki documents have Markdown editing and preview, without collaborative editing or revision history.
+- There is no realtime client transport; updates are fetched through HTTP queries.
+- Hosted file persistence and a complete authenticated browser walkthrough still need verification.
+- The Gmail transport currently disables certificate verification in `EmailService`. This needs hardening before a production-security claim; PostgreSQL's verified TLS configuration does not address SMTP.
+- OpenFGA, database RLS, billing and a general-purpose workflow/automation builder are outside the current implementation.
 
-## Deployment
+## Repository guide
 
-- `docker-compose.prod.yml` is the verified local production-like topology, including private local MinIO and one-shot migrations.
-- `render.yaml` describes the planned Render API, static frontend, and controlled migration job.
-- No Render resources or public URL have been provisioned from this repository.
-- Hosted file upload/download is unavailable by design because the selected MinIO deployment is local-only.
-- Phase 7 source gates are complete. Before provisioning, provide the hosted API URL through `VITE_API_URL`, configure secrets, and accept the documented hosted-file limitation.
+| Path | Contents |
+| --- | --- |
+| [backend](backend) | NestJS API, database migrations, workers and integration tests |
+| [frontend](frontend) | React application and client contract tests |
+| [.github/workflows/verify.yml](.github/workflows/verify.yml) | CI commands and test infrastructure |
+| [docs/TASKFORGE_BUSINESS_SCOPE_v0.3.md](docs/TASKFORGE_BUSINESS_SCOPE_v0.3.md) | Accepted business scope |
+| [.spec-kit/specs](.spec-kit/specs) | Implementation plans; planned work is not automatically a shipped feature |
 
-## Security and operational choices
-
-- Tenant authority comes from the authenticated active Organization Membership, never from the client header alone.
-- Project mutations use Project Membership capabilities rather than global or Organization-role inference.
-- IDs are opaque UUIDs, and tenant-scoped queries include an explicit verified `organizationId`.
-- File metadata is relational; objects remain private and downloads pass through authorization.
-- Audit logs are append-only at the database layer.
-- Structured logs use safe technical context and omit credentials, tokens, email addresses, request bodies, object keys, and error messages.
-- `/api/health` is liveness; `/api/health/ready` and `/api/health/readiness` verify PostgreSQL and Redis dependencies.
-
-## Trade-offs and deferred work
-
-- OpenFGA and PostgreSQL RLS are deferred; application authorization and tenant-scoped queries are the v0.3 correctness boundary.
-- No full Outbox, CQRS, event sourcing, realtime transport, or microservice split.
-- The selective Outbox is intentionally limited to invitations and approval requests. It is not a general event bus, and SMTP remains at-least-once; advanced alerting and operational runbooks remain release work.
-- Local MinIO avoids provider cost and keeps files private, but a hosted demo cannot demonstrate file operations without a later approved storage provider.
-- Metrics, distributed tracing, centralized logs, backup/restore rehearsal, malware scanning, load testing, autoscaling, and measured pool/query tuning require a real production requirement.
-- PostgreSQL/TypeORM is the only served persistence path; historical migration documents may still describe the retired architecture.
-
-## Repository map
-
-```text
-backend/                    NestJS API, migrations, domain modules, tests
-frontend/                   React SPA and frontend contract tests
-.github/workflows/verify.yml
-                            clean-checkout CI verification
-.spec-kit/specs/            canonical implementation plans
-.spec-kit/adr/              architecture decisions
-.ai/execution/phase-7/      concise current execution handoff
-docker-compose.prod.yml     local production-like topology
-render.yaml                 planned hosted deployment blueprint
-```
-
-Further detail:
-
-- [Backend guide](backend/README.md) — backend setup and PostgreSQL migration commands.
-- [Migration policy](backend/src/database/migrations/README.md) — versioned-schema workflow.
-- [Project context](.ai/PROJECT_CONTEXT.md) — stable architecture decisions and canonical documentation map.
-- [Release plan](.spec-kit/specs/07-product-release.plan.md) — current release checklist.
-
-## Repository
-
-[github.com/MinhPham204/TaskManager](https://github.com/MinhPham204/TaskManager)
+See the [backend guide](backend/README.md) for additional commands and the [migration policy](backend/src/database/migrations/README.md) for schema-change conventions. Older design documents describe the retired MongoDB runtime or earlier data models; use current source, configuration and tests to resolve differences.

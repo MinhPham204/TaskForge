@@ -40,7 +40,8 @@
     "migration:run:ci": "node ./node_modules/typeorm/cli-ts-node-commonjs.js migration:run -d src/database/data-source.ts",
     "migration:revert": "node --env-file=.env ./node_modules/typeorm/cli-ts-node-commonjs.js migration:revert -d src/database/data-source.ts",
     "migration:run:compiled": "node --env-file=.env ./node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js",
-    "test:supabase:smoke": "node --env-file=.env -r ts-node/register -r tsconfig-paths/register scripts/supabase-smoke.ts"
+    "test:supabase:smoke": "node --env-file=.env -r ts-node/register -r tsconfig-paths/register scripts/supabase-smoke.ts",
+    "seed:rich": "node --env-file=.env -r ts-node/register -r tsconfig-paths/register src/database/seed/rich-portfolio-seed.ts --confirm-seed"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

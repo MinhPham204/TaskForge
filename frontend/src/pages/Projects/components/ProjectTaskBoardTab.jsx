@@ -39,6 +39,8 @@ const ProjectTaskBoardTab = ({
   const [teamId, setTeamId] = useState('');
   const [optimisticColumns, setOptimisticColumns] = useState(null);
   const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const [dragOverColumnId, setDragOverColumnId] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [actionError, setActionError] = useState('');
 
   const queryParams = {
@@ -80,22 +82,24 @@ const ProjectTaskBoardTab = ({
   const displayColumns = optimisticColumns || columns;
 
   const handleDrop = async (statusId) => {
-    if (!canManage || !draggedTaskId) return;
+    if (!draggedTaskId) return;
     const sourceColumn = displayColumns.find((column) =>
       column.tasks?.some((task) => task.id === draggedTaskId),
     );
     if (!sourceColumn || sourceColumn.id === statusId) {
       setDraggedTaskId(null);
+      setDragOverColumnId(null);
       return;
     }
 
     const previousColumns = displayColumns;
-    const movedTask = sourceColumn.tasks.find((task) => task.id === draggedTaskId);
+    const targetTaskId = draggedTaskId;
+    const movedTask = sourceColumn.tasks.find((task) => task.id === targetTaskId);
     setActionError('');
     setOptimisticColumns(
       displayColumns.map((column) => {
         if (column.id === sourceColumn.id) {
-          return { ...column, tasks: column.tasks.filter((task) => task.id !== draggedTaskId) };
+          return { ...column, tasks: column.tasks.filter((task) => task.id !== targetTaskId) };
         }
         if (column.id === statusId) {
           return { ...column, tasks: [...(column.tasks || []), { ...movedTask, statusId }] };
@@ -104,8 +108,9 @@ const ProjectTaskBoardTab = ({
       }),
     );
     setDraggedTaskId(null);
+    setDragOverColumnId(null);
     try {
-      await transitionTaskStatus({ projectId, taskId: movedTask.id, statusId }).unwrap();
+      await transitionTaskStatus({ projectId, taskId: targetTaskId, statusId }).unwrap();
     } catch (requestError) {
       setOptimisticColumns(previousColumns);
       setActionError(
@@ -187,12 +192,33 @@ const ProjectTaskBoardTab = ({
           {displayColumns.map((column) => (
             <div
               key={column.id}
-              onDragOver={(event) => canManage && event.preventDefault()}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                if (dragOverColumnId !== column.id) {
+                  setDragOverColumnId(column.id);
+                }
+              }}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                setDragOverColumnId(column.id);
+              }}
+              onDragLeave={(event) => {
+                if (event.currentTarget.contains(event.relatedTarget)) return;
+                if (dragOverColumnId === column.id) {
+                  setDragOverColumnId(null);
+                }
+              }}
               onDrop={(event) => {
                 event.preventDefault();
+                setDragOverColumnId(null);
                 handleDrop(column.id);
               }}
-              className="w-80 shrink-0 bg-gray-50/80 rounded-xl p-3 border border-gray-200/80 space-y-3"
+              className={`w-80 shrink-0 rounded-xl p-3 border space-y-3 transition-colors ${
+                dragOverColumnId === column.id
+                  ? 'bg-blue-50/70 border-primary ring-2 ring-primary/20 shadow-sm'
+                  : 'bg-gray-50/80 border-gray-200/80'
+              }`}
             >
               {/* Column Header */}
               <div className="flex items-center justify-between px-1">
@@ -209,86 +235,116 @@ const ProjectTaskBoardTab = ({
               </div>
 
               {/* Tasks List inside Column */}
-              <div className="space-y-2.5 min-h-[150px]">
-                {column.tasks?.map((task) => (
-                  <button
-                    type="button"
-                    key={task.id}
-                    onClick={() => onSelectTask(task.id)}
-                    draggable={canManage}
-                    onDragStart={(event) => {
-                      event.dataTransfer.effectAllowed = 'move';
-                      event.dataTransfer.setData('text/plain', task.id);
-                      setDraggedTaskId(task.id);
-                    }}
-                    onDragEnd={() => setDraggedTaskId(null)}
-                    className="w-full text-left bg-white p-3.5 rounded-lg border border-gray-200/90 hover:border-primary/50 shadow-xs hover:shadow-md transition-all cursor-pointer space-y-2.5 disabled:cursor-default"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <h5 className="text-xs font-semibold text-gray-900 leading-snug line-clamp-2">
-                        {task.title}
-                      </h5>
-                      <PriorityBadge priority={task.priorityCode} />
-                    </div>
+              <div
+                className="space-y-2.5 min-h-[150px]"
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                }}
+              >
+                {column.tasks?.map((task) => {
+                  const isBeingDragged = draggedTaskId === task.id;
 
-                    {task.description && (
-                      <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">
-                        {task.description}
-                      </p>
-                    )}
+                  return (
+                    <div
+                      key={task.id}
+                      role="button"
+                      tabIndex={0}
+                      draggable={true}
+                      onDragStart={(event) => {
+                        event.stopPropagation();
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData('text/plain', task.id);
+                        setDraggedTaskId(task.id);
+                        setIsDragging(true);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedTaskId(null);
+                        setDragOverColumnId(null);
+                        setTimeout(() => setIsDragging(false), 50);
+                      }}
+                      onClick={() => {
+                        if (isDragging) return;
+                        onSelectTask(task.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onSelectTask(task.id);
+                        }
+                      }}
+                      className={`w-full text-left bg-white p-3.5 rounded-lg border border-gray-200/90 hover:border-primary/50 shadow-xs hover:shadow-md transition-all cursor-grab active:cursor-grabbing space-y-2.5 select-none ${
+                        isBeingDragged
+                          ? 'opacity-40 ring-2 ring-primary border-primary scale-[0.98]'
+                          : ''
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <h5 className="text-xs font-semibold text-gray-900 leading-snug line-clamp-2">
+                          {task.title}
+                        </h5>
+                        <PriorityBadge priority={task.priorityCode} />
+                      </div>
 
-                    {/* Progress Bar */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[10px] text-gray-500">
-                        <span>Progress</span>
-                        <span className="font-semibold text-gray-700">
-                          {task.effectiveProgress}%
+                      {task.description && (
+                        <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">
+                          {task.description}
+                        </p>
+                      )}
+
+                      {/* Progress Bar */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-gray-500">
+                          <span>Progress</span>
+                          <span className="font-semibold text-gray-700">
+                            {task.effectiveProgress}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-1.5">
+                          <div
+                            className="bg-primary h-1.5 rounded-full transition-all"
+                            style={{ width: `${task.effectiveProgress}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Card Footer */}
+                      <div className="flex items-center justify-between text-[10px] text-gray-500 pt-2 border-t border-gray-100">
+                        <span className="truncate max-w-[110px]" title={task.owningTeamName}>
+                          {task.owningTeamName}
                         </span>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-1.5">
-                        <div
-                          className="bg-primary h-1.5 rounded-full transition-all"
-                          style={{ width: `${task.effectiveProgress}%` }}
-                        />
-                      </div>
-                    </div>
 
-                    {/* Card Footer */}
-                    <div className="flex items-center justify-between text-[10px] text-gray-500 pt-2 border-t border-gray-100">
-                      <span className="truncate max-w-[110px]" title={task.owningTeamName}>
-                        {task.owningTeamName}
-                      </span>
+                        <div className="flex items-center gap-2">
+                          {task.requiresApproval && (
+                            <span
+                              title="Requires Approval"
+                              className="text-purple-600 bg-purple-50 p-1 rounded"
+                            >
+                              <LuShieldCheck className="w-3.5 h-3.5" />
+                            </span>
+                          )}
 
-                      <div className="flex items-center gap-2">
-                        {task.requiresApproval && (
-                          <span
-                            title="Requires Approval"
-                            className="text-purple-600 bg-purple-50 p-1 rounded"
-                          >
-                            <LuShieldCheck className="w-3.5 h-3.5" />
-                          </span>
-                        )}
+                          {task.dueAt && (
+                            <span className="inline-flex items-center gap-1 text-gray-600">
+                              <LuCalendar className="w-3 h-3" />
+                              {new Date(task.dueAt).toLocaleDateString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </span>
+                          )}
 
-                        {task.dueAt && (
-                          <span className="inline-flex items-center gap-1 text-gray-600">
-                            <LuCalendar className="w-3 h-3" />
-                            {new Date(task.dueAt).toLocaleDateString(undefined, {
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </span>
-                        )}
-
-                        {task.assigneeProjectMembershipIds?.length > 0 && (
-                          <span className="inline-flex items-center gap-1 text-gray-600">
-                            <LuUsers className="w-3 h-3" />
-                            {task.assigneeProjectMembershipIds.length}
-                          </span>
-                        )}
+                          {task.assigneeProjectMembershipIds?.length > 0 && (
+                            <span className="inline-flex items-center gap-1 text-gray-600">
+                              <LuUsers className="w-3 h-3" />
+                              {task.assigneeProjectMembershipIds.length}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </button>
-                ))}
+                  );
+                })}
 
                 {(!column.tasks || column.tasks.length === 0) && (
                   <div className="py-8 text-center text-gray-400 text-xs italic">
