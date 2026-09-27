@@ -80,7 +80,11 @@ export async function runRichPortfolioSeed(
 
   // Relative date helper so the dashboard calendar always has live data around TODAY!
   const now = new Date();
-  const relDate = (offsetDays: number = 0, hour: number = 17, minute: number = 0) => {
+  const relDate = (
+    offsetDays: number = 0,
+    hour: number = 17,
+    minute: number = 0,
+  ) => {
     const d = new Date(now);
     d.setDate(d.getDate() + offsetDays);
     d.setHours(hour, minute, 0, 0);
@@ -166,7 +170,9 @@ export async function runRichPortfolioSeed(
   }
 
   // 2. Seed Users
-  log('👤 Creating deterministic demo user accounts with realistic profiles...');
+  log(
+    '👤 Creating deterministic demo user accounts with realistic profiles...',
+  );
   const userRepo = dataSource.getRepository(UserEntity);
   const passwordHash = bcrypt.hashSync('Password123!', 10);
   const verifiedDate = new Date('2026-01-01T00:00:00Z');
@@ -299,7 +305,8 @@ export async function runRichPortfolioSeed(
     teamRepo.create({
       organizationId: organization.id,
       name: 'Core Platform Engineering',
-      description: 'Backend architecture, infrastructure, database, and reliability.',
+      description:
+        'Backend architecture, infrastructure, database, and reliability.',
     }),
   );
 
@@ -315,7 +322,8 @@ export async function runRichPortfolioSeed(
     teamRepo.create({
       organizationId: organization.id,
       name: 'DevOps & Site Reliability',
-      description: 'CI/CD pipelines, container orchestration, monitoring, and cloud security.',
+      description:
+        'CI/CD pipelines, container orchestration, monitoring, and cloud security.',
     }),
   );
 
@@ -340,7 +348,12 @@ export async function runRichPortfolioSeed(
     );
   }
 
-  for (const m of [ownerMembership, pmMembership, devMembership, fullstackMembership]) {
+  for (const m of [
+    ownerMembership,
+    pmMembership,
+    devMembership,
+    fullstackMembership,
+  ]) {
     await teamMemberRepo.save(
       teamMemberRepo.create({
         organizationId: organization.id,
@@ -375,7 +388,9 @@ export async function runRichPortfolioSeed(
 
   // Helper to initialize project statuses and modules
   const statusRepo = dataSource.getRepository(ProjectTaskStatusEntity);
-  const moduleSettingRepo = dataSource.getRepository(ProjectModuleSettingEntity);
+  const moduleSettingRepo = dataSource.getRepository(
+    ProjectModuleSettingEntity,
+  );
 
   const initProjectWorkflow = async (projectId: string) => {
     const sBacklog = await statusRepo.save(
@@ -563,7 +578,8 @@ export async function runRichPortfolioSeed(
       organizationId: organization.id,
       projectId: project1.id,
       name: 'Milestone 1: PostgreSQL Architecture & Cutover',
-      description: 'Design and deploy multi-tenant PostgreSQL schema and run clean migrations.',
+      description:
+        'Design and deploy multi-tenant PostgreSQL schema and run clean migrations.',
       statusCode: MilestoneStatusCode.CLOSED,
       dueDate: relDateString(-15),
       closedAt: relDate(-15),
@@ -574,7 +590,8 @@ export async function runRichPortfolioSeed(
       organizationId: organization.id,
       projectId: project1.id,
       name: 'Milestone 2: Task Workflows & Approvals',
-      description: 'Implement atomic state transitions, approval queue, and assignees.',
+      description:
+        'Implement atomic state transitions, approval queue, and assignees.',
       statusCode: MilestoneStatusCode.CLOSED,
       dueDate: relDateString(-5),
       closedAt: relDate(-5),
@@ -585,7 +602,8 @@ export async function runRichPortfolioSeed(
       organizationId: organization.id,
       projectId: project1.id,
       name: 'Milestone 3: Production Deployment & Release Gate',
-      description: 'Finalize container manifests, CI pipeline consolidation, and portfolio demo.',
+      description:
+        'Finalize container manifests, CI pipeline consolidation, and portfolio demo.',
       statusCode: MilestoneStatusCode.OPEN,
       dueDate: relDateString(6), // In 6 days (shows up in 7-day schedule!)
       closedAt: null,
@@ -626,12 +644,14 @@ export async function runRichPortfolioSeed(
       organizationId: organization.id,
       projectId: project1.id,
       title: 'Third-party Email Service Rate Limits',
-      description: 'Transactional OTP emails could be throttled during high registration peaks.',
+      description:
+        'Transactional OTP emails could be throttled during high registration peaks.',
       likelihoodCode: RiskScaleCode.MEDIUM,
       impactCode: RiskScaleCode.HIGH,
       state: RiskState.OPEN,
       ownerProjectMembershipId: p1Pm.id,
-      mitigation: 'Implement asynchronous BullMQ email queue with exponential retry backoff.',
+      mitigation:
+        'Implement asynchronous BullMQ email queue with exponential retry backoff.',
     }),
   );
   await riskRepo.save(
@@ -639,17 +659,21 @@ export async function runRichPortfolioSeed(
       organizationId: organization.id,
       projectId: project1.id,
       title: 'Database Connection Pool Exhaustion',
-      description: 'Spikes in concurrent queries could exceed PostgreSQL max pool limits.',
+      description:
+        'Spikes in concurrent queries could exceed PostgreSQL max pool limits.',
       likelihoodCode: RiskScaleCode.LOW,
       impactCode: RiskScaleCode.HIGH,
       state: RiskState.RESOLVED,
       ownerProjectMembershipId: p1Dev.id,
-      mitigation: 'Configured TypeORM PostgreSQL connection-pool limits and connection timeout.',
+      mitigation:
+        'Configured TypeORM PostgreSQL connection-pool limits and connection timeout.',
     }),
   );
 
   // Project 1 Tasks
-  log('📋 Populating rich tasks for Project 1 (due today, overdue, upcoming)...');
+  log(
+    '📋 Populating rich tasks for Project 1 (due today, overdue, upcoming)...',
+  );
 
   // Task 1.1: DUE TODAY - URGENT - In Progress
   const t1_1 = await taskRepo.save(
@@ -962,7 +986,8 @@ export async function runRichPortfolioSeed(
       statusId: p1Workflow.sCompleted.id,
       milestoneId: p1M1.id,
       title: 'Implement PostgreSQL schema migrations and audit triggers',
-      description: 'Set up TypeORM migrations from clean database with immutable audit logs.',
+      description:
+        'Set up TypeORM migrations from clean database with immutable audit logs.',
       priorityCode: 'HIGH',
       dueAt: relDate(-16),
       manualProgress: 100,
@@ -1006,7 +1031,8 @@ export async function runRichPortfolioSeed(
       statusId: p1Workflow.sCompleted.id,
       milestoneId: p1M2.id,
       title: 'Build Task Approval Queue and Atomic Transitions',
-      description: 'Implement atomic state resolution and approval request workflow in PostgreSQL.',
+      description:
+        'Implement atomic state resolution and approval request workflow in PostgreSQL.',
       priorityCode: 'URGENT',
       dueAt: relDate(-6),
       manualProgress: 100,
@@ -1121,7 +1147,8 @@ export async function runRichPortfolioSeed(
       organizationId: organization.id,
       projectId: project2.id,
       name: 'Mobile MVP & Navigation Wireframes',
-      description: 'Deliver high-fidelity Figma components and initial navigation flow.',
+      description:
+        'Deliver high-fidelity Figma components and initial navigation flow.',
       statusCode: MilestoneStatusCode.CLOSED,
       dueDate: relDateString(-10),
       closedAt: relDate(-10),
@@ -1132,7 +1159,8 @@ export async function runRichPortfolioSeed(
       organizationId: organization.id,
       projectId: project2.id,
       name: 'Offline SQLite Cache & Sync Protocol',
-      description: 'Implement local mutation queue and conflict resolution algorithm.',
+      description:
+        'Implement local mutation queue and conflict resolution algorithm.',
       statusCode: MilestoneStatusCode.OPEN,
       dueDate: relDateString(2), // In 2 days! (shows up in 7-day schedule!)
       closedAt: null,
@@ -1160,12 +1188,14 @@ export async function runRichPortfolioSeed(
       organizationId: organization.id,
       projectId: project2.id,
       title: 'Apple App Store Review Guidelines Compliance',
-      description: 'In-app account deletion and privacy policy disclosures required for review.',
+      description:
+        'In-app account deletion and privacy policy disclosures required for review.',
       likelihoodCode: RiskScaleCode.HIGH,
       impactCode: RiskScaleCode.HIGH,
       state: RiskState.OPEN,
       ownerProjectMembershipId: p2Pm.id,
-      mitigation: 'Implement dedicated Delete Account self-service flow in settings before submission.',
+      mitigation:
+        'Implement dedicated Delete Account self-service flow in settings before submission.',
     }),
   );
 
@@ -1278,7 +1308,7 @@ export async function runRichPortfolioSeed(
   );
 
   // Task 2.4: DUE IN 3 DAYS (+3 days) - LOW - To Do
-  await taskRepo.save(
+  const t2_4 = await taskRepo.save(
     taskRepo.create({
       organizationId: organization.id,
       projectId: project2.id,
@@ -1294,6 +1324,16 @@ export async function runRichPortfolioSeed(
       requiresApproval: false,
       approverProjectMembershipId: null,
       creatorProjectMembershipId: p2Designer.id,
+    }),
+  );
+  await assigneeRepo.save(
+    assigneeRepo.create({
+      taskId: t2_4.id,
+      projectMembershipId: p2Qa.id,
+      organizationId: organization.id,
+      projectId: project2.id,
+      assignedByProjectMembershipId: p2Pm.id,
+      assignedAt: relDate(0),
     }),
   );
 
@@ -1485,7 +1525,9 @@ export async function runRichPortfolioSeed(
   );
 
   // 10. Seed Notifications
-  log('🔔 Creating in-app notifications for pending approvals and assignments...');
+  log(
+    '🔔 Creating in-app notifications for pending approvals and assignments...',
+  );
   await notifRepo.save(
     notifRepo.create({
       organizationId: organization.id,
@@ -1558,11 +1600,19 @@ export async function runRichPortfolioSeed(
   log('----------------------------------------------------------------');
   log('Demo User Accounts (Password for all: Password123!):');
   log('  1. owner@taskforge.dev     (Alex Morgan)    - Organization Owner');
-  log('  2. pm@taskforge.dev        (Taylor Swift)   - Organization Admin / PM');
-  log('  3. dev@taskforge.dev       (Jordan Lee)     - Senior Backend Engineer');
+  log(
+    '  2. pm@taskforge.dev        (Taylor Swift)   - Organization Admin / PM',
+  );
+  log(
+    '  3. dev@taskforge.dev       (Jordan Lee)     - Senior Backend Engineer',
+  );
   log('  4. designer@taskforge.dev  (Morgan Chen)    - Lead Product Designer');
-  log('  5. fullstack@taskforge.dev (Sam Rivera)     - Senior Fullstack Engineer');
-  log('  6. qa@taskforge.dev        (Elena Rostova)  - QA & Site Reliability Engineer');
+  log(
+    '  5. fullstack@taskforge.dev (Sam Rivera)     - Senior Fullstack Engineer',
+  );
+  log(
+    '  6. qa@taskforge.dev        (Elena Rostova)  - QA & Site Reliability Engineer',
+  );
   log('================================================================');
 
   return {
