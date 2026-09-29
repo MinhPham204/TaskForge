@@ -27,15 +27,15 @@ import {
 import { useGetProjectTasksQuery } from '../../../services/taskApi';
 
 const scaleBadges = {
-  LOW: 'bg-blue-50 text-blue-700 border-blue-200',
-  MEDIUM: 'bg-amber-50 text-amber-700 border-amber-200',
-  HIGH: 'bg-red-50 text-red-700 border-red-200',
+  LOW: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900',
+  MEDIUM: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
+  HIGH: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900',
 };
 
 const stateBadges = {
-  OPEN: 'bg-amber-50 text-amber-700 border-amber-200',
-  MITIGATING: 'bg-blue-50 text-blue-700 border-blue-200',
-  RESOLVED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  OPEN: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
+  MITIGATING: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900',
+  RESOLVED: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900',
 };
 
 const ProjectRisksTab = ({ projectId, canManage = false }) => {
@@ -210,10 +210,10 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
       {!isRisksModuleEnabled && (
         <div
           role="status"
-          className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3"
+          className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-3"
         >
-          <LuTriangleAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="text-xs text-amber-800 space-y-1">
+          <LuTriangleAlert className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
             <p className="font-semibold">Risk Management Module is Disabled</p>
             <p>
               The Risk module is currently disabled in project settings. Existing risk records and
@@ -224,20 +224,20 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
       )}
 
       {/* Header Bar */}
-      <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-surface border border-border rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+          <h2 className="text-base font-semibold text-content flex items-center gap-2">
             <LuOctagonAlert className="w-5 h-5 text-primary" />
             Risk Register & Mitigation
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-content-muted mt-0.5">
             Identify delivery impediments, assess likelihood and impact, and assign mitigation plans.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           {/* State Filter Tabs */}
-          <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 text-xs">
+          <div className="inline-flex rounded-lg border border-border p-0.5 bg-surface-muted text-xs">
             {['ALL', 'OPEN', 'MITIGATING', 'RESOLVED'].map((tab) => (
               <button
                 key={tab}
@@ -245,8 +245,8 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
                 onClick={() => setStateFilter(tab)}
                 className={`px-3 py-1.5 rounded-md font-medium transition-colors cursor-pointer capitalize ${
                   stateFilter === tab
-                    ? 'bg-white text-gray-900 shadow-xs'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-surface text-content shadow-xs'
+                    : 'text-content-muted hover:text-content'
                 }`}
               >
                 {tab.toLowerCase()}
@@ -302,21 +302,21 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
             return (
               <div
                 key={risk.id}
-                className="bg-white border border-gray-100 rounded-xl p-5 shadow-xs hover:border-gray-200 transition-all space-y-4"
+                className="bg-surface border border-border rounded-xl p-5 shadow-xs hover:border-border/80 transition-all space-y-4"
               >
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                   <div className="space-y-1.5 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span
                         className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold rounded-full border ${
-                          stateBadges[risk.state] || 'bg-gray-100 text-gray-700'
+                          stateBadges[risk.state] || 'bg-surface-muted text-content-muted border-border'
                         }`}
                       >
                         {risk.state}
                       </span>
 
                       <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-md border ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-medium rounded-md border ${
                           scaleBadges[risk.likelihoodCode] || ''
                         }`}
                       >
@@ -324,18 +324,18 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
                       </span>
 
                       <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-md border ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-medium rounded-md border ${
                           scaleBadges[risk.impactCode] || ''
                         }`}
                       >
                         Impact: {risk.impactCode}
                       </span>
 
-                      <h3 className="text-sm font-semibold text-gray-900">{risk.title}</h3>
+                      <h3 className="text-sm font-semibold text-content">{risk.title}</h3>
                     </div>
 
                     {risk.description && (
-                      <p className="text-xs text-gray-600 leading-relaxed">{risk.description}</p>
+                      <p className="text-xs text-content-muted leading-relaxed">{risk.description}</p>
                     )}
                   </div>
 
@@ -346,7 +346,7 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
                         type="button"
                         onClick={() => handleOpenLinkTask(risk)}
                         title="Link Task to Risk"
-                        className="p-1.5 text-gray-400 hover:text-primary hover:bg-blue-50 rounded-md transition-colors cursor-pointer inline-flex items-center gap-1 text-xs"
+                        className="p-1.5 text-content-muted hover:text-primary hover:bg-surface-muted rounded-md transition-colors cursor-pointer inline-flex items-center gap-1 text-xs"
                       >
                         <LuLink className="w-3.5 h-3.5" />
                         <span className="hidden sm:inline">Link Task</span>
@@ -355,7 +355,7 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
                         type="button"
                         onClick={() => handleOpenEdit(risk)}
                         title="Edit Risk"
-                        className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-50 rounded-md transition-colors cursor-pointer"
+                        className="p-1.5 text-content-muted hover:text-content hover:bg-surface-muted rounded-md transition-colors cursor-pointer"
                       >
                         <LuPencil className="w-3.5 h-3.5" />
                       </button>
@@ -363,7 +363,7 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
                         type="button"
                         onClick={() => setRiskToArchive(risk)}
                         title="Archive Risk"
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                        className="p-1.5 text-content-muted hover:text-red-500 hover:bg-surface-muted rounded-md transition-colors cursor-pointer"
                       >
                         <LuTrash2 className="w-3.5 h-3.5" />
                       </button>
@@ -372,33 +372,33 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
                 </div>
 
                 {/* Mitigation & Owner details */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-gray-50 text-xs text-gray-600">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-border text-xs text-content-muted">
                   <div className="flex items-start gap-2">
                     <LuShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                     <div>
-                      <span className="font-semibold text-gray-700">Mitigation Plan: </span>
+                      <span className="font-semibold text-content">Mitigation Plan: </span>
                       <span>{risk.mitigation || 'No specific mitigation plan recorded.'}</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between md:justify-end gap-4 text-gray-500">
+                  <div className="flex items-center justify-between md:justify-end gap-4 text-content-muted">
                     <span className="flex items-center gap-1.5">
-                      <LuUser className="w-3.5 h-3.5 text-gray-400" />
-                      Owner: <strong className="text-gray-700">{owner?.user?.fullName || owner?.user?.email || 'Assigned Member'}</strong>
+                      <LuUser className="w-3.5 h-3.5 text-content-muted" />
+                      Owner: <strong className="text-content">{owner?.user?.fullName || owner?.user?.email || 'Assigned Member'}</strong>
                     </span>
                   </div>
                 </div>
 
                 {/* Linked Tasks */}
                 {risk.linkedTasks && risk.linkedTasks.length > 0 && (
-                  <div className="pt-2 border-t border-gray-50 flex items-center gap-2 flex-wrap text-xs">
-                    <span className="text-gray-400 flex items-center gap-1 text-[11px]">
+                  <div className="pt-2 border-t border-border flex items-center gap-2 flex-wrap text-xs">
+                    <span className="text-content-muted flex items-center gap-1 text-[11px]">
                       <LuLink className="w-3 h-3" /> Linked Tasks:
                     </span>
                     {risk.linkedTasks.map((t) => (
                       <span
                         key={t.taskId}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-50 border border-gray-200 rounded-md text-[11px] text-gray-700 font-medium"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-surface-muted border border-border rounded-md text-[11px] text-content font-medium"
                       >
                         {t.taskTitle || t.taskId}
                       </span>
@@ -421,7 +421,7 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
           {createError && (
             <div
               role="alert"
-              className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2"
+              className="p-3 text-xs text-red-700 bg-red-50 dark:bg-red-950/30 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-lg flex items-start gap-2"
             >
               <LuTriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{createError}</span>
@@ -429,7 +429,7 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">
+            <label className="block text-xs font-semibold text-content mb-1">
               Risk Title <span className="text-red-500">*</span>
             </label>
             <input
@@ -439,17 +439,17 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
               placeholder="e.g. Third-party payment gateway rate limiting"
               value={createTitle}
               onChange={(e) => setCreateTitle(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-3 py-2 text-sm bg-surface text-content placeholder:text-content-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Likelihood</label>
+              <label className="block text-xs font-semibold text-content mb-1">Likelihood</label>
               <select
                 value={createLikelihood}
                 onChange={(e) => setCreateLikelihood(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="LOW">Low</option>
                 <option value="MEDIUM">Medium</option>
@@ -458,11 +458,11 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Impact</label>
+              <label className="block text-xs font-semibold text-content mb-1">Impact</label>
               <select
                 value={createImpact}
                 onChange={(e) => setCreateImpact(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="LOW">Low</option>
                 <option value="MEDIUM">Medium</option>
@@ -472,14 +472,14 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">
+            <label className="block text-xs font-semibold text-content mb-1">
               Risk Owner <span className="text-red-500">*</span>
             </label>
             <select
               required
               value={createOwnerId}
               onChange={(e) => setCreateOwnerId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             >
               <option value="">Select project member</option>
               {members.map((m) => (
@@ -491,32 +491,32 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Mitigation Plan</label>
+            <label className="block text-xs font-semibold text-content mb-1">Mitigation Plan</label>
             <textarea
               rows={3}
               placeholder="Action plan to prevent or address this risk..."
               value={createMitigation}
               onChange={(e) => setCreateMitigation(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+              className="w-full px-3 py-2 text-sm bg-surface text-content placeholder:text-content-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Description (Optional)</label>
+            <label className="block text-xs font-semibold text-content mb-1">Description (Optional)</label>
             <textarea
               rows={2}
               placeholder="Additional background and context..."
               value={createDesc}
               onChange={(e) => setCreateDesc(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+              className="w-full px-3 py-2 text-sm bg-surface text-content placeholder:text-content-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
             />
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
             <button
               type="button"
               onClick={() => setIsCreateOpen(false)}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted cursor-pointer"
             >
               Cancel
             </button>
@@ -541,7 +541,7 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
           {editError && (
             <div
               role="alert"
-              className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2"
+              className="p-3 text-xs text-red-700 bg-red-50 dark:bg-red-950/30 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-lg flex items-start gap-2"
             >
               <LuTriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{editError}</span>
@@ -549,7 +549,7 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">
+            <label className="block text-xs font-semibold text-content mb-1">
               Risk Title <span className="text-red-500">*</span>
             </label>
             <input
@@ -558,17 +558,17 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
               maxLength={500}
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-3 py-2 text-sm bg-surface text-content placeholder:text-content-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">State</label>
+              <label className="block text-xs font-semibold text-content mb-1">State</label>
               <select
                 value={editState}
                 onChange={(e) => setEditState(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="OPEN">Open</option>
                 <option value="MITIGATING">Mitigating</option>
@@ -577,11 +577,11 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Likelihood</label>
+              <label className="block text-xs font-semibold text-content mb-1">Likelihood</label>
               <select
                 value={editLikelihood}
                 onChange={(e) => setEditLikelihood(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="LOW">Low</option>
                 <option value="MEDIUM">Medium</option>
@@ -590,11 +590,11 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Impact</label>
+              <label className="block text-xs font-semibold text-content mb-1">Impact</label>
               <select
                 value={editImpact}
                 onChange={(e) => setEditImpact(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="LOW">Low</option>
                 <option value="MEDIUM">Medium</option>
@@ -604,14 +604,14 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">
+            <label className="block text-xs font-semibold text-content mb-1">
               Risk Owner <span className="text-red-500">*</span>
             </label>
             <select
               required
               value={editOwnerId}
               onChange={(e) => setEditOwnerId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             >
               <option value="">Select project member</option>
               {members.map((m) => (
@@ -623,30 +623,30 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Mitigation Plan</label>
+            <label className="block text-xs font-semibold text-content mb-1">Mitigation Plan</label>
             <textarea
               rows={3}
               value={editMitigation}
               onChange={(e) => setEditMitigation(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+              className="w-full px-3 py-2 text-sm bg-surface text-content placeholder:text-content-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Description</label>
+            <label className="block text-xs font-semibold text-content mb-1">Description</label>
             <textarea
               rows={2}
               value={editDesc}
               onChange={(e) => setEditDesc(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+              className="w-full px-3 py-2 text-sm bg-surface text-content placeholder:text-content-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
             />
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
             <button
               type="button"
               onClick={() => setEditingRisk(null)}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted cursor-pointer"
             >
               Cancel
             </button>
@@ -671,7 +671,7 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
           {linkError && (
             <div
               role="alert"
-              className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2"
+              className="p-3 text-xs text-red-700 bg-red-50 dark:bg-red-950/30 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-lg flex items-start gap-2"
             >
               <LuTriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{linkError}</span>
@@ -679,14 +679,14 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">
+            <label className="block text-xs font-semibold text-content mb-1">
               Select Task to Link <span className="text-red-500">*</span>
             </label>
             <select
               required
               value={selectedTaskId}
               onChange={(e) => setSelectedTaskId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             >
               <option value="">Select project task</option>
               {tasks.map((t) => (
@@ -697,11 +697,11 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
             </select>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
             <button
               type="button"
               onClick={() => setLinkingRisk(null)}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted cursor-pointer"
             >
               Cancel
             </button>
@@ -726,24 +726,24 @@ const ProjectRisksTab = ({ projectId, canManage = false }) => {
           {archiveError && (
             <div
               role="alert"
-              className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2"
+              className="p-3 text-xs text-red-700 bg-red-50 dark:bg-red-950/30 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-lg flex items-start gap-2"
             >
               <LuTriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{archiveError}</span>
             </div>
           )}
 
-          <p className="text-xs text-gray-600 leading-relaxed">
+          <p className="text-xs text-content-muted leading-relaxed">
             Are you sure you want to archive{' '}
-            <strong className="text-gray-900">{riskToArchive?.title}</strong>? This item will be
+            <strong className="text-content">{riskToArchive?.title}</strong>? This item will be
             removed from the active risk register.
           </p>
 
-          <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
             <button
               type="button"
               onClick={() => setRiskToArchive(null)}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted cursor-pointer"
             >
               Cancel
             </button>

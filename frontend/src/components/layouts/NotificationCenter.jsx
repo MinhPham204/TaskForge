@@ -122,14 +122,14 @@ const NotificationCenter = () => {
           role="dialog"
           aria-label="Notification Center"
           aria-modal="false"
-          className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden flex flex-col max-h-[32rem]"
+          className="absolute right-0 mt-2 w-80 sm:w-96 bg-surface border border-border text-content rounded-xl shadow-xl z-50 overflow-hidden flex flex-col max-h-[32rem]"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/75">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-surface-muted/60">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
+              <h3 className="text-sm font-semibold text-content">Notifications</h3>
               {unreadCount > 0 && (
-                <span className="px-2 py-0.5 text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-full">
+                <span className="px-2 py-0.5 text-[11px] font-medium bg-primary/10 text-primary border border-primary/20 rounded-full">
                   {unreadCount} unread
                 </span>
               )}
@@ -138,34 +138,34 @@ const NotificationCenter = () => {
               type="button"
               onClick={() => setIsOpen(false)}
               aria-label="Close notifications panel"
-              className="text-gray-400 hover:text-gray-600 p-1 rounded-md cursor-pointer"
+              className="text-content-muted hover:text-content hover:bg-surface-muted p-1 rounded-md transition-colors cursor-pointer"
             >
               <LuX className="w-4 h-4" />
             </button>
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+          <div className="flex-1 overflow-y-auto divide-y divide-border">
             {isLoading ? (
               <div className="p-8 text-center space-y-2">
                 <div className="inline-block w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                <p className="text-xs text-gray-500">Loading notifications...</p>
+                <p className="text-xs text-content-muted">Loading notifications...</p>
               </div>
             ) : isError ? (
               <div className="p-6 text-center space-y-3">
-                <div className="w-10 h-10 mx-auto rounded-full bg-red-50 text-red-600 flex items-center justify-center">
+                <div className="w-10 h-10 mx-auto rounded-full bg-danger-surface text-danger-content flex items-center justify-center">
                   <LuTriangleAlert className="w-5 h-5" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-900">Failed to load notifications</p>
-                  <p className="text-[11px] text-gray-500">
+                  <p className="text-xs font-medium text-content">Failed to load notifications</p>
+                  <p className="text-[11px] text-content-muted">
                     {error?.data?.message || 'Could not fetch your inbox at this time.'}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => refetch()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary bg-primary/10 border border-primary/20 rounded-lg hover:bg-primary/20 cursor-pointer"
                 >
                   <LuRotateCcw className="w-3.5 h-3.5" />
                   Retry
@@ -173,11 +173,11 @@ const NotificationCenter = () => {
               </div>
             ) : notifications.length === 0 ? (
               <div className="p-8 text-center space-y-2">
-                <div className="w-10 h-10 mx-auto rounded-full bg-gray-50 text-gray-400 flex items-center justify-center">
+                <div className="w-10 h-10 mx-auto rounded-full bg-surface-muted text-content-muted flex items-center justify-center">
                   <LuCheckCheck className="w-5 h-5" />
                 </div>
-                <p className="text-xs font-medium text-gray-900">All caught up!</p>
-                <p className="text-[11px] text-gray-500">
+                <p className="text-xs font-medium text-content">All caught up!</p>
+                <p className="text-[11px] text-content-muted">
                   No notifications in this workspace.
                 </p>
               </div>
@@ -190,8 +190,8 @@ const NotificationCenter = () => {
                 return (
                   <div
                     key={notification.id}
-                    className={`p-3.5 transition-colors flex items-start gap-3 hover:bg-gray-50/80 ${
-                      isUnread ? 'bg-blue-50/30' : 'bg-white'
+                    className={`p-3.5 transition-colors flex items-start gap-3 hover:bg-surface-muted/60 ${
+                      isUnread ? 'bg-primary/5' : 'bg-surface'
                     }`}
                   >
                     {/* Unread indicator */}
@@ -207,10 +207,10 @@ const NotificationCenter = () => {
                     {/* Content */}
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="inline-block text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-1.5 py-0.5 rounded bg-gray-100">
+                        <span className="inline-block text-[10px] font-semibold uppercase tracking-wider text-content-muted px-1.5 py-0.5 rounded bg-surface-muted border border-border/50">
                           {notification.typeCode?.replace(/_/g, ' ') || 'Notification'}
                         </span>
-                        <span className="text-[10px] text-gray-400 shrink-0">
+                        <span className="text-[10px] text-content-muted/80 shrink-0">
                           {new Date(notification.createdAt).toLocaleDateString(undefined, {
                             month: 'short',
                             day: 'numeric',
@@ -222,7 +222,7 @@ const NotificationCenter = () => {
 
                       <p
                         className={`text-xs leading-snug break-words ${
-                          isUnread ? 'text-gray-900 font-medium' : 'text-gray-600'
+                          isUnread ? 'text-content font-medium' : 'text-content-muted'
                         }`}
                       >
                         {formatNotificationMessage(notification)}
@@ -244,7 +244,7 @@ const NotificationCenter = () => {
                           type="button"
                           onClick={(e) => handleToggleRead(notification, e)}
                           disabled={isMarkingRead || isMarkingUnread}
-                          className="text-[11px] text-gray-500 hover:text-gray-800 cursor-pointer inline-flex items-center gap-1 ml-auto disabled:opacity-50"
+                          className="text-[11px] text-content-muted hover:text-content cursor-pointer inline-flex items-center gap-1 ml-auto disabled:opacity-50"
                         >
                           {isUnread ? (
                             <>

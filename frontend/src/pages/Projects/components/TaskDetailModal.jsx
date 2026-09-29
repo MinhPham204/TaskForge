@@ -364,9 +364,9 @@ const TaskDetailModal = ({
           )}
 
           {/* Top Status and Actions Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-surface-muted p-3 rounded-xl border border-border">
             <div className="flex items-center gap-2">
-              <label htmlFor="transition-status" className="text-xs font-semibold text-gray-700">
+              <label htmlFor="transition-status" className="text-xs font-semibold text-content">
                 Status:
               </label>
               <select
@@ -374,7 +374,7 @@ const TaskDetailModal = ({
                 value={selectedStatusId}
                 onChange={(e) => setSelectedStatusId(e.target.value)}
                 disabled={isTransitioning}
-                className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-primary"
+                className="text-xs border border-border rounded px-2 py-1 bg-surface text-content focus:ring-1 focus:ring-primary"
               >
                 {statuses.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -404,7 +404,7 @@ const TaskDetailModal = ({
               <button
                 type="button"
                 onClick={() => onEditTask?.(task)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-content-muted bg-surface border border-border rounded hover:text-content hover:bg-surface-muted cursor-pointer"
               >
                 <LuPencil className="w-3.5 h-3.5" />
                 Edit
@@ -414,7 +414,7 @@ const TaskDetailModal = ({
                 <button
                   type="button"
                   onClick={() => setConfirmArchive(true)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-white border border-red-200 rounded hover:bg-red-50 cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-surface dark:bg-rose-950/20 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-rose-950/40 cursor-pointer"
                 >
                   <LuTrash2 className="w-3.5 h-3.5" />
                   Archive
@@ -425,33 +425,33 @@ const TaskDetailModal = ({
 
           {/* Metadata Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-            <div className="p-3 bg-white border border-gray-200 rounded-lg">
-              <span className="text-gray-500 block mb-1">Owning Team</span>
-              <span className="font-semibold text-gray-800">
+            <div className="p-3 bg-surface border border-border rounded-xl">
+              <span className="text-content-muted block mb-1">Owning Team</span>
+              <span className="font-semibold text-content">
                 {task.owningTeamName || task.owningTeamId}
               </span>
             </div>
-            <div className="p-3 bg-white border border-gray-200 rounded-lg">
-              <span className="text-gray-500 block mb-1">Due Date</span>
-              <span className="font-semibold text-gray-800">
+            <div className="p-3 bg-surface border border-border rounded-xl">
+              <span className="text-content-muted block mb-1">Due Date</span>
+              <span className="font-semibold text-content">
                 {task.dueAt ? new Date(task.dueAt).toLocaleDateString() : 'None'}
               </span>
             </div>
-            <div className="p-3 bg-white border border-gray-200 rounded-lg">
-              <span className="text-gray-500 block mb-1">Effective Progress</span>
+            <div className="p-3 bg-surface border border-border rounded-xl">
+              <span className="text-content-muted block mb-1">Effective Progress</span>
               <div className="flex items-center gap-2 mt-1">
-                <div className="flex-1 bg-gray-200 rounded-full h-2">
+                <div className="flex-1 bg-surface-muted rounded-full h-2 overflow-hidden border border-border/40">
                   <div
                     className="bg-primary h-2 rounded-full transition-all"
                     style={{ width: `${task.effectiveProgress}%` }}
                   />
                 </div>
-                <span className="font-semibold text-gray-800">{task.effectiveProgress}%</span>
+                <span className="font-semibold text-content">{task.effectiveProgress}%</span>
               </div>
             </div>
-            <div className="p-3 bg-white border border-gray-200 rounded-lg">
-              <span className="text-gray-500 block mb-1">Approval Required</span>
-              <span className="font-semibold text-gray-800">
+            <div className="p-3 bg-surface border border-border rounded-xl">
+              <span className="text-content-muted block mb-1">Approval Required</span>
+              <span className="font-semibold text-content">
                 {task.requiresApproval ? 'Yes' : 'No'}
               </span>
             </div>
@@ -459,9 +459,9 @@ const TaskDetailModal = ({
 
           {/* Description */}
           {task.description && (
-            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-              <h4 className="text-xs font-semibold text-gray-700 mb-1">Description</h4>
-              <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
+            <div className="p-4 bg-surface-muted border border-border rounded-xl">
+              <h4 className="text-xs font-semibold text-content mb-1">Description</h4>
+              <p className="text-xs text-content-muted whitespace-pre-wrap leading-relaxed">
                 {task.description}
               </p>
             </div>
@@ -469,9 +469,9 @@ const TaskDetailModal = ({
 
           {/* Manual Progress Slider if No Checklist */}
           {!hasChecklist && !isCompleted && (
-            <div className="p-4 bg-white border border-gray-200 rounded-lg">
+            <div className="p-4 bg-surface border border-border rounded-xl">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-gray-700">
+                <span className="text-xs font-semibold text-content">
                   Manual Progress: {progressInput}%
                 </span>
                 <button
@@ -489,15 +489,15 @@ const TaskDetailModal = ({
                 max="100"
                 value={progressInput}
                 onChange={(e) => setProgressInput(Number(e.target.value))}
-                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary"
+                className="w-full h-1.5 bg-surface-muted rounded-lg appearance-none cursor-pointer accent-primary"
               />
             </div>
           )}
 
           {/* Checklist Section */}
-          <div className="p-4 bg-white border border-gray-200 rounded-lg space-y-3">
+          <div className="p-4 bg-surface border border-border rounded-lg space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
+              <h4 className="text-xs font-semibold text-content flex items-center gap-1.5">
                 <LuCircleCheck className="w-4 h-4 text-primary" />
                 Checklist ({task.checklist?.filter((c) => c.completedAt).length || 0}/
                 {task.checklist?.length || 0})
@@ -510,7 +510,7 @@ const TaskDetailModal = ({
                 return (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between p-2 rounded hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-colors"
+                    className="flex items-center justify-between p-2 rounded hover:bg-surface-muted border border-transparent hover:border-border transition-colors"
                   >
                     <label className="flex items-center gap-2.5 cursor-pointer text-xs">
                       <input
@@ -518,18 +518,18 @@ const TaskDetailModal = ({
                         checked={isItemDone}
                         disabled={isCompleted}
                         onChange={() => handleToggleChecklist(item.id, isItemDone)}
-                        className="rounded border-gray-300 text-primary focus:ring-primary disabled:opacity-50"
+                        className="rounded border-border text-primary focus:ring-primary disabled:opacity-50"
                       />
                       <span
                         className={
-                          isItemDone ? 'line-through text-gray-400' : 'text-gray-800 font-medium'
+                          isItemDone ? 'line-through text-content-muted' : 'text-content font-medium'
                         }
                       >
                         {item.text}
                       </span>
                     </label>
                     {item.completedAt && (
-                      <span className="text-[10px] text-gray-400">
+                      <span className="text-[10px] text-content-muted">
                         {new Date(item.completedAt).toLocaleDateString()}
                       </span>
                     )}
@@ -538,7 +538,7 @@ const TaskDetailModal = ({
               })}
 
               {!hasChecklist && (
-                <p className="text-xs text-gray-400 italic">No checklist items yet.</p>
+                <p className="text-xs text-content-muted italic">No checklist items yet.</p>
               )}
             </div>
 
@@ -550,7 +550,7 @@ const TaskDetailModal = ({
                   value={newChecklistText}
                   onChange={(e) => setNewChecklistText(e.target.value)}
                   placeholder="Add a checklist item..."
-                  className="flex-1 px-3 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="flex-1 px-3 py-1.5 text-xs border border-border bg-surface text-content placeholder:text-content-muted rounded focus:outline-none focus:ring-1 focus:ring-primary"
                 />
                 <button
                   type="submit"
@@ -565,8 +565,8 @@ const TaskDetailModal = ({
           </div>
 
           {/* Assignees Section */}
-          <div className="p-4 bg-white border border-gray-200 rounded-lg space-y-3">
-            <h4 className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
+          <div className="p-4 bg-surface border border-border rounded-lg space-y-3">
+            <h4 className="text-xs font-semibold text-content flex items-center gap-1.5">
               <LuUsers className="w-4 h-4 text-primary" />
               Assignees ({task.assigneeProjectMembershipIds?.length || 0})
             </h4>
@@ -577,7 +577,7 @@ const TaskDetailModal = ({
                 return (
                   <span
                     key={id}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-blue-50 text-blue-800 border border-blue-200 rounded-md"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-primary/10 text-primary border border-primary/20 rounded-md"
                   >
                     <span>{member?.user?.name || member?.user?.email || id}</span>
                     {canManage && !isCompleted && (
@@ -585,7 +585,7 @@ const TaskDetailModal = ({
                         type="button"
                         onClick={() => handleUnassign(id)}
                         disabled={isUnassigning}
-                        className="text-blue-600 hover:text-red-600 cursor-pointer"
+                        className="text-primary hover:text-red-500 cursor-pointer"
                         title="Remove assignee"
                       >
                         <LuX className="w-3.5 h-3.5" />
@@ -597,7 +597,7 @@ const TaskDetailModal = ({
 
               {(!task.assigneeProjectMembershipIds ||
                 task.assigneeProjectMembershipIds.length === 0) && (
-                <p className="text-xs text-gray-400 italic">No assignees assigned.</p>
+                <p className="text-xs text-content-muted italic">No assignees assigned.</p>
               )}
             </div>
 
@@ -638,9 +638,9 @@ const TaskDetailModal = ({
 
           {/* Approval Workflow & History */}
           {(task.requiresApproval || (task.approvals && task.approvals.length > 0)) && (
-            <div className="p-4 bg-white border border-gray-200 rounded-lg space-y-3">
+            <div className="p-4 bg-surface border border-border rounded-lg space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
+                <h4 className="text-xs font-semibold text-content flex items-center gap-1.5">
                   <LuShieldCheck className="w-4 h-4 text-primary" />
                   Approval Workflow
                 </h4>
@@ -675,7 +675,7 @@ const TaskDetailModal = ({
                       <button
                         type="button"
                         onClick={() => setApprovalActionModal('cancel')}
-                        className="px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded hover:bg-gray-200 cursor-pointer"
+                        className="px-2.5 py-1 text-xs font-medium text-content bg-surface-muted border border-border rounded hover:bg-surface cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -685,17 +685,17 @@ const TaskDetailModal = ({
               </div>
 
               {pendingApproval && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs space-y-1">
-                  <div className="flex items-center justify-between font-semibold text-amber-900">
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs space-y-1">
+                  <div className="flex items-center justify-between font-semibold text-amber-600 dark:text-amber-400">
                     <span>Active Cycle #{pendingApproval.requestNumber}</span>
                     <ApprovalStateBadge state={pendingApproval.state} />
                   </div>
                   {pendingApproval.requestReason && (
-                    <p className="text-amber-800">
+                    <p className="text-amber-700 dark:text-amber-300">
                       Reason: <span className="font-normal">{pendingApproval.requestReason}</span>
                     </p>
                   )}
-                  <p className="text-[10px] text-amber-600">
+                  <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80">
                     Requested on {new Date(pendingApproval.requestedAt).toLocaleString()}
                   </p>
                 </div>
@@ -704,9 +704,9 @@ const TaskDetailModal = ({
               {/* History Table */}
               {task.approvals?.length > 0 && (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border border-gray-100">
+                  <table className="w-full text-left text-xs border border-border">
                     <thead>
-                      <tr className="bg-gray-50 text-gray-500 border-b border-gray-100">
+                      <tr className="bg-surface-muted text-content-muted border-b border-border">
                         <th className="py-1.5 px-2">Cycle</th>
                         <th className="py-1.5 px-2">State</th>
                         <th className="py-1.5 px-2">Request Reason</th>
@@ -715,19 +715,19 @@ const TaskDetailModal = ({
                         <th className="py-1.5 px-2">Resolved At</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-border">
                       {task.approvals.map((a) => (
-                        <tr key={a.id} className="hover:bg-gray-50">
-                          <td className="py-1.5 px-2 font-medium">#{a.requestNumber}</td>
+                        <tr key={a.id} className="hover:bg-surface-muted">
+                          <td className="py-1.5 px-2 font-medium text-content">#{a.requestNumber}</td>
                           <td className="py-1.5 px-2">
                             <ApprovalStateBadge state={a.state} />
                           </td>
-                          <td className="py-1.5 px-2 text-gray-600">{a.requestReason || '—'}</td>
-                          <td className="py-1.5 px-2 text-gray-600">{a.resolutionReason || '—'}</td>
-                          <td className="py-1.5 px-2 text-gray-400 text-[11px]">
+                          <td className="py-1.5 px-2 text-content-muted">{a.requestReason || '—'}</td>
+                          <td className="py-1.5 px-2 text-content-muted">{a.resolutionReason || '—'}</td>
+                          <td className="py-1.5 px-2 text-content-muted text-[11px]">
                             {new Date(a.requestedAt).toLocaleDateString()}
                           </td>
-                          <td className="py-1.5 px-2 text-gray-400 text-[11px]">
+                          <td className="py-1.5 px-2 text-content-muted text-[11px]">
                             {a.resolvedAt ? new Date(a.resolvedAt).toLocaleDateString() : '—'}
                           </td>
                         </tr>
@@ -740,9 +740,9 @@ const TaskDetailModal = ({
           )}
 
           {/* Attachments Section */}
-          <div className="p-4 bg-white border border-gray-200 rounded-lg space-y-3">
+          <div className="p-4 bg-surface border border-border rounded-lg space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
+              <h4 className="text-xs font-semibold text-content flex items-center gap-1.5">
                 <LuPaperclip className="w-4 h-4 text-primary" />
                 Attachments ({attachments.length})
               </h4>
@@ -751,7 +751,7 @@ const TaskDetailModal = ({
             {attachmentError && (
               <div
                 role="alert"
-                className="p-2.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg"
+                className="p-2.5 text-xs text-red-700 bg-red-50 dark:bg-red-950/30 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-lg"
               >
                 {attachmentError}
               </div>
@@ -760,22 +760,22 @@ const TaskDetailModal = ({
             {/* List of Attachments */}
             <div className="space-y-2">
               {isLoadingAttachments ? (
-                <p className="text-xs text-gray-400 py-2">Loading attachments...</p>
+                <p className="text-xs text-content-muted py-2">Loading attachments...</p>
               ) : attachments.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No attachments attached to this task.</p>
+                <p className="text-xs text-content-muted italic">No attachments attached to this task.</p>
               ) : (
                 attachments.map((att) => (
                   <div
                     key={att.id}
-                    className="flex items-center justify-between p-2.5 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100/70 transition-colors text-xs"
+                    className="flex items-center justify-between p-2.5 rounded-lg bg-surface-muted border border-border hover:bg-surface transition-colors text-xs"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <LuFileText className="w-4 h-4 text-primary shrink-0" />
                       <div className="min-w-0">
-                        <p className="font-medium text-gray-800 truncate max-w-xs sm:max-w-md">
+                        <p className="font-medium text-content truncate max-w-xs sm:max-w-md">
                           {att.originalName}
                         </p>
-                        <p className="text-[10px] text-gray-400">
+                        <p className="text-[10px] text-content-muted">
                           {att.mediaType} &bull;{' '}
                           {att.sizeBytes > 1024 * 1024
                             ? `${(att.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
@@ -792,7 +792,7 @@ const TaskDetailModal = ({
                         disabled={downloadingAttachmentId === att.id}
                         title="Download attachment"
                         aria-label={`Download ${att.originalName}`}
-                        className="p-1.5 text-gray-600 hover:text-primary rounded-md hover:bg-white cursor-pointer disabled:opacity-50"
+                        className="p-1.5 text-content-muted hover:text-primary rounded-md hover:bg-surface cursor-pointer disabled:opacity-50"
                       >
                         <LuDownload className="w-3.5 h-3.5" />
                       </button>
@@ -805,7 +805,7 @@ const TaskDetailModal = ({
                         }}
                         title="Remove attachment"
                         aria-label={`Remove ${att.originalName}`}
-                        className="p-1.5 text-gray-600 hover:text-red-600 rounded-md hover:bg-white cursor-pointer"
+                        className="p-1.5 text-content-muted hover:text-red-500 rounded-md hover:bg-surface cursor-pointer"
                       >
                         <LuTrash2 className="w-3.5 h-3.5" />
                       </button>
@@ -824,7 +824,7 @@ const TaskDetailModal = ({
                   accept=".pdf,.png,.jpg,.jpeg,.txt"
                   onChange={handleAttachmentFileChange}
                   disabled={isUploadingAttachment}
-                  className="flex-1 text-xs text-gray-500 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 file:cursor-pointer border border-gray-300 rounded p-1"
+                  className="flex-1 text-xs text-content-muted file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 file:cursor-pointer border border-border rounded p-1"
                 />
                 <button
                   type="submit"
@@ -848,8 +848,8 @@ const TaskDetailModal = ({
           </div>
 
           {/* Comments Section */}
-          <div className="p-4 bg-white border border-gray-200 rounded-lg space-y-4">
-            <h4 className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
+          <div className="p-4 bg-surface border border-border rounded-lg space-y-4">
+            <h4 className="text-xs font-semibold text-content flex items-center gap-1.5">
               <LuMessageSquare className="w-4 h-4 text-primary" />
               Comments ({task.comments?.length || 0})
             </h4>
@@ -863,9 +863,9 @@ const TaskDetailModal = ({
                 const isEditingThis = editingCommentId === comment.id;
 
                 return (
-                  <div key={comment.id} className="p-3 bg-gray-50 rounded-lg text-xs space-y-1.5">
-                    <div className="flex items-center justify-between text-gray-500 text-[11px]">
-                      <span className="font-semibold text-gray-700">
+                  <div key={comment.id} className="p-3 bg-surface-muted rounded-lg text-xs space-y-1.5">
+                    <div className="flex items-center justify-between text-content-muted text-[11px]">
+                      <span className="font-semibold text-content">
                         {authorMember?.user?.name ||
                           authorMember?.user?.email ||
                           comment.authorProjectMembershipId}
@@ -873,7 +873,7 @@ const TaskDetailModal = ({
                       <div className="flex items-center gap-2">
                         <span>{new Date(comment.createdAt).toLocaleString()}</span>
                         {comment.editedAt && (
-                          <span className="text-gray-400 text-[10px]">(edited)</span>
+                          <span className="text-content-muted text-[10px]">(edited)</span>
                         )}
                         {!isEditingThis && (
                           <button
@@ -882,7 +882,7 @@ const TaskDetailModal = ({
                               setEditingCommentId(comment.id);
                               setEditCommentBody(comment.body);
                             }}
-                            className="text-gray-500 hover:text-primary cursor-pointer"
+                            className="text-content-muted hover:text-primary cursor-pointer"
                           >
                             <LuPencil className="w-3 h-3" />
                           </button>
@@ -890,9 +890,9 @@ const TaskDetailModal = ({
                         <button
                           type="button"
                           onClick={() => handleDeleteComment(comment.id)}
-                          className="text-gray-500 hover:text-red-600 cursor-pointer"
+                          className="text-content-muted hover:text-red-500 cursor-pointer"
                         >
-                          <LuTrash2 className="w-3 h-3" />
+                          <LuTrash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -903,13 +903,13 @@ const TaskDetailModal = ({
                           rows={2}
                           value={editCommentBody}
                           onChange={(e) => setEditCommentBody(e.target.value)}
-                          className="w-full p-2 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full p-2 text-xs border border-border rounded bg-surface text-content focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
                             onClick={() => setEditingCommentId(null)}
-                            className="px-2.5 py-1 text-[11px] font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 cursor-pointer"
+                            className="px-2.5 py-1 text-[11px] font-medium text-content bg-surface border border-border rounded hover:bg-surface-muted cursor-pointer"
                           >
                             Cancel
                           </button>
@@ -923,14 +923,14 @@ const TaskDetailModal = ({
                         </div>
                       </div>
                     ) : (
-                      <p className="text-gray-800 whitespace-pre-wrap">{comment.body}</p>
+                      <p className="text-content whitespace-pre-wrap">{comment.body}</p>
                     )}
                   </div>
                 );
               })}
 
               {(!task.comments || task.comments.length === 0) && (
-                <p className="text-xs text-gray-400 italic">No comments yet.</p>
+                <p className="text-xs text-content-muted italic">No comments yet.</p>
               )}
             </div>
 
@@ -941,7 +941,7 @@ const TaskDetailModal = ({
                 value={newCommentBody}
                 onChange={(e) => setNewCommentBody(e.target.value)}
                 placeholder="Write a comment..."
-                className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary"
+                className="flex-1 px-3 py-2 text-xs border border-border bg-surface text-content placeholder:text-content-muted rounded-lg focus:outline-none focus:ring-1 focus:ring-primary"
               />
               <button
                 type="submit"
@@ -963,7 +963,7 @@ const TaskDetailModal = ({
         title={`Confirm Approval ${approvalActionModal?.toUpperCase()}`}
       >
         <div className="space-y-4">
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-content-muted">
             {approvalActionModal === 'request' && 'Provide an optional reason for requesting approval:'}
             {approvalActionModal === 'approve' && 'Provide an optional reason for approving this task:'}
             {approvalActionModal === 'reject' && 'Provide an optional reason for rejecting this request:'}
@@ -979,14 +979,14 @@ const TaskDetailModal = ({
                 ? 'Reason for cancelling (required)...'
                 : 'Reason (optional)...'
             }
-            className="w-full p-2.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            className="w-full p-2.5 text-xs border border-border bg-surface text-content placeholder:text-content-muted rounded-lg focus:outline-none focus:ring-1 focus:ring-primary resize-none"
           />
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
             <button
               type="button"
               onClick={() => setApprovalActionModal(null)}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted cursor-pointer"
             >
               Back
             </button>
@@ -1017,14 +1017,14 @@ const TaskDetailModal = ({
         title="Archive Task"
       >
         <div className="space-y-4">
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-content-muted">
             Are you sure you want to archive <strong>{task?.title}</strong>? This will soft-archive the task and remove it from active boards and queues.
           </p>
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
             <button
               type="button"
               onClick={() => setConfirmArchive(false)}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted cursor-pointer"
             >
               Cancel
             </button>
@@ -1050,20 +1050,20 @@ const TaskDetailModal = ({
           {unlinkError && (
             <div
               role="alert"
-              className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg"
+              className="p-3 text-xs text-red-700 bg-red-50 dark:bg-red-950/30 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-lg"
             >
               {unlinkError}
             </div>
           )}
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-content-muted">
             Are you sure you want to remove <strong>{attachmentToUnlink?.originalName}</strong> from this task? The attachment relation will be soft-removed.
           </p>
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
             <button
               type="button"
               onClick={() => setAttachmentToUnlink(null)}
               disabled={isUnlinkingAttachment}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted cursor-pointer disabled:opacity-50"
             >
               Cancel
             </button>

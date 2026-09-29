@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useId } from 'react';
+import React, { useEffect, useId } from 'react';
 import { LuX } from 'react-icons/lu';
 
 const Modal = ({
@@ -38,17 +38,17 @@ const Modal = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`w-full ${maxWidth} bg-white rounded-lg shadow-xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150`}
+        className={`w-full ${maxWidth} bg-surface text-content rounded-xl shadow-xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-150`}
       >
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h2 id={titleId} className="text-lg font-semibold text-gray-900">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <h2 id={titleId} className="text-lg font-semibold text-content">
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close dialog"
-            className="rounded-md p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary transition-colors cursor-pointer"
+            className="rounded-md p-1.5 text-content-muted hover:text-content hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-primary transition-colors cursor-pointer"
           >
             <LuX className="w-5 h-5" />
           </button>

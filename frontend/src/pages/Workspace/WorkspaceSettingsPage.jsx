@@ -315,7 +315,7 @@ const WorkspaceSettingsPage = () => {
         <header className="border-b border-border/70 pb-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-semibold tracking-tight text-content sm:text-2xl">
+              <h1 className="text-2xl font-bold tracking-tight text-content sm:text-3xl">
                 {organization?.name || 'Workspace Settings'}
               </h1>
               <p className="mt-1 text-xs text-content-muted sm:text-sm">

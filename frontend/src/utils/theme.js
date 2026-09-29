@@ -43,5 +43,7 @@ export const resolveTheme = (preference, prefersDark) => {
 export const applyThemePreference = (preference) => {
   if (typeof document === 'undefined') return;
   const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
-  document.documentElement.dataset.theme = resolveTheme(preference, prefersDark);
+  const resolved = resolveTheme(preference, prefersDark);
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.classList.toggle('dark', resolved === 'dark');
 };

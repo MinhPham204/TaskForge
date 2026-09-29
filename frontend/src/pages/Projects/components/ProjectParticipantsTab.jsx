@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import Select from 'react-select';
 import {
   LuPlus,
@@ -169,11 +169,11 @@ const ProjectParticipantsTab = ({
   return (
     <div className="space-y-6">
       {/* 1. Participating Teams Section */}
-      <div className="bg-white border border-gray-100 rounded-lg p-6 shadow-xs">
-        <div className="flex items-center justify-between gap-4 mb-4 pb-3 border-b border-gray-100">
+      <div className="bg-surface border border-border rounded-xl p-5 shadow-xs">
+        <div className="flex items-center justify-between gap-4 mb-4 pb-3 border-b border-border">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Participating Teams</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <h2 className="text-base font-semibold text-content">Participating Teams</h2>
+            <p className="text-xs text-content-muted mt-0.5">
               Teams collaborating on this project. Project members must belong to at least one participating team.
             </p>
           </div>
@@ -185,7 +185,7 @@ const ProjectParticipantsTab = ({
                 setAddTeamError('');
                 setIsAddTeamOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-blue-700 text-white text-xs font-semibold rounded-md transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
             >
               <LuPlus className="w-3.5 h-3.5" />
               Add Team
@@ -204,14 +204,14 @@ const ProjectParticipantsTab = ({
             {projectTeams.map((pt) => (
               <div
                 key={pt.id}
-                className="border border-gray-100 rounded-lg p-4 bg-gray-50/50 flex items-start justify-between gap-3"
+                className="border border-border rounded-lg p-4 bg-surface-muted flex items-start justify-between gap-3"
               >
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900">{pt.name}</h3>
-                  <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                  <h3 className="text-sm font-semibold text-content">{pt.name}</h3>
+                  <p className="text-xs text-content-muted mt-1 line-clamp-2">
                     {pt.description || 'No description.'}
                   </p>
-                  <span className="text-[10px] text-gray-400 block mt-2">
+                  <span className="text-[10px] text-content-muted block mt-2">
                     Added {new Date(pt.addedAt).toLocaleDateString()}
                   </span>
                 </div>
@@ -223,7 +223,7 @@ const ProjectParticipantsTab = ({
                       setTeamToRemove(pt);
                     }}
                     aria-label={`Remove team ${pt.name}`}
-                    className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                    className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 rounded transition-colors cursor-pointer"
                   >
                     <LuTrash2 className="w-4 h-4" />
                   </button>
@@ -235,11 +235,11 @@ const ProjectParticipantsTab = ({
       </div>
 
       {/* 2. Project Members Section */}
-      <div className="bg-white border border-gray-100 rounded-lg p-6 shadow-xs">
-        <div className="flex items-center justify-between gap-4 mb-4 pb-3 border-b border-gray-100">
+      <div className="bg-surface border border-border rounded-xl p-5 shadow-xs">
+        <div className="flex items-center justify-between gap-4 mb-4 pb-3 border-b border-border">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Project Members</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <h2 className="text-base font-semibold text-content">Project Members</h2>
+            <p className="text-xs text-content-muted mt-0.5">
               Qualified individual members holding Project Manager or Contributor roles.
             </p>
           </div>
@@ -253,7 +253,7 @@ const ProjectParticipantsTab = ({
                 setAddMemberError('');
                 setIsAddMemberOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-blue-700 text-white text-xs font-semibold rounded-md transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
             >
               <LuPlus className="w-3.5 h-3.5" />
               Add Member
@@ -271,7 +271,7 @@ const ProjectParticipantsTab = ({
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <tr className="border-b border-border text-xs font-semibold text-content-muted uppercase tracking-wider bg-surface-muted">
                   <th className="py-3 px-4">Member</th>
                   <th className="py-3 px-4">Project Role</th>
                   <th className="py-3 px-4">Organization Role</th>
@@ -279,21 +279,21 @@ const ProjectParticipantsTab = ({
                   {canManage && <th className="py-3 px-4 text-right">Actions</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-border">
                 {projectMembers.map((pm) => (
-                  <tr key={pm.organizationMembershipId} className="hover:bg-gray-50/60 transition-colors">
+                  <tr key={pm.organizationMembershipId} className="hover:bg-surface-muted transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
                         <img
                           src={pm.user?.profileImageUrl || '/default-avatar.png'}
                           alt=""
-                          className="w-9 h-9 rounded-full object-cover bg-gray-200 border border-gray-100"
+                          className="w-9 h-9 rounded-full object-cover bg-surface-muted border border-border"
                         />
                         <div>
-                          <p className="font-medium text-gray-900 text-sm">
+                          <p className="font-medium text-content text-sm">
                             {pm.user?.name || 'Unnamed Member'}
                           </p>
-                          <p className="text-xs text-gray-500">{pm.user?.email || '—'}</p>
+                          <p className="text-xs text-content-muted">{pm.user?.email || '—'}</p>
                         </div>
                       </div>
                     </td>
@@ -301,8 +301,8 @@ const ProjectParticipantsTab = ({
                       <span
                         className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded-full ${
                           pm.role === 'PROJECT_MANAGER'
-                            ? 'bg-blue-50 text-primary border border-blue-200'
-                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            ? 'bg-blue-50 text-primary border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900'
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900'
                         }`}
                       >
                         {pm.role === 'PROJECT_MANAGER' ? (
@@ -316,10 +316,10 @@ const ProjectParticipantsTab = ({
                         )}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-xs text-gray-600">
+                    <td className="py-3 px-4 text-xs text-content-muted">
                       {pm.organizationRole || 'MEMBER'}
                     </td>
-                    <td className="py-3 px-4 text-xs text-gray-500">
+                    <td className="py-3 px-4 text-xs text-content-muted">
                       {pm.addedAt ? new Date(pm.addedAt).toLocaleDateString() : '—'}
                     </td>
                     {canManage && (
@@ -331,7 +331,7 @@ const ProjectParticipantsTab = ({
                             setMemberToRemove(pm);
                           }}
                           aria-label={`Remove ${pm.user?.name || 'member'} from project`}
-                          className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                          className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md transition-colors cursor-pointer"
                         >
                           <LuTrash2 className="w-4 h-4" />
                         </button>
@@ -353,16 +353,16 @@ const ProjectParticipantsTab = ({
       >
         <form onSubmit={handleAddTeamSubmit} className="space-y-4">
           {addTeamError && (
-            <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">
+            <div role="alert" className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-md text-xs text-red-700 dark:text-red-300">
               {addTeamError}
             </div>
           )}
           <div>
-            <label htmlFor="team-select" className="block text-xs font-semibold text-gray-700 mb-1">
+            <label htmlFor="team-select" className="block text-xs font-semibold text-content mb-1">
               Select Team <span className="text-red-500">*</span>
             </label>
             {availableTeamsToAdd.length === 0 ? (
-              <p className="text-xs text-gray-500 italic p-3 bg-gray-50 border rounded-md">
+              <p className="text-xs text-content-muted italic p-3 bg-surface-muted border border-border rounded-md">
                 All active workspace teams are already participating in this project.
               </p>
             ) : (
@@ -371,7 +371,7 @@ const ProjectParticipantsTab = ({
                 value={selectedTeamId}
                 onChange={(e) => setSelectedTeamId(e.target.value)}
                 required
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
               >
                 <option value="">-- Select an active workspace team --</option>
                 {availableTeamsToAdd.map((t) => (
@@ -382,19 +382,19 @@ const ProjectParticipantsTab = ({
               </select>
             )}
           </div>
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
             <button
               type="button"
               onClick={() => setIsAddTeamOpen(false)}
               disabled={isAddingTeam}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-md hover:bg-surface-muted disabled:opacity-50 cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isAddingTeam || availableTeamsToAdd.length === 0}
-              className="px-4 py-2 text-xs font-medium text-white bg-primary rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {isAddingTeam ? 'Adding...' : 'Add Team'}
             </button>
@@ -410,19 +410,19 @@ const ProjectParticipantsTab = ({
       >
         <div className="space-y-4">
           {removeTeamError && (
-            <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">
+            <div role="alert" className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-md text-xs text-red-700 dark:text-red-300">
               {removeTeamError}
             </div>
           )}
-          <p className="text-sm text-gray-600 leading-relaxed">
-            Are you sure you want to remove <strong>{teamToRemove?.name}</strong> from this project? Removal is guarded: it will be rejected if it leaves members orphaned without another participating team, or if it is the project's final participating team.
+          <p className="text-sm text-content-muted leading-relaxed">
+            Are you sure you want to remove <strong className="text-content">{teamToRemove?.name}</strong> from this project? Removal is guarded: it will be rejected if it leaves members orphaned without another participating team, or if it is the project's final participating team.
           </p>
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
             <button
               type="button"
               onClick={() => setTeamToRemove(null)}
               disabled={isRemovingTeam}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-md hover:bg-surface-muted disabled:opacity-50 cursor-pointer"
             >
               Cancel
             </button>
@@ -446,12 +446,12 @@ const ProjectParticipantsTab = ({
       >
         <form onSubmit={handleAddMemberSubmit} className="space-y-4">
           {addMemberError && (
-            <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">
+            <div role="alert" className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-md text-xs text-red-700 dark:text-red-300">
               {addMemberError}
             </div>
           )}
           <div>
-            <label htmlFor="project-member-select" className="block text-xs font-semibold text-gray-700 mb-1">
+            <label htmlFor="project-member-select" className="block text-xs font-semibold text-content mb-1">
               Project Member <span className="text-red-500">*</span>
             </label>
             <Select
@@ -465,31 +465,31 @@ const ProjectParticipantsTab = ({
               noOptionsMessage={() => 'No eligible members found in participating teams'}
               formatOptionLabel={(option) => (
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{option.label}</p>
-                  <p className="text-xs text-gray-500">{option.email}{option.organizationRole ? ` · ${option.organizationRole}` : ''}</p>
+                  <p className="text-sm font-medium text-content">{option.label}</p>
+                  <p className="text-xs text-content-muted">{option.email}{option.organizationRole ? ` · ${option.organizationRole}` : ''}</p>
                 </div>
               )}
               classNamePrefix="project-member-picker"
             />
-            <p className="text-[11px] text-gray-500 mt-1">
+            <p className="text-[11px] text-content-muted mt-1">
               Only active members of a participating team are available. Add a team first if the person is not listed.
             </p>
           </div>
           <div>
-            <label htmlFor="member-role" className="block text-xs font-semibold text-gray-700 mb-1">
+            <label htmlFor="member-role" className="block text-xs font-semibold text-content mb-1">
               Project Role <span className="text-red-500">*</span>
             </label>
             <select
               id="member-role"
               value={memberRole}
               onChange={(e) => setMemberRole(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+              className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
             >
               <option value="CONTRIBUTOR">Contributor</option>
               <option value="PROJECT_MANAGER">Project Manager</option>
             </select>
           </div>
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
             <button
               type="button"
               onClick={() => {
@@ -497,14 +497,14 @@ const ProjectParticipantsTab = ({
                 setSelectedMember(null);
               }}
               disabled={isAddingMember}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-md hover:bg-surface-muted disabled:opacity-50 cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isAddingMember}
-              className="px-4 py-2 text-xs font-medium text-white bg-primary rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {isAddingMember ? 'Adding...' : 'Add Member'}
             </button>
@@ -520,19 +520,19 @@ const ProjectParticipantsTab = ({
       >
         <div className="space-y-4">
           {removeMemberError && (
-            <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">
+            <div role="alert" className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-md text-xs text-red-700 dark:text-red-300">
               {removeMemberError}
             </div>
           )}
-          <p className="text-sm text-gray-600 leading-relaxed">
-            Are you sure you want to remove <strong>{memberToRemove?.user?.name || 'this member'}</strong> from this project? Removal will be rejected if this is the last active Project Manager in an Active project.
+          <p className="text-sm text-content-muted leading-relaxed">
+            Are you sure you want to remove <strong className="text-content">{memberToRemove?.user?.name || 'this member'}</strong> from this project? Removal will be rejected if this is the last active Project Manager in an Active project.
           </p>
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
             <button
               type="button"
               onClick={() => setMemberToRemove(null)}
               disabled={isRemovingMember}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-md hover:bg-surface-muted disabled:opacity-50 cursor-pointer"
             >
               Cancel
             </button>

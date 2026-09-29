@@ -229,7 +229,7 @@ const TeamListPage = () => {
               </div>
             )}
             <div>
-              <label htmlFor="team-name" className="block text-xs font-semibold text-gray-700 mb-1">
+              <label htmlFor="team-name" className="block text-xs font-semibold text-content mb-1">
                 Team Name <span className="text-red-500">*</span>
               </label>
               <input
@@ -240,11 +240,11 @@ const TeamListPage = () => {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Frontend Engineering"
                 required
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                className="w-full px-3 py-2 text-sm bg-surface text-content placeholder:text-content-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
               />
             </div>
             <div>
-              <label htmlFor="team-desc" className="block text-xs font-semibold text-gray-700 mb-1">
+              <label htmlFor="team-desc" className="block text-xs font-semibold text-content mb-1">
                 Description (optional)
               </label>
               <textarea
@@ -254,15 +254,15 @@ const TeamListPage = () => {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe the primary role and responsibilities of this team..."
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary resize-none"
+                className="w-full px-3 py-2 text-sm bg-surface text-content placeholder:text-content-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary resize-none"
               />
             </div>
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
               <button
                 type="button"
                 onClick={handleCloseModal}
                 disabled={isCreating}
-                className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-md hover:bg-surface-muted disabled:opacity-50 cursor-pointer"
               >
                 Cancel
               </button>

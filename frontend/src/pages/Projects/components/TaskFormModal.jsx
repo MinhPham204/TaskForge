@@ -173,14 +173,14 @@ const TaskFormModal = ({
         {formError && (
           <div
             role="alert"
-            className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg"
+            className="p-3 text-xs text-red-700 bg-red-50 dark:bg-red-950/30 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-lg"
           >
             {formError}
           </div>
         )}
 
         <div>
-          <label htmlFor="task-title" className="block text-xs font-semibold text-gray-700 mb-1">
+          <label htmlFor="task-title" className="block text-xs font-semibold text-content mb-1">
             Task Title <span className="text-red-500">*</span>
           </label>
           <input
@@ -191,12 +191,12 @@ const TaskFormModal = ({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Implement user authentication workflow"
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            className="w-full px-3 py-2 text-sm bg-surface text-content placeholder:text-content-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
           />
         </div>
 
         <div>
-          <label htmlFor="task-desc" className="block text-xs font-semibold text-gray-700 mb-1">
+          <label htmlFor="task-desc" className="block text-xs font-semibold text-content mb-1">
             Description
           </label>
           <textarea
@@ -206,14 +206,14 @@ const TaskFormModal = ({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Detailed description, requirements, criteria..."
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+            className="w-full px-3 py-2 text-sm bg-surface text-content placeholder:text-content-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
           />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {(!isEditing || canManage) && (
             <div>
-              <label htmlFor="task-team" className="block text-xs font-semibold text-gray-700 mb-1">
+              <label htmlFor="task-team" className="block text-xs font-semibold text-content mb-1">
                 Owning Team <span className="text-red-500">*</span>
               </label>
               <select
@@ -222,7 +222,7 @@ const TaskFormModal = ({
                 value={owningTeamId}
                 onChange={(e) => setOwningTeamId(e.target.value)}
                 disabled={teams.length === 0}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
+                className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
               >
                 {teams.length === 0 ? (
                   <option value="">No participating teams available</option>
@@ -239,7 +239,7 @@ const TaskFormModal = ({
 
           {!isEditing && (
             <div>
-              <label htmlFor="task-status" className="block text-xs font-semibold text-gray-700 mb-1">
+              <label htmlFor="task-status" className="block text-xs font-semibold text-content mb-1">
                 Initial Status <span className="text-red-500">*</span>
               </label>
               <select
@@ -248,7 +248,7 @@ const TaskFormModal = ({
                 value={statusId}
                 onChange={(e) => setStatusId(e.target.value)}
                 disabled={statuses.length === 0}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
+                className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
               >
                 {statuses.length === 0 ? (
                   <option value="">No statuses available</option>
@@ -267,14 +267,14 @@ const TaskFormModal = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {(!isEditing || canManage) && (
             <div>
-              <label htmlFor="task-priority" className="block text-xs font-semibold text-gray-700 mb-1">
+              <label htmlFor="task-priority" className="block text-xs font-semibold text-content mb-1">
                 Priority
               </label>
               <select
                 id="task-priority"
                 value={priorityCode}
                 onChange={(e) => setPriorityCode(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 {PRIORITY_OPTIONS.map((p) => (
                   <option key={p.value} value={p.value}>
@@ -287,7 +287,7 @@ const TaskFormModal = ({
 
           {(!isEditing || canManage) && (
             <div>
-              <label htmlFor="task-due" className="block text-xs font-semibold text-gray-700 mb-1">
+              <label htmlFor="task-due" className="block text-xs font-semibold text-content mb-1">
                 Due Date
               </label>
               <input
@@ -295,7 +295,7 @@ const TaskFormModal = ({
                 type="date"
                 value={dueAt}
                 onChange={(e) => setDueAt(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
           )}
@@ -303,14 +303,14 @@ const TaskFormModal = ({
 
         {(!isEditing || canManage) && openMilestones.length > 0 && (
           <div>
-            <label htmlFor="task-milestone" className="block text-xs font-semibold text-gray-700 mb-1">
+            <label htmlFor="task-milestone" className="block text-xs font-semibold text-content mb-1">
               Milestone (Optional)
             </label>
             <select
               id="task-milestone"
               value={milestoneId}
               onChange={(e) => setMilestoneId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             >
               <option value="">No milestone assigned</option>
               {openMilestones.map((m) => (
@@ -323,15 +323,15 @@ const TaskFormModal = ({
         )}
 
         {canManage && (
-          <div className="pt-2 border-t border-gray-100 space-y-2">
+          <div className="pt-2 border-t border-border space-y-2">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={requiresApproval}
                 onChange={(e) => setRequiresApproval(e.target.checked)}
-                className="rounded border-gray-300 text-primary focus:ring-primary"
+                className="rounded border-border text-primary focus:ring-primary"
               />
-              <span className="text-xs font-medium text-gray-800">
+              <span className="text-xs font-medium text-content">
                 Requires approval before completion
               </span>
             </label>
@@ -340,7 +340,7 @@ const TaskFormModal = ({
               <div>
                 <label
                   htmlFor="task-approver"
-                  className="block text-xs font-semibold text-gray-700 mb-1"
+                  className="block text-xs font-semibold text-content mb-1"
                 >
                   Designated Approver (Optional)
                 </label>
@@ -348,7 +348,7 @@ const TaskFormModal = ({
                   id="task-approver"
                   value={approverMembershipId}
                   onChange={(e) => setApproverMembershipId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 >
                   <option value="">Any eligible Project Member (no self-approval)</option>
                   {members.map((m) => (
@@ -357,7 +357,7 @@ const TaskFormModal = ({
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-gray-500 mt-1">
+                <p className="text-[11px] text-content-muted mt-1">
                   Note: An approver cannot be the Task creator or an active assignee.
                 </p>
               </div>
@@ -365,11 +365,11 @@ const TaskFormModal = ({
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
+        <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+            className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted cursor-pointer"
           >
             Cancel
           </button>

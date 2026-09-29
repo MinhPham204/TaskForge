@@ -83,7 +83,7 @@ const Profile = () => {
   return (
     <AccountShell>
       <header className="border-b border-border/70 pb-4">
-        <h1 className="text-xl font-semibold tracking-tight text-content sm:text-2xl">Account</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-content sm:text-3xl">Account</h1>
         <p className="mt-1 text-xs text-content-muted sm:text-sm">Manage your personal profile details and security credentials.</p>
       </header>
 

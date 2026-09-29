@@ -108,26 +108,26 @@ const MyTasks = () => {
 
   return (
     <DashboardLayout activeMenu={activeTab === 'approvals' ? '/tasks/approval-queue' : '/tasks/my'}>
-      <div className="my-5 space-y-6">
+      <div className="space-y-6">
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Task Center</h2>
-            <p className="text-xs text-gray-500 mt-1">
+            <h1 className="text-2xl font-bold tracking-tight text-content sm:text-3xl">Task Center</h1>
+            <p className="mt-1 text-xs text-content-muted sm:text-sm">
               Track tasks assigned to you across projects and manage your pending approvals.
             </p>
           </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center border-b border-gray-200">
+        <div className="flex items-center border-b border-border">
           <button
             type="button"
             onClick={() => handleTabChange('assigned')}
             className={`inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors cursor-pointer ${
               activeTab === 'assigned'
                 ? 'border-primary text-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                : 'border-transparent text-content-muted hover:text-content'
             }`}
           >
             <LuClipboardCheck className="w-4 h-4" />
@@ -136,7 +136,7 @@ const MyTasks = () => {
               className={`ml-1 px-2 py-0.5 text-xs rounded-full ${
                 activeTab === 'assigned'
                   ? 'bg-primary text-white'
-                  : 'bg-gray-100 text-gray-700'
+                  : 'bg-surface-muted text-content-muted border border-border'
               }`}
             >
               {myTasks.length}
@@ -149,7 +149,7 @@ const MyTasks = () => {
             className={`inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors cursor-pointer ${
               activeTab === 'approvals'
                 ? 'border-primary text-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                : 'border-transparent text-content-muted hover:text-content'
             }`}
           >
             <LuShieldCheck className="w-4 h-4" />
@@ -166,23 +166,23 @@ const MyTasks = () => {
         {activeTab === 'assigned' && (
           <div className="space-y-4">
             {/* Filter Bar */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-lg border border-gray-200 shadow-xs">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-surface p-3 rounded-xl border border-border shadow-xs">
               <div className="flex flex-1 items-center gap-2">
                 <div className="relative flex-1 max-w-sm">
-                  <LuSearch className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                  <LuSearch className="absolute left-3 top-2.5 w-4 h-4 text-content-muted" />
                   <input
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search assigned tasks..."
-                    className="w-full pl-9 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-surface border border-border text-content rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary placeholder:text-content-muted/60"
                   />
                 </div>
 
                 <select
                   value={priorityCode}
                   onChange={(e) => setPriorityCode(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className="px-2.5 py-1.5 text-xs border border-border rounded-lg bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary/20"
                 >
                   {PRIORITY_OPTIONS.map((p) => (
                     <option key={p.value} value={p.value}>
@@ -208,10 +208,10 @@ const MyTasks = () => {
                 description="You currently have no tasks assigned to you across visible projects."
               />
             ) : (
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-xs">
+              <div className="bg-surface border border-border rounded-xl overflow-hidden shadow-xs">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider text-[10px]">
+                    <thead className="bg-surface-muted border-b border-border text-content-muted font-semibold uppercase tracking-wider text-[10px]">
                       <tr>
                         <th className="py-3 px-4">Task</th>
                         <th className="py-3 px-4">Status</th>
@@ -222,7 +222,7 @@ const MyTasks = () => {
                         <th className="py-3 px-4 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-border">
                       {myTasks.map((task) => (
                         <tr
                           key={task.id}
@@ -232,14 +232,14 @@ const MyTasks = () => {
                               taskId: task.id,
                             })
                           }
-                          className="hover:bg-blue-50/30 transition-colors cursor-pointer"
+                          className="hover:bg-surface-muted/60 transition-colors cursor-pointer"
                         >
                           <td className="py-3 px-4 max-w-xs">
-                            <span className="font-semibold text-gray-900 block truncate">
+                            <span className="font-semibold text-content block truncate">
                               {task.title}
                             </span>
                             {task.description && (
-                              <span className="text-[11px] text-gray-500 block truncate mt-0.5">
+                              <span className="text-[11px] text-content-muted block truncate mt-0.5">
                                 {task.description}
                               </span>
                             )}
@@ -253,26 +253,26 @@ const MyTasks = () => {
                           <td className="py-3 px-4 whitespace-nowrap">
                             <PriorityBadge priority={task.priorityCode} />
                           </td>
-                          <td className="py-3 px-4 whitespace-nowrap text-gray-700">
+                          <td className="py-3 px-4 whitespace-nowrap text-content-muted">
                             {task.owningTeamName}
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">
                             <div className="flex items-center gap-2 w-24">
-                              <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                              <div className="flex-1 bg-surface-muted rounded-full h-1.5 overflow-hidden border border-border/50">
                                 <div
-                                  className="bg-primary h-1.5 rounded-full"
-                                  style={{ width: `${task.effectiveProgress}%` }}
+                                  className="bg-primary h-full rounded-full"
+                                  style={{ width: `${task.effectiveProgress || 0}%` }}
                                 />
                               </div>
-                              <span className="font-medium text-gray-700">
-                                {task.effectiveProgress}%
+                              <span className="font-medium text-content-muted text-[11px]">
+                                {task.effectiveProgress || 0}%
                               </span>
                             </div>
                           </td>
-                          <td className="py-3 px-4 whitespace-nowrap text-gray-600">
+                          <td className="py-3 px-4 whitespace-nowrap text-content-muted">
                             {task.dueAt ? (
                               <span className="inline-flex items-center gap-1">
-                                <LuCalendar className="w-3.5 h-3.5 text-gray-400" />
+                                <LuCalendar className="w-3.5 h-3.5 text-content-muted/70" />
                                 {new Date(task.dueAt).toLocaleDateString()}
                               </span>
                             ) : (
@@ -322,10 +322,10 @@ const MyTasks = () => {
                 description="You do not have any pending tasks waiting for your approval."
               />
             ) : (
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-xs">
+              <div className="bg-surface border border-border rounded-xl overflow-hidden shadow-xs">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider text-[10px]">
+                    <thead className="bg-surface-muted border-b border-border text-content-muted font-semibold uppercase tracking-wider text-[10px]">
                       <tr>
                         <th className="py-3 px-4">Task</th>
                         <th className="py-3 px-4">Priority</th>
@@ -335,7 +335,7 @@ const MyTasks = () => {
                         <th className="py-3 px-4 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-border">
                       {queue.map((req) => (
                         <tr
                           key={req.id}
@@ -345,23 +345,23 @@ const MyTasks = () => {
                               taskId: req.taskId,
                             })
                           }
-                          className="hover:bg-amber-50/30 transition-colors cursor-pointer"
+                          className="hover:bg-surface-muted/60 transition-colors cursor-pointer"
                         >
                           <td className="py-3 px-4 max-w-xs">
-                            <span className="font-semibold text-gray-900 block truncate">
+                            <span className="font-semibold text-content block truncate">
                               {req.title}
                             </span>
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">
                             <PriorityBadge priority={req.priorityCode} />
                           </td>
-                          <td className="py-3 px-4 whitespace-nowrap font-medium text-gray-700">
+                          <td className="py-3 px-4 whitespace-nowrap font-medium text-content-muted">
                             #{req.requestNumber}
                           </td>
-                          <td className="py-3 px-4 text-gray-600 max-w-sm truncate">
+                          <td className="py-3 px-4 text-content-muted max-w-sm truncate">
                             {req.requestReason || '—'}
                           </td>
-                          <td className="py-3 px-4 whitespace-nowrap text-gray-500">
+                          <td className="py-3 px-4 whitespace-nowrap text-content-muted">
                             {new Date(req.requestedAt).toLocaleString()}
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap text-right space-x-2">
@@ -430,12 +430,12 @@ const MyTasks = () => {
       >
         <div className="space-y-4">
           {approvalError && (
-            <div className="p-2.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg">
+            <div className="p-2.5 text-xs text-danger-content bg-danger-surface border border-danger-border rounded-lg">
               {approvalError}
             </div>
           )}
 
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-content-muted">
             {quickApprovalTarget?.action === 'approve'
               ? 'Provide an optional reason for approving this request:'
               : 'Provide an optional reason for rejecting this request:'}
@@ -446,14 +446,14 @@ const MyTasks = () => {
             value={resolutionReason}
             onChange={(e) => setResolutionReason(e.target.value)}
             placeholder="Resolution reason (optional)..."
-            className="w-full p-2.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            className="w-full p-2.5 text-xs bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary resize-none placeholder:text-content-muted/60"
           />
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
             <button
               type="button"
               onClick={() => setQuickApprovalTarget(null)}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content-muted bg-surface border border-border rounded-lg hover:bg-surface-muted cursor-pointer"
             >
               Cancel
             </button>

@@ -89,6 +89,7 @@ const ProjectTaskBoardTab = ({
     if (!sourceColumn || sourceColumn.id === statusId) {
       setDraggedTaskId(null);
       setDragOverColumnId(null);
+      setIsDragging(false);
       return;
     }
 
@@ -109,6 +110,7 @@ const ProjectTaskBoardTab = ({
     );
     setDraggedTaskId(null);
     setDragOverColumnId(null);
+    setIsDragging(false);
     try {
       await transitionTaskStatus({ projectId, taskId: targetTaskId, statusId }).unwrap();
     } catch (requestError) {
@@ -188,7 +190,7 @@ const ProjectTaskBoardTab = ({
           description="Create project task statuses to view the board."
         />
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-4 items-start">
+        <div className="flex gap-4 overflow-x-auto pb-4 items-stretch min-h-[550px]">
           {displayColumns.map((column) => (
             <div
               key={column.id}
@@ -214,32 +216,41 @@ const ProjectTaskBoardTab = ({
                 setDragOverColumnId(null);
                 handleDrop(column.id);
               }}
-              className={`w-80 shrink-0 rounded-xl p-3 border space-y-3 transition-colors ${
+              className={`w-80 shrink-0 rounded-xl p-3 border flex flex-col space-y-3 transition-colors ${
                 dragOverColumnId === column.id
-                  ? 'bg-blue-50/70 border-primary ring-2 ring-primary/20 shadow-sm'
-                  : 'bg-gray-50/80 border-gray-200/80'
+                  ? 'bg-primary/10 border-primary ring-2 ring-primary/20 shadow-sm'
+                  : 'bg-surface-muted border-border'
               }`}
             >
               {/* Column Header */}
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-xs font-semibold text-gray-900">{column.name}</h4>
+                  <h4 className="text-xs font-semibold text-content">{column.name}</h4>
                   <TaskStatusBadge
                     category={column.semanticCategory}
                     label={column.semanticCategory}
                   />
                 </div>
-                <span className="text-[11px] font-semibold text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
+                <span className="text-[11px] font-semibold text-content-muted bg-surface border border-border px-2 py-0.5 rounded-full">
                   {column.tasks?.length || 0}
                 </span>
               </div>
 
               {/* Tasks List inside Column */}
               <div
-                className="space-y-2.5 min-h-[150px]"
+                className="space-y-2.5 flex-1 flex flex-col"
                 onDragOver={(event) => {
                   event.preventDefault();
                   event.dataTransfer.dropEffect = 'move';
+                  if (dragOverColumnId !== column.id) {
+                    setDragOverColumnId(column.id);
+                  }
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setDragOverColumnId(null);
+                  handleDrop(column.id);
                 }}
               >
                 {column.tasks?.map((task) => {
@@ -263,6 +274,19 @@ const ProjectTaskBoardTab = ({
                         setDragOverColumnId(null);
                         setTimeout(() => setIsDragging(false), 50);
                       }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = 'move';
+                        if (dragOverColumnId !== column.id) {
+                          setDragOverColumnId(column.id);
+                        }
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setDragOverColumnId(null);
+                        handleDrop(column.id);
+                      }}
                       onClick={() => {
                         if (isDragging) return;
                         onSelectTask(task.id);
@@ -273,34 +297,34 @@ const ProjectTaskBoardTab = ({
                           onSelectTask(task.id);
                         }
                       }}
-                      className={`w-full text-left bg-white p-3.5 rounded-lg border border-gray-200/90 hover:border-primary/50 shadow-xs hover:shadow-md transition-all cursor-grab active:cursor-grabbing space-y-2.5 select-none ${
+                      className={`w-full text-left bg-surface p-3.5 rounded-lg border border-border hover:border-primary/50 shadow-xs hover:shadow-md transition-all cursor-grab active:cursor-grabbing space-y-2.5 select-none ${
                         isBeingDragged
                           ? 'opacity-40 ring-2 ring-primary border-primary scale-[0.98]'
                           : ''
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <h5 className="text-xs font-semibold text-gray-900 leading-snug line-clamp-2">
+                        <h5 className="text-xs font-semibold text-content leading-snug line-clamp-2">
                           {task.title}
                         </h5>
                         <PriorityBadge priority={task.priorityCode} />
                       </div>
 
                       {task.description && (
-                        <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">
+                        <p className="text-[11px] text-content-muted line-clamp-2 leading-relaxed">
                           {task.description}
                         </p>
                       )}
 
                       {/* Progress Bar */}
                       <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px] text-gray-500">
+                        <div className="flex items-center justify-between text-[10px] text-content-muted">
                           <span>Progress</span>
-                          <span className="font-semibold text-gray-700">
+                          <span className="font-semibold text-content">
                             {task.effectiveProgress}%
                           </span>
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1.5">
+                        <div className="w-full bg-surface-muted rounded-full h-1.5 overflow-hidden border border-border/40">
                           <div
                             className="bg-primary h-1.5 rounded-full transition-all"
                             style={{ width: `${task.effectiveProgress}%` }}
@@ -309,7 +333,7 @@ const ProjectTaskBoardTab = ({
                       </div>
 
                       {/* Card Footer */}
-                      <div className="flex items-center justify-between text-[10px] text-gray-500 pt-2 border-t border-gray-100">
+                      <div className="flex items-center justify-between text-[10px] text-content-muted pt-2 border-t border-border">
                         <span className="truncate max-w-[110px]" title={task.owningTeamName}>
                           {task.owningTeamName}
                         </span>
@@ -318,15 +342,15 @@ const ProjectTaskBoardTab = ({
                           {task.requiresApproval && (
                             <span
                               title="Requires Approval"
-                              className="text-purple-600 bg-purple-50 p-1 rounded"
+                              className="text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/60 p-1 rounded"
                             >
                               <LuShieldCheck className="w-3.5 h-3.5" />
                             </span>
                           )}
 
                           {task.dueAt && (
-                            <span className="inline-flex items-center gap-1 text-gray-600">
-                              <LuCalendar className="w-3 h-3" />
+                            <span className="inline-flex items-center gap-1 text-content-muted">
+                              <LuCalendar className="w-3.5 h-3.5" />
                               {new Date(task.dueAt).toLocaleDateString(undefined, {
                                 month: 'short',
                                 day: 'numeric',
@@ -335,8 +359,8 @@ const ProjectTaskBoardTab = ({
                           )}
 
                           {task.assigneeProjectMembershipIds?.length > 0 && (
-                            <span className="inline-flex items-center gap-1 text-gray-600">
-                              <LuUsers className="w-3 h-3" />
+                            <span className="inline-flex items-center gap-1 text-content-muted">
+                              <LuUsers className="w-3.5 h-3.5" />
                               {task.assigneeProjectMembershipIds.length}
                             </span>
                           )}
@@ -346,10 +370,50 @@ const ProjectTaskBoardTab = ({
                   );
                 })}
 
-                {(!column.tasks || column.tasks.length === 0) && (
-                  <div className="py-8 text-center text-gray-400 text-xs italic">
-                    No tasks in this status
+                {(!column.tasks || column.tasks.length === 0) ? (
+                  <div
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
+                      if (dragOverColumnId !== column.id) {
+                        setDragOverColumnId(column.id);
+                      }
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setDragOverColumnId(null);
+                      handleDrop(column.id);
+                    }}
+                    className={`py-8 text-center text-xs italic flex-1 flex items-center justify-center rounded-lg transition-colors ${
+                      dragOverColumnId === column.id
+                        ? 'border-2 border-dashed border-primary/50 bg-primary/10 text-primary font-medium'
+                        : 'text-content-muted/60'
+                    }`}
+                  >
+                    {dragOverColumnId === column.id ? '' : 'No tasks in this status'}
                   </div>
+                ) : (
+                  <div
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
+                      if (dragOverColumnId !== column.id) {
+                        setDragOverColumnId(column.id);
+                      }
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setDragOverColumnId(null);
+                      handleDrop(column.id);
+                    }}
+                    className={`flex-1 min-h-[70px] rounded-lg transition-all flex items-center justify-center ${
+                      dragOverColumnId === column.id
+                        ? 'border-2 border-dashed border-primary/60 bg-primary/10 mt-1'
+                        : 'border border-transparent'
+                    }`}
+                  />
                 )}
               </div>
             </div>

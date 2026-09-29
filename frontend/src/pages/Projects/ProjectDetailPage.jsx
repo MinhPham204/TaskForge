@@ -194,9 +194,9 @@ const ProjectDetailPage = () => {
 
   return (
     <DashboardLayout activeMenu="/projects">
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="space-y-6 max-w-7xl mx-auto">
         {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-gray-500">
+        <div className="flex items-center gap-2 text-sm text-content-muted">
           <button
             type="button"
             onClick={() => navigate('/projects')}
@@ -205,32 +205,32 @@ const ProjectDetailPage = () => {
             <LuFolderKanban className="w-4 h-4" />
             Projects
           </button>
-          <LuChevronRight className="w-4 h-4 text-gray-400" />
-          <span className="text-gray-900 font-medium truncate max-w-xs">{project.name}</span>
+          <LuChevronRight className="w-4 h-4 text-content-muted/60" />
+          <span className="text-content font-medium truncate max-w-xs">{project.name}</span>
         </div>
 
         {/* Header card */}
-        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+        <div className="bg-surface border border-border rounded-xl p-6 shadow-sm">
           <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
             <div className="space-y-3 max-w-3xl">
               <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{project.name}</h1>
+                <h1 className="text-2xl font-bold tracking-tight text-content sm:text-3xl">{project.name}</h1>
                 <span
                   className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                    stateBadgeClasses[project.state] || 'bg-gray-50 text-gray-700 border-gray-200'
+                    stateBadgeClasses[project.state] || 'bg-surface-muted text-content-muted border-border'
                   }`}
                 >
                   {project.state}
                 </span>
 
                 {project.viewer?.role && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200 dark:border-purple-900">
                     <LuShield className="w-3 h-3" />
                     {project.viewer.role}
                   </span>
                 )}
                 {canManage && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-100 dark:border-blue-900">
                     <LuUserCheck className="w-3 h-3" />
                     Manager
                   </span>
@@ -238,15 +238,15 @@ const ProjectDetailPage = () => {
               </div>
 
               {project.description ? (
-                <p className="text-sm text-gray-600 leading-relaxed">{project.description}</p>
+                <p className="text-sm text-content-muted leading-relaxed">{project.description}</p>
               ) : (
-                <p className="text-sm text-gray-400 italic">No description provided.</p>
+                <p className="text-sm text-content-muted/60 italic">No description provided.</p>
               )}
 
-              <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 pt-1">
+              <div className="flex flex-wrap items-center gap-4 text-xs text-content-muted pt-1">
                 {(project.startDate || project.endDate) && (
                   <span className="flex items-center gap-1.5">
-                    <LuCalendar className="w-3.5 h-3.5 text-gray-400" />
+                    <LuCalendar className="w-3.5 h-3.5 text-content-muted/70" />
                     {project.startDate
                       ? new Date(project.startDate).toLocaleDateString()
                       : 'No start date'}{' '}
@@ -266,7 +266,7 @@ const ProjectDetailPage = () => {
                   <button
                     type="button"
                     onClick={handleOpenEdit}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-sm transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted shadow-sm transition-colors cursor-pointer"
                   >
                     <LuPencil className="w-3.5 h-3.5" />
                     Edit Details
@@ -406,7 +406,7 @@ const ProjectDetailPage = () => {
                     className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary ${
                       activeTab === tab
                         ? 'border-primary bg-primary text-white'
-                        : 'border-blue-200 bg-white text-blue-800 hover:border-primary'
+                        : 'border-border bg-surface text-content hover:border-primary'
                     }`}
                   >
                     {label}
@@ -415,7 +415,7 @@ const ProjectDetailPage = () => {
                 <button
                   type="button"
                   onClick={() => setSearchParams({})}
-                  className="rounded-md px-2 py-1.5 text-xs font-medium text-blue-800 underline underline-offset-2 hover:text-blue-950 focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="rounded-md px-2 py-1.5 text-xs font-medium text-content underline underline-offset-2 hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   Dismiss
                 </button>
@@ -425,7 +425,7 @@ const ProjectDetailPage = () => {
         )}
 
         {/* Tab navigation bar */}
-        <div className="border-b border-gray-200 bg-white rounded-t-xl px-4 pt-2">
+        <div className="border-b border-border bg-surface rounded-t-xl px-4 pt-2">
           <div className="flex items-center gap-1 overflow-x-auto">
             {TABS.map((tab) => {
               const Icon = tab.icon;
@@ -438,7 +438,7 @@ const ProjectDetailPage = () => {
                   className={`flex items-center gap-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
                     isActive
                       ? 'border-primary text-primary'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      : 'border-transparent text-content-muted hover:text-content hover:border-border'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -538,7 +538,7 @@ const ProjectDetailPage = () => {
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">
+            <label className="block text-xs font-semibold text-content mb-1">
               Project Name <span className="text-red-500">*</span>
             </label>
             <input
@@ -547,47 +547,47 @@ const ProjectDetailPage = () => {
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               placeholder="e.g. Core Infrastructure"
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-3 py-2 text-sm bg-surface text-content placeholder:text-content-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Description</label>
+            <label className="block text-xs font-semibold text-content mb-1">Description</label>
             <textarea
               rows={3}
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
               placeholder="Project goals, scope and objectives..."
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+              className="w-full px-3 py-2 text-sm bg-surface text-content placeholder:text-content-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Start Date</label>
+              <label className="block text-xs font-semibold text-content mb-1">Start Date</label>
               <input
                 type="date"
                 value={editStartDate}
                 onChange={(e) => setEditStartDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">End Date</label>
+              <label className="block text-xs font-semibold text-content mb-1">End Date</label>
               <input
                 type="date"
                 value={editEndDate}
                 onChange={(e) => setEditEndDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
             <button
               type="button"
               onClick={() => setIsEditOpen(false)}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted cursor-pointer"
             >
               Cancel
             </button>
@@ -610,18 +610,18 @@ const ProjectDetailPage = () => {
       >
         <div className="space-y-4">
           {lifecycleError && (
-            <div className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg">
+            <div className="p-3 text-xs text-danger-content bg-danger-surface border border-danger-border rounded-lg">
               {lifecycleError}
             </div>
           )}
 
-          <p className="text-sm text-gray-600">{lifecycleAction?.message}</p>
+          <p className="text-sm text-content-muted">{lifecycleAction?.message}</p>
 
-          <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
             <button
               type="button"
               onClick={() => setLifecycleAction(null)}
-              className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-content-muted bg-surface border border-border rounded-lg hover:bg-surface-muted cursor-pointer"
             >
               Cancel
             </button>

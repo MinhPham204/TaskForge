@@ -67,7 +67,7 @@ const PersonalSettings = () => {
   return (
     <SettingsShell>
       <header className="border-b border-border/70 pb-4">
-        <h1 className="text-xl font-semibold tracking-tight text-content sm:text-2xl">Preferences</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-content sm:text-3xl">Preferences</h1>
         <p className="mt-1 text-xs text-content-muted sm:text-sm">
           Customize your appearance, regional formatting, and notification settings.
         </p>

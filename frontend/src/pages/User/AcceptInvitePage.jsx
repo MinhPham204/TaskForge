@@ -49,10 +49,10 @@ const AcceptInvitePage = () => {
   }, [navigate, result.error, result.isError, result.isSuccess]);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-      <section className="w-full max-w-md rounded-lg bg-white p-8 text-center shadow-xl">
-        <h1 className="text-2xl font-bold text-slate-900">Accept invitation</h1>
-        <p className="mt-4 text-slate-600">
+    <main className="flex min-h-screen items-center justify-center bg-background p-4">
+      <section className="w-full max-w-md rounded-xl bg-surface border border-border p-8 text-center shadow-xl">
+        <h1 className="text-2xl font-bold text-content">Accept invitation</h1>
+        <p className="mt-4 text-content-muted">
           {result.isLoading ? 'Processing your invitation…' : message}
         </p>
         {(result.isError || !token) && (

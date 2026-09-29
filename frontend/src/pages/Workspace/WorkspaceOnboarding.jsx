@@ -42,23 +42,23 @@ const WorkspaceOnboarding = () => {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-12">
+    <main className="min-h-screen bg-background px-4 py-12">
       <section className="mx-auto max-w-3xl space-y-6">
-        <header className="rounded-2xl bg-white p-8 shadow-sm">
+        <header className="rounded-2xl bg-surface border border-border p-8 shadow-sm">
           <p className="text-sm font-semibold uppercase tracking-wide text-primary">Get started</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-900">
+          <h1 className="mt-2 text-3xl font-bold text-content">
             {activeOrganizationId ? 'Create a workspace' : 'Choose a workspace'}
           </h1>
-          <p className="mt-3 text-slate-600">
+          <p className="mt-3 text-content-muted">
             {activeOrganizationId
               ? 'Create an additional workspace for a new team, client, or initiative.'
               : 'Create a workspace for your work, or accept an invitation you have received.'}
           </p>
         </header>
 
-        <form onSubmit={handleCreateWorkspace} className="rounded-2xl bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">Create a workspace</h2>
-          <label className="mt-4 block text-sm font-medium text-slate-700" htmlFor="workspace-name">
+        <form onSubmit={handleCreateWorkspace} className="rounded-2xl bg-surface border border-border p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-content">Create a workspace</h2>
+          <label className="mt-4 block text-sm font-medium text-content" htmlFor="workspace-name">
             Workspace name
           </label>
           <input
@@ -66,9 +66,9 @@ const WorkspaceOnboarding = () => {
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Acme Studio"
-            className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-primary"
+            className="mt-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-content placeholder:text-content-muted outline-none focus:border-primary"
           />
-          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+          {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
           <button type="submit" disabled={isLoading} className="btn-primary mt-4 disabled:opacity-60">
             {isLoading ? 'Creating workspace…' : 'Create workspace'}
           </button>

@@ -192,7 +192,7 @@ const DashboardPage = () => {
 
   return (
     <DashboardLayout activeMenu="/dashboard">
-      <div className="mx-auto my-5 max-w-7xl space-y-6">
+      <div className="space-y-6 max-w-7xl mx-auto">
         {/* Dynamic Context Greeting & Header */}
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between p-5 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-border">
           <div>
