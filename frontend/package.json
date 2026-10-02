@@ -13,7 +13,15 @@
     "test:account": "node src/tests/account-contract.test.js",
     "test:workspace-settings": "node src/tests/workspace-settings-contract.test.js",
     "test:productivity-navigation": "node src/tests/productivity-navigation-contract.test.js",
-    "test": "node src/tests/workspace-compatibility.test.js && node src/tests/task-workflow.test.js && node src/tests/theme-foundation.test.js && node src/tests/account-contract.test.js && node src/tests/workspace-settings-contract.test.js && node src/tests/productivity-navigation-contract.test.js",
+    "test:attention": "node src/tests/task-attention.test.js",
+    "test:components": "node src/tests/task-semantic-components.test.js",
+    "test:dashboard": "node src/tests/stitch-dashboard.test.js",
+    "test:mytasks": "node src/tests/stitch-mytasks.test.js",
+    "test:inbox": "node src/tests/stitch-inbox.test.js",
+    "test:projects": "node src/tests/stitch-projects.test.js",
+    "test:teams": "node src/tests/stitch-teams.test.js",
+    "test:project-board": "node src/tests/stitch-project-board.test.js",
+    "test": "node src/tests/workspace-compatibility.test.js && node src/tests/task-workflow.test.js && node src/tests/theme-foundation.test.js && node src/tests/account-contract.test.js && node src/tests/workspace-settings-contract.test.js && node src/tests/productivity-navigation-contract.test.js && node src/tests/task-attention.test.js && node src/tests/task-semantic-components.test.js && node src/tests/stitch-dashboard.test.js && node src/tests/stitch-mytasks.test.js && node src/tests/stitch-inbox.test.js && node src/tests/stitch-projects.test.js && node src/tests/stitch-teams.test.js && node src/tests/stitch-project-board.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

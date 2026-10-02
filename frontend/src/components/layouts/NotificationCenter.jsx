@@ -106,13 +106,12 @@ const NotificationCenter = () => {
         aria-label={`Notifications (${unreadCount} unread)`}
         aria-expanded={isOpen}
         aria-haspopup="dialog"
-        className="relative p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30"
+        title="Notifications"
+        className="relative p-1.5 text-content-muted hover:text-content rounded-md hover:bg-surface-muted transition-colors cursor-pointer focus:outline-none"
       >
-        <LuBell className="w-5 h-5" />
+        <LuBell className="w-4 h-4" />
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 flex items-center justify-center min-w-4 h-4 px-1 text-[10px] font-bold text-white bg-primary rounded-full ring-2 ring-white">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full ring-2 ring-surface" />
         )}
       </button>
 

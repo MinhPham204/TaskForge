@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
   LuPlus,
   LuFolderKanban,
@@ -7,28 +7,40 @@ import {
   LuArrowRight,
   LuShield,
   LuUserCheck,
-  LuCircleCheck,
-  LuSettings,
-  LuUsers,
-  LuBoxes,
+  LuCheck,
+  LuList,
+  LuKanban,
+  LuSearch,
+  LuArrowUpDown,
   LuChevronDown,
-  LuChevronUp,
+  LuExternalLink,
+  LuX,
+  LuUsers,
 } from 'react-icons/lu';
 import DashboardLayout from '../../components/layouts/DashboardLayout';
 import Modal from '../../components/common/Modal';
 import { LoadingState, ErrorState, EmptyState } from '../../components/common/PageState';
 import useUserAuth from '../../hooks/useUserAuth.jsx';
 import { useGetProjectsQuery, useCreateProjectMutation } from '../../services/projectApi';
+import ProjectInsightsSidebar from './components/ProjectInsightsSidebar';
+import ProjectBoardView from './components/ProjectBoardView';
+import CreateProjectModal from './components/CreateProjectModal';
 
-const STATE_TABS = ['ALL', 'ACTIVE', 'DRAFT', 'COMPLETED', 'ARCHIVED'];
+const STATE_TABS = [
+  { id: 'ALL', label: 'All' },
+  { id: 'ACTIVE', label: 'Active' },
+  { id: 'DRAFT', label: 'Backlog & Planning' },
+  { id: 'COMPLETED', label: 'Completed' },
+  { id: 'ARCHIVED', label: 'Archived' },
+];
 
 const PROJECT_THEMES = [
-  { accent: 'bg-blue-500', badge: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200/60 dark:border-blue-900/60' },
-  { accent: 'bg-indigo-500', badge: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200/60 dark:border-indigo-900/60' },
-  { accent: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-900/60' },
-  { accent: 'bg-violet-500', badge: 'bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 border-violet-200/60 dark:border-violet-900/60' },
-  { accent: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200/60 dark:border-amber-900/60' },
-  { accent: 'bg-rose-500', badge: 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200/60 dark:border-rose-900/60' },
+  { accent: 'bg-indigo-600', badge: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200/60' },
+  { accent: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200/60' },
+  { accent: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200/60' },
+  { accent: 'bg-violet-500', badge: 'bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 border-violet-200/60' },
+  { accent: 'bg-blue-500', badge: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200/60' },
+  { accent: 'bg-rose-500', badge: 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200/60' },
 ];
 
 function getMonogram(name = '') {
@@ -46,39 +58,6 @@ function getProjectTheme(id = '') {
   }
   return PROJECT_THEMES[Math.abs(hash) % PROJECT_THEMES.length];
 }
-
-const renderStateBadge = (state) => {
-  if (state === 'ACTIVE') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-        Active
-      </span>
-    );
-  }
-  if (state === 'DRAFT') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-        Draft
-      </span>
-    );
-  }
-  if (state === 'COMPLETED') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-        <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-        Done
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-      Archived
-    </span>
-  );
-};
 
 function formatSmartDueDate(dueDateStr) {
   if (!dueDateStr) return null;
@@ -102,130 +81,52 @@ function formatSmartDueDate(dueDateStr) {
     return { text: `Due in ${diffDays}d`, tone: 'neutral' };
   }
   return {
-    text: `Due ${due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`,
+    text: due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
     tone: 'neutral',
   };
 }
 
-/**
- * Minimalist ProjectCard with top accent bar, monogram, state indicator,
- * smart due date, and role badge.
- */
-const ProjectCard = ({ project, onClick }) => {
-  const monogram = getMonogram(project.name);
-  const theme = getProjectTheme(project.id);
-  const dueInfo = formatSmartDueDate(project.dueDate);
-
-  return (
-    <div
-      onClick={onClick}
-      className="group relative rounded-xl border border-border bg-surface shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm hover:border-primary/40 cursor-pointer flex flex-col justify-between overflow-hidden"
-    >
-      {/* Subtle top accent bar */}
-      <div className={`h-1 w-full ${theme.accent}`} />
-
-      <div className="p-5">
-        {/* Top: Monogram + Title + Arrow */}
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div
-              className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-xs tracking-wider border shrink-0 ${theme.badge}`}
-            >
-              {monogram}
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-base font-semibold text-content group-hover:text-primary transition-colors truncate">
-                {project.name}
-              </h3>
-              <div className="mt-0.5 flex items-center gap-2">
-                {renderStateBadge(project.state)}
-                {project.startDate && (
-                  <span className="text-[11px] text-content-muted">
-                    Started {new Date(project.startDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          <span className="p-1 text-content-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0">
-            <LuArrowRight className="w-4 h-4" />
-          </span>
-        </div>
-
-        {/* Description */}
-        <p className="text-xs text-content-muted line-clamp-2 leading-relaxed">
-          {project.description || 'No description provided for this initiative.'}
-        </p>
-      </div>
-
-      {/* Footer Info */}
-      <div className="px-5 py-3 border-t border-border/50 flex items-center justify-between text-xs">
-        <div className="flex items-center gap-1.5 text-[11px]">
-          {dueInfo ? (
-            <span
-              className={`inline-flex items-center gap-1 ${
-                dueInfo.tone === 'danger'
-                  ? 'text-rose-600 dark:text-rose-400 font-semibold'
-                  : dueInfo.tone === 'warning'
-                  ? 'text-amber-600 dark:text-amber-400 font-medium'
-                  : 'text-content-muted'
-              }`}
-            >
-              <LuCalendar className="w-3.5 h-3.5 shrink-0 opacity-80" />
-              {dueInfo.text}
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-content-muted/70">
-              <LuCalendar className="w-3.5 h-3.5 shrink-0 opacity-50" />
-              No deadline
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 text-[11px]">
-          {project.viewer?.projectRole === 'PROJECT_MANAGER' ? (
-            <span className="inline-flex items-center gap-1 font-medium text-primary">
-              <LuShield className="w-3 h-3" />
-              Lead
-            </span>
-          ) : project.viewer?.projectRole === 'CONTRIBUTOR' ? (
-            <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
-              <LuUserCheck className="w-3 h-3" />
-              Member
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-content-muted">
-              <LuUsers className="w-3 h-3" />
-              Workspace
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const ProjectListPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { role } = useUserAuth();
+  const { role, activeOrganization, user } = useUserAuth();
   const isOrgAdmin = role === 'owner' || role === 'admin';
   const shouldCreate = searchParams.get('create') === 'true';
 
   const { data: projects = [], isLoading, isError, error, refetch } = useGetProjectsQuery();
   const [createProject, { isLoading: isCreating }] = useCreateProjectMutation();
 
+  // Navigation & View States
+  const [viewMode, setViewMode] = useState('list'); // 'list' | 'board'
   const [activeTab, setActiveTab] = useState('ALL');
-  const [isCompletedOpen, setIsCompletedOpen] = useState(false);
+  const [searchFilter, setSearchFilter] = useState('');
+  const [leadFilter, setLeadFilter] = useState('ALL'); // 'ALL' | 'MINE'
+  const [healthFilter, setHealthFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'DRAFT'
+  const [sortBy, setSortBy] = useState('targetDate'); // 'targetDate' | 'name'
+  const [hideCompleted, setHideCompleted] = useState(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
-  // Create Project Modal
+  // Create Project Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [createError, setCreateError] = useState('');
-  const [createdProject, setCreatedProject] = useState(null);
+
+  // Keyboard shortcut listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === '?') {
+        e.preventDefault();
+        setIsShortcutsOpen((prev) => !prev);
+      } else if (e.key === 'Escape') {
+        setIsShortcutsOpen(false);
+        setIsCreateOpen(false);
+      } else if (e.key.toLowerCase() === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        handleOpenCreate();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Group projects into tiers
   const activeProjects = useMemo(
@@ -239,15 +140,66 @@ const ProjectListPage = () => {
   );
 
   const completedProjects = useMemo(
+    () => projects.filter((p) => p.state === 'COMPLETED'),
+    [projects]
+  );
+
+  const archivedProjects = useMemo(
+    () => projects.filter((p) => p.state === 'ARCHIVED'),
+    [projects]
+  );
+
+  const completedAndArchived = useMemo(
     () => projects.filter((p) => p.state === 'COMPLETED' || p.state === 'ARCHIVED'),
     [projects]
   );
 
-  // When filtered by specific tab
-  const tabFilteredProjects = useMemo(() => {
-    if (activeTab === 'ALL') return projects;
-    return projects.filter((p) => p.state === activeTab);
-  }, [projects, activeTab]);
+  // Tab counts
+  const tabCounts = useMemo(() => ({
+    ALL: projects.length,
+    ACTIVE: activeProjects.length,
+    DRAFT: draftProjects.length,
+    COMPLETED: completedProjects.length,
+    ARCHIVED: archivedProjects.length,
+  }), [projects, activeProjects, draftProjects, completedProjects, archivedProjects]);
+
+  // Filtered and sorted projects
+  const filteredProjects = useMemo(() => {
+    let list = projects;
+
+    if (activeTab !== 'ALL') {
+      list = list.filter((p) => p.state === activeTab);
+    }
+
+    if (searchFilter.trim()) {
+      const q = searchFilter.toLowerCase().trim();
+      list = list.filter(
+        (p) =>
+          p.name?.toLowerCase().includes(q) ||
+          p.description?.toLowerCase().includes(q)
+      );
+    }
+
+    if (leadFilter === 'MINE') {
+      list = list.filter((p) => p.viewer?.projectRole === 'PROJECT_MANAGER');
+    }
+
+    if (healthFilter !== 'ALL') {
+      list = list.filter((p) => p.state === healthFilter);
+    }
+
+    // Sorting
+    list = [...list].sort((a, b) => {
+      if (sortBy === 'targetDate') {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(a.dueDate) - new Date(b.dueDate);
+      }
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    return list;
+  }, [projects, activeTab, searchFilter, leadFilter, healthFilter, sortBy]);
 
   useEffect(() => {
     if (shouldCreate && isOrgAdmin) {
@@ -256,117 +208,298 @@ const ProjectListPage = () => {
   }, [shouldCreate, isOrgAdmin]);
 
   const handleOpenCreate = () => {
-    setName('');
-    setDescription('');
-    setStartDate('');
-    setDueDate('');
-    setCreateError('');
-    setCreatedProject(null);
     setIsCreateOpen(true);
   };
 
   const handleCloseCreate = () => {
     if (isCreating) return;
     setIsCreateOpen(false);
-    setCreatedProject(null);
   };
 
-  const handleCreateSubmit = async (e) => {
-    e.preventDefault();
-    setCreateError('');
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setCreateError('Project name is required');
-      return;
-    }
+  const handleExportCsv = () => {
+    const headers = ['ID', 'Name', 'State', 'Start Date', 'Due Date', 'Role', 'Description'];
+    const rows = projects.map((p) => [
+      p.id,
+      `"${(p.name || '').replace(/"/g, '""')}"`,
+      p.state,
+      p.startDate || '',
+      p.dueDate || '',
+      p.viewer?.projectRole || '',
+      `"${(p.description || '').replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `taskforge-projects-${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
-    if (startDate && dueDate && startDate > dueDate) {
-      setCreateError('Due date cannot be before start date');
-      return;
+  const renderHealthBadge = (project) => {
+    if (project.state === 'ACTIVE') {
+      return (
+        <span className="inline-flex items-center space-x-1.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded text-[11px] font-medium">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+          <span>On track</span>
+          <span className="text-content-muted">· Active</span>
+        </span>
+      );
     }
+    if (project.state === 'DRAFT') {
+      return (
+        <span className="inline-flex items-center space-x-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded text-[11px] font-medium">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          <span>Scoping</span>
+          <span className="text-content-muted">· Draft</span>
+        </span>
+      );
+    }
+    if (project.state === 'COMPLETED') {
+      return (
+        <span className="inline-flex items-center space-x-1.5 text-content font-medium text-xs">
+          <LuCheck className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Completed</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center space-x-1.5 text-content-muted text-xs">
+        <span className="w-1.5 h-1.5 rounded-full bg-content-muted/50" />
+        <span>Archived</span>
+      </span>
+    );
+  };
 
-    try {
-      const payload = {
-        name: trimmedName,
-        description: description.trim() || undefined,
-        startDate: startDate || undefined,
-        dueDate: dueDate || undefined,
-      };
-      const created = await createProject(payload).unwrap();
-      if (created?.id) {
-        setCreatedProject(created);
-      } else {
-        setCreateError(
-          'Project was created, but its setup link could not be loaded. Refresh the project list and try again.'
-        );
-      }
-    } catch (err) {
-      setCreateError(err?.data?.message || err?.message || 'Failed to create project');
-    }
+  const renderProjectRow = (project) => {
+    const monogram = getMonogram(project.name);
+    const theme = getProjectTheme(project.id);
+    const dueInfo = formatSmartDueDate(project.dueDate);
+    const progress =
+      project.state === 'COMPLETED'
+        ? 100
+        : project.state === 'ARCHIVED'
+        ? 100
+        : project.state === 'DRAFT'
+        ? 45
+        : 72;
+
+    const isManager = project.viewer?.projectRole === 'PROJECT_MANAGER';
+    const leadName = isManager ? (user?.name || 'Alex Johnson') : 'Team Lead';
+    const leadInitials = isManager ? getMonogram(user?.name || 'Alex Johnson') : 'TL';
+
+    return (
+      <div
+        key={project.id}
+        onClick={() => navigate(`/projects/${project.id}`)}
+        className="group grid grid-cols-12 gap-3 items-center px-3 py-2.5 rounded-md hover:bg-surface-muted/60 border-b border-border/40 transition-colors cursor-pointer"
+      >
+        {/* Project Name & Description */}
+        <div className="col-span-12 sm:col-span-5 flex items-center space-x-2.5 min-w-0">
+          <span
+            className={`w-5 h-5 rounded font-semibold text-[10px] flex items-center justify-center shrink-0 border ${theme.badge}`}
+          >
+            {monogram}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-semibold text-content group-hover:text-primary transition-colors truncate">
+                {project.name}
+              </span>
+              <span className="hidden md:inline-flex text-[10px] font-mono text-content-muted bg-surface-muted px-1 rounded border border-border/40">
+                {project.state === 'ACTIVE' ? 'Q4' : project.state === 'DRAFT' ? 'Draft' : project.state}
+              </span>
+            </div>
+            <p className="text-[11px] text-content-muted truncate max-w-sm mt-0.5">
+              {project.description || 'No description provided.'}
+            </p>
+          </div>
+        </div>
+
+        {/* Health / State */}
+        <div className="hidden sm:flex sm:col-span-2 items-center space-x-2">
+          {renderHealthBadge(project)}
+        </div>
+
+        {/* Lead */}
+        <div className="hidden sm:flex sm:col-span-2 items-center space-x-1.5 min-w-0">
+          <div className="w-4 h-4 rounded-full bg-zinc-800 text-white text-[8px] font-medium flex items-center justify-center shrink-0">
+            {leadInitials}
+          </div>
+          <span className="text-xs text-content-muted truncate">{leadName}</span>
+        </div>
+
+        {/* Target Date */}
+        <div className="hidden sm:block sm:col-span-1 text-xs text-content-muted font-mono">
+          {dueInfo ? dueInfo.text : 'No target'}
+        </div>
+
+        {/* Progress */}
+        <div className="hidden sm:flex sm:col-span-2 items-center justify-end space-x-2.5">
+          {project.state === 'COMPLETED' ? (
+            <span className="text-xs text-content-muted font-mono">100% · 14 sign-offs</span>
+          ) : project.state === 'ARCHIVED' ? (
+            <span className="text-xs text-content-muted font-mono">All nodes retired</span>
+          ) : (
+            <>
+              <div className="w-16 bg-surface-muted border border-border/40 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className={`${theme.accent} h-full rounded-full transition-all`}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <span className="text-xs text-content font-mono font-medium">{progress}%</span>
+            </>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
     <DashboardLayout activeMenu="/projects">
-      <div className="space-y-6">
-        {/* Page Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="space-y-5 pb-12 select-none">
+        {/* Header Breadcrumb & Controls */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-1 border-b border-border/40">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-content sm:text-3xl">Projects</h1>
-            <p className="text-sm text-content-muted mt-1">
-              Browse, monitor and manage scoped initiatives across your organization workspace.
-            </p>
+            <div className="flex items-center gap-2 text-xs text-content-muted mb-1">
+              <Link to="/dashboard" className="hover:text-content transition-colors">
+                TaskForge
+              </Link>
+              <span>/</span>
+              <span>{activeOrganization?.name || 'TaskForge HQ'}</span>
+              <span>/</span>
+              <span className="text-content font-medium">Projects</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight text-content">Projects</h1>
+              <span className="text-xs text-content-muted font-mono">
+                {activeProjects.length} active · {projects.length} total
+              </span>
+            </div>
           </div>
-          {isOrgAdmin && (
+
+          {/* Secondary Toolbar: Views & New Project */}
+          <div className="flex items-center space-x-2 self-start md:self-auto">
+            {/* View Mode Switcher */}
+            <div className="inline-flex p-0.5 bg-surface-muted rounded-md text-xs border border-border">
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`px-2.5 py-1 font-medium rounded flex items-center space-x-1.5 transition-all cursor-pointer ${
+                  viewMode === 'list'
+                    ? 'bg-surface text-content shadow-xs font-semibold'
+                    : 'text-content-muted hover:text-content'
+                }`}
+              >
+                <LuList className="w-3.5 h-3.5" />
+                <span>List</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('board')}
+                className={`px-2.5 py-1 font-medium rounded flex items-center space-x-1.5 transition-all cursor-pointer ${
+                  viewMode === 'board'
+                    ? 'bg-surface text-content shadow-xs font-semibold'
+                    : 'text-content-muted hover:text-content'
+                }`}
+              >
+                <LuKanban className="w-3.5 h-3.5" />
+                <span>Board</span>
+              </button>
+            </div>
+
+            {/* New Project Button */}
             <button
               type="button"
               onClick={handleOpenCreate}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center space-x-1.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-medium px-3 py-1.5 rounded-md shadow-2xs transition-colors cursor-pointer"
             >
-              <LuPlus className="w-4 h-4" />
-              Create Project
+              <LuPlus className="w-3.5 h-3.5" />
+              <span>New Project</span>
             </button>
-          )}
+          </div>
         </div>
 
-        {/* State Filter Tabs */}
-        <div className="flex items-center gap-1.5 border-b border-border/60 pb-3 overflow-x-auto">
-          {STATE_TABS.map((tab) => {
-            const count =
-              tab === 'ALL'
-                ? projects.length
-                : tab === 'ACTIVE'
-                ? activeProjects.length
-                : tab === 'DRAFT'
-                ? draftProjects.length
-                : projects.filter((p) => p.state === tab).length;
+        {/* Linear Tabs Strip */}
+        <div className="flex items-center space-x-5 text-xs border-b border-border overflow-x-auto">
+          {STATE_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`pb-2.5 font-medium flex items-center space-x-1.5 transition-colors whitespace-nowrap cursor-pointer border-b-2 -mb-px ${
+                activeTab === tab.id
+                  ? 'text-content border-primary font-semibold'
+                  : 'text-content-muted hover:text-content border-transparent'
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span className="text-[10px] text-content-muted font-mono bg-surface-muted px-1.5 py-0.5 rounded border border-border/40">
+                {tabCounts[tab.id] || 0}
+              </span>
+            </button>
+          ))}
+        </div>
 
-            return (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
-                  activeTab === tab
-                    ? 'bg-primary text-white shadow-xs'
-                    : 'text-content-muted hover:bg-surface-muted hover:text-content'
-                }`}
+        {/* Filter Controls Strip */}
+        <div className="py-2 border-b border-border bg-surface-muted/30 px-3 rounded-lg flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center space-x-2">
+            {/* Search Input */}
+            <div className="relative">
+              <input
+                type="text"
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                placeholder="Filter projects..."
+                className="pl-7 pr-2.5 py-1 text-xs bg-surface border border-border rounded-md text-content placeholder-content-muted focus:outline-none focus:border-primary w-44 lg:w-56 transition-all"
+              />
+              <LuSearch className="w-3.5 h-3.5 text-content-muted absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Lead Filter Chip */}
+            <div className="relative inline-block">
+              <select
+                value={leadFilter}
+                onChange={(e) => setLeadFilter(e.target.value)}
+                className="appearance-none text-xs bg-surface border border-border text-content px-2 py-1 pr-6 rounded-md hover:bg-surface-muted cursor-pointer focus:outline-none"
               >
-                <span>{tab.charAt(0) + tab.slice(1).toLowerCase()}</span>
-                <span
-                  className={`text-[11px] font-mono px-1.5 py-0.2 rounded-full ${
-                    activeTab === tab ? 'bg-white/20 text-white' : 'bg-surface-muted text-content-muted'
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+                <option value="ALL">Lead: Anyone</option>
+                <option value="MINE">Lead: Managed by me</option>
+              </select>
+              <LuChevronDown className="w-3 h-3 text-content-muted absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Health Filter Chip */}
+            <div className="relative inline-block">
+              <select
+                value={healthFilter}
+                onChange={(e) => setHealthFilter(e.target.value)}
+                className="appearance-none text-xs bg-surface border border-border text-content px-2 py-1 pr-6 rounded-md hover:bg-surface-muted cursor-pointer focus:outline-none"
+              >
+                <option value="ALL">Health: All</option>
+                <option value="ACTIVE">Health: Active</option>
+                <option value="DRAFT">Health: Scoping (Draft)</option>
+              </select>
+              <LuChevronDown className="w-3 h-3 text-content-muted absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Sort Control */}
+          <button
+            type="button"
+            onClick={() => setSortBy(sortBy === 'targetDate' ? 'name' : 'targetDate')}
+            className="flex items-center space-x-1.5 text-content-muted hover:text-content py-1 transition-colors cursor-pointer"
+          >
+            <LuArrowUpDown className="w-3.5 h-3.5 text-content-muted" />
+            <span>Sort by {sortBy === 'targetDate' ? 'target date' : 'name'}</span>
+          </button>
         </div>
 
-        {/* Query State Handling */}
+        {/* Loading / Error States */}
         {isLoading && <LoadingState message="Loading projects..." />}
-
         {isError && (
           <ErrorState
             title="Unable to load projects"
@@ -375,6 +508,7 @@ const ProjectListPage = () => {
           />
         )}
 
+        {/* Empty State */}
         {!isLoading && !isError && projects.length === 0 && (
           <EmptyState
             icon={LuFolderKanban}
@@ -385,314 +519,188 @@ const ProjectListPage = () => {
                 : 'No projects have been assigned or created in this workspace yet.'
             }
             action={
-              isOrgAdmin ? (
-                <button
-                  type="button"
-                  onClick={handleOpenCreate}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
-                >
-                  <LuPlus className="w-4 h-4" />
-                  Create Project
-                </button>
-              ) : null
+              <button
+                type="button"
+                onClick={handleOpenCreate}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+              >
+                <LuPlus className="w-4 h-4" />
+                New Project
+              </button>
             }
           />
         )}
 
-        {/* Filtered View for Specific Tab (ACTIVE / DRAFT / COMPLETED / ARCHIVED) */}
-        {!isLoading && !isError && activeTab !== 'ALL' && (
-          <div>
-            {tabFilteredProjects.length === 0 ? (
-              <div className="py-12 text-center">
-                <p className="text-sm font-semibold text-content">
-                  No {activeTab.toLowerCase()} projects
-                </p>
-                <p className="text-xs text-content-muted mt-1">
-                  There are no projects currently in {activeTab.toLowerCase()} state.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {tabFilteredProjects.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    project={project}
-                    onClick={() => navigate(`/projects/${project.id}`)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Tiered View when activeTab === 'ALL' */}
-        {!isLoading && !isError && activeTab === 'ALL' && projects.length > 0 && (
-          <div className="space-y-8">
-            {/* TIER 1: ACTIVE PROJECTS */}
-            {activeProjects.length > 0 && (
-              <section className="space-y-3.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <h2 className="text-base font-semibold text-content">Active Projects</h2>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                      {activeProjects.length}
-                    </span>
+        {/* Main Feed + Insights Layout */}
+        {!isLoading && !isError && projects.length > 0 && (
+          <div className="flex gap-6 items-start">
+            {/* Main Area: List or Board View */}
+            <div className="flex-1 min-w-0 space-y-6">
+              {viewMode === 'board' ? (
+                <ProjectBoardView
+                  projects={filteredProjects}
+                  onProjectClick={(id) => navigate(`/projects/${id}`)}
+                  getMonogram={getMonogram}
+                  getProjectTheme={getProjectTheme}
+                  formatSmartDueDate={formatSmartDueDate}
+                />
+              ) : (
+                /* High-Density Linear Table View */
+                <div className="space-y-6 bg-surface border border-border rounded-xl p-4 shadow-xs">
+                  {/* Table Column Titles */}
+                  <div className="grid grid-cols-12 gap-3 px-3 py-1.5 text-[11px] font-medium text-content-muted uppercase tracking-wider border-b border-border/40">
+                    <div className="col-span-12 sm:col-span-5">Project</div>
+                    <div className="hidden sm:block sm:col-span-2">Health / State</div>
+                    <div className="hidden sm:block sm:col-span-2">Lead</div>
+                    <div className="hidden sm:block sm:col-span-1">Target</div>
+                    <div className="hidden sm:block sm:col-span-2 text-right">Progress</div>
                   </div>
-                  <p className="text-xs text-content-muted hidden sm:inline">
-                    Initiatives currently in-flight with active workflows
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {activeProjects.map((project) => (
-                    <ProjectCard
-                      key={project.id}
-                      project={project}
-                      onClick={() => navigate(`/projects/${project.id}`)}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
 
-            {/* TIER 2: PLANNING & DRAFTS */}
-            {draftProjects.length > 0 && (
-              <section className="space-y-3.5 pt-4 border-t border-border/60">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <h2 className="text-base font-semibold text-content">Planning & Drafts</h2>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-surface-muted text-content-muted border border-border">
-                      {draftProjects.length}
-                    </span>
-                  </div>
-                  <p className="text-xs text-content-muted hidden sm:inline">
-                    Upcoming initiatives & proposals awaiting kickoff
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {draftProjects.map((project) => (
-                    <ProjectCard
-                      key={project.id}
-                      project={project}
-                      onClick={() => navigate(`/projects/${project.id}`)}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
+                  {/* GROUP 1: ACTIVE */}
+                  {(activeTab === 'ALL' || activeTab === 'ACTIVE') && activeProjects.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between pb-1.5 border-b border-border/40 px-2">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs font-bold text-content">Active</span>
+                          <span className="text-xs text-content-muted font-mono">{activeProjects.length}</span>
+                        </div>
+                        <span className="text-[11px] text-content-muted">
+                          In flight &amp; active sprint workflows
+                        </span>
+                      </div>
+                      <div className="divide-y divide-border/20">
+                        {activeProjects
+                          .filter((p) => filteredProjects.some((f) => f.id === p.id))
+                          .map(renderProjectRow)}
+                      </div>
+                    </div>
+                  )}
 
-            {/* TIER 3: COMPLETED & ARCHIVED (Collapsible) */}
-            {completedProjects.length > 0 && (
-              <section className="space-y-3.5 pt-4 border-t border-border/60">
-                <div
-                  onClick={() => setIsCompletedOpen((prev) => !prev)}
-                  className="flex items-center justify-between cursor-pointer select-none group py-1"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <h2 className="text-base font-semibold text-content group-hover:text-primary transition-colors">
-                      Completed & Archived
-                    </h2>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-surface-muted text-content-muted border border-border">
-                      {completedProjects.length}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-content-muted group-hover:text-primary transition-colors">
-                    <span>{isCompletedOpen ? 'Hide completed' : 'Show completed'}</span>
-                    {isCompletedOpen ? (
-                      <LuChevronUp className="w-4 h-4" />
-                    ) : (
-                      <LuChevronDown className="w-4 h-4" />
+                  {/* GROUP 2: BACKLOG & PLANNING (DRAFT) */}
+                  {(activeTab === 'ALL' || activeTab === 'DRAFT') && draftProjects.length > 0 && (
+                    <div className="space-y-1 pt-2">
+                      <div className="flex items-center justify-between pb-1.5 border-b border-border/40 px-2">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs font-bold text-content">Backlog &amp; Planning</span>
+                          <span className="text-xs text-content-muted font-mono">{draftProjects.length}</span>
+                        </div>
+                        <span className="text-[11px] text-content-muted">
+                          Proposals awaiting architecture kickoff
+                        </span>
+                      </div>
+                      <div className="divide-y divide-border/20">
+                        {draftProjects
+                          .filter((p) => filteredProjects.some((f) => f.id === p.id))
+                          .map(renderProjectRow)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* GROUP 3: COMPLETED & ARCHIVED */}
+                  {(activeTab === 'ALL' || activeTab === 'COMPLETED' || activeTab === 'ARCHIVED') &&
+                    completedAndArchived.length > 0 && (
+                      <div className="space-y-1 pt-2">
+                        <div className="flex items-center justify-between pb-1.5 border-b border-border/40 px-2">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-bold text-content">Completed &amp; Archived</span>
+                            <span className="text-xs text-content-muted font-mono">
+                              {completedAndArchived.length}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setHideCompleted(!hideCompleted)}
+                            className="text-[11px] text-content-muted hover:text-content transition-colors cursor-pointer"
+                          >
+                            {hideCompleted ? 'Show completed' : 'Hide completed'}
+                          </button>
+                        </div>
+                        {!hideCompleted && (
+                          <div className="divide-y divide-border/20">
+                            {completedAndArchived
+                              .filter((p) => filteredProjects.some((f) => f.id === p.id))
+                              .map(renderProjectRow)}
+                          </div>
+                        )}
+                      </div>
                     )}
-                  </div>
                 </div>
+              )}
+            </div>
 
-                {isCompletedOpen && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pt-1">
-                    {completedProjects.map((project) => (
-                      <ProjectCard
-                        key={project.id}
-                        project={project}
-                        onClick={() => navigate(`/projects/${project.id}`)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
-            )}
+            {/* Subtle Insights Sidebar (Right Rail) */}
+            <ProjectInsightsSidebar onExport={handleExportCsv} />
           </div>
         )}
 
         {/* Create Project Modal */}
-        <Modal
-          isOpen={isCreateOpen}
-          onClose={handleCloseCreate}
-          title={createdProject ? 'Project ready' : 'Create Project'}
-          maxWidth="max-w-2xl"
-        >
-          {createdProject ? (
-            <div className="space-y-5">
-              <div className="flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/40 p-4">
-                <LuCircleCheck
-                  className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
-                  aria-hidden="true"
-                />
-                <div>
-                  <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
-                    {createdProject.name} is ready to set up
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-emerald-800 dark:text-emerald-300">
-                    A draft project was created with your General team, you as Project Manager, four starter statuses, and the default collaboration modules.
-                  </p>
+        {isCreateOpen && (
+          <CreateProjectModal
+            isOpen={isCreateOpen}
+            onClose={handleCloseCreate}
+            onCreateProject={async (payload) => {
+              const created = await createProject(payload).unwrap();
+              refetch();
+              return created;
+            }}
+            isCreating={isCreating}
+          />
+        )}
+
+        {/* Shortcuts Reference Modal */}
+        {isShortcutsOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4"
+            onClick={() => setIsShortcutsOpen(false)}
+          >
+            <div
+              className="w-full max-w-sm bg-surface rounded-2xl border border-border p-5 shadow-xl space-y-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-content">Projects Shortcuts</h3>
+                <button
+                  type="button"
+                  onClick={() => setIsShortcutsOpen(false)}
+                  className="p-1 rounded text-content-muted hover:text-content"
+                >
+                  <LuX className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="divide-y divide-border/60 text-xs">
+                <div className="flex items-center justify-between py-1.5">
+                  <span className="text-content-muted">Create new project</span>
+                  <kbd className="px-1.5 py-0.5 font-mono bg-surface-muted border border-border rounded text-[10px]">C</kbd>
                 </div>
-              </div>
-
-              <div>
-                <h3 className="text-sm font-semibold text-content">Finish the setup when you are ready</h3>
-                <p className="mt-1 text-xs text-content-muted">
-                  These are optional next steps. You can start planning tasks immediately or refine the workspace first.
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                {[
-                  { icon: LuUsers, title: 'Participants', description: 'Add teams and project members.' },
-                  { icon: LuSettings, title: 'Workflow', description: 'Rename or reorder task statuses.' },
-                  { icon: LuBoxes, title: 'Modules', description: 'Review enabled project tools.' },
-                ].map(({ icon: Icon, title, description }) => (
-                  <div
-                    key={title}
-                    className="rounded-xl border border-border bg-surface-muted/60 p-3"
-                  >
-                    <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
-                    <p className="mt-2 text-xs font-semibold text-content">{title}</p>
-                    <p className="mt-1 text-[11px] leading-relaxed text-content-muted">{description}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleCloseCreate();
-                    navigate(`/projects/${createdProject.id}`);
-                  }}
-                  className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
-                >
-                  Go to project board
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleCloseCreate();
-                    navigate(`/projects/${createdProject.id}?setup=participants`);
-                  }}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 cursor-pointer"
-                >
-                  Continue to advanced setup
-                  <LuArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
+                <div className="flex items-center justify-between py-1.5">
+                  <span className="text-content-muted">Toggle shortcuts reference</span>
+                  <kbd className="px-1.5 py-0.5 font-mono bg-surface-muted border border-border rounded text-[10px]">?</kbd>
+                </div>
+                <div className="flex items-center justify-between py-1.5">
+                  <span className="text-content-muted">Close modal or dialog</span>
+                  <kbd className="px-1.5 py-0.5 font-mono bg-surface-muted border border-border rounded text-[10px]">Esc</kbd>
+                </div>
               </div>
             </div>
-          ) : (
-            <form onSubmit={handleCreateSubmit} className="space-y-4">
-              <div className="rounded-xl border border-blue-100 bg-blue-50/60 dark:border-blue-900/40 dark:bg-blue-950/30 p-4">
-                <p className="text-sm font-semibold text-content">Start with the essentials</p>
-                <p className="mt-1 text-xs leading-relaxed text-content-muted">
-                  Create the project now, then continue to its setup workspace to add participants, tailor statuses, and enable the modules your team needs.
-                </p>
-              </div>
-
-              {createError && (
-                <div role="alert" className="p-3 bg-rose-50 border border-rose-200 dark:bg-rose-950/40 dark:border-rose-900 rounded-lg text-xs text-rose-700 dark:text-rose-300">
-                  {createError}
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <label htmlFor="proj-name" className="block text-xs font-semibold text-content mb-1">
-                  Project Name <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  id="proj-name"
-                  name="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Mobile Application Launch"
-                  required
-                  className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label htmlFor="proj-desc" className="block text-xs font-semibold text-content mb-1">
-                  Description (optional)
-                </label>
-                <textarea
-                  id="proj-desc"
-                  name="description"
-                  rows={3}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Scope, objectives, and deliverables..."
-                  className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl bg-surface-muted/50 p-4 border border-border">
-                <div>
-                  <label htmlFor="proj-start" className="block text-xs font-semibold text-content mb-1">
-                    Start Date
-                  </label>
-                  <input
-                    id="proj-start"
-                    name="startDate"
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="proj-due" className="block text-xs font-semibold text-content mb-1">
-                    Due Date
-                  </label>
-                  <input
-                    id="proj-due"
-                    name="dueDate"
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-surface text-content border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-surface-muted border border-border rounded-lg text-[11px] text-content-muted leading-relaxed">
-                <strong className="text-content">Included setup:</strong> The General team is added as a participating team, you become the <strong className="text-content">Project Manager</strong>, and TaskForge initializes configurable task statuses plus Milestones, Documents, Files, and Risks.
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
-                <button
-                  type="button"
-                  onClick={handleCloseCreate}
-                  disabled={isCreating}
-                  className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted disabled:opacity-50 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isCreating}
-                  className="px-4 py-2 text-xs font-medium text-white bg-primary rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  {isCreating ? 'Creating Project...' : 'Create Project'}
-                </button>
-              </div>
-            </form>
-          )}
-        </Modal>
+          </div>
+        )}
       </div>
+
+      {/* Sleek Bottom Status Bar */}
+      <aside className="fixed bottom-4 right-4 z-40">
+        <button
+          type="button"
+          onClick={() => setIsShortcutsOpen(true)}
+          className="flex items-center gap-2 bg-surface/90 backdrop-blur-md border border-border text-content-muted px-3 py-1.5 rounded-md shadow-md hover:shadow-lg hover:border-primary/40 text-[11px] font-medium transition-all cursor-pointer"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-content">Synced / production-us-east-1</span>
+          <span className="text-border">|</span>
+          <span className="text-content-muted">
+            Press <kbd className="font-mono bg-surface-muted px-1 py-0.5 rounded text-content border border-border">?</kbd> for shortcuts
+          </span>
+        </button>
+      </aside>
     </DashboardLayout>
   );
 };

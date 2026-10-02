@@ -1,202 +1,338 @@
 import React from 'react';
-import { LuSparkles, LuTrendingUp } from 'react-icons/lu';
+import { Link } from 'react-router-dom';
 
 /**
- * SVG Donut Chart showing completion rate with circular gauge
+ * Priority Distribution Card (Linear/Stripe Craft Style)
+ * Renders a sleek segmented horizontal bar and 4 compact metric boxes.
  */
-export const CompletionDonut = ({ completed = 0, active = 0, overdue = 0, total = 0 }) => {
-  const effectiveTotal = total > 0 ? total : completed + active;
-  const percentage = effectiveTotal > 0 ? Math.min(100, Math.round((completed / effectiveTotal) * 100)) : 0;
+export const PriorityDistributionCard = ({
+  tasks = [],
+  focus,
+}) => {
+  const counts = {
+    Urgent: 0,
+    High: 0,
+    Medium: 0,
+    Low: 0,
+  };
 
-  const radius = 38;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (circumference * percentage) / 100;
+  if (tasks.length > 0) {
+    for (const t of tasks) {
+      const p = String(t.priorityCode || '').toUpperCase();
+      if (p === 'URGENT') counts.Urgent++;
+      else if (p === 'HIGH') counts.High++;
+      else if (p === 'LOW') counts.Low++;
+      else counts.Medium++;
+    }
+  } else if (focus && focus.total > 0) {
+    counts.Urgent = focus.overdue || 0;
+    counts.High = focus.dueToday || 0;
+    counts.Medium = focus.upcoming || 0;
+    counts.Low = Math.max(0, focus.total - counts.Urgent - counts.High - counts.Medium);
+  }
+
+  const total = counts.Urgent + counts.High + counts.Medium + counts.Low;
+  const urgentPct = total > 0 ? (counts.Urgent / total) * 100 : 0;
+  const highPct = total > 0 ? (counts.High / total) * 100 : 0;
+  const mediumPct = total > 0 ? (counts.Medium / total) * 100 : 0;
+  const lowPct = total > 0 ? (counts.Low / total) * 100 : 0;
+
+  const immediateAttentionCount = counts.Urgent + counts.High;
 
   return (
-    <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-xl bg-surface border border-border">
-      <div className="relative w-28 h-28 shrink-0 flex items-center justify-center">
-        <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-          {/* Background circle track */}
-          <circle
-            cx="50"
-            cy="50"
-            r={radius}
-            className="stroke-surface-muted text-surface-muted fill-none"
-            stroke="currentColor"
-            strokeWidth="8"
-          />
-          {/* Progress circle */}
-          <circle
-            cx="50"
-            cy="50"
-            r={radius}
-            className="text-primary fill-none transition-all duration-700 ease-out"
-            stroke="currentColor"
-            strokeWidth="8"
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-          />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="text-xl font-bold tracking-tight text-content">{percentage}%</span>
-          <span className="text-[10px] font-medium uppercase tracking-wider text-content-muted">Done</span>
-        </div>
-      </div>
-
-      <div className="flex-1 w-full space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <LuSparkles className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-semibold text-content">Completion Health</span>
+    <div className="bg-surface border border-border rounded-lg p-4 shadow-xs flex flex-col justify-between">
+      <div>
+        <div className="flex items-center justify-between pb-3 border-b border-border/60">
+          <div>
+            <h3 className="text-xs font-semibold text-content uppercase tracking-wider">
+              Priority Distribution
+            </h3>
+            <p className="text-[11px] text-content-muted">Active workload breakdown</p>
           </div>
-          <span className="text-xs font-medium text-content-muted">
-            {completed} of {effectiveTotal} completed
-          </span>
+          <span className="text-xs font-mono text-content-muted">{total} tasks</span>
         </div>
 
-        {/* Legend */}
-        <div className="grid grid-cols-3 gap-2 pt-1">
-          <div className="p-2 rounded-lg bg-surface-muted border border-border/50 text-center">
-            <div className="flex items-center justify-center gap-1 text-[11px] text-content-muted mb-0.5">
-              <span className="w-2 h-2 rounded-full bg-blue-500" />
-              <span>Active</span>
-            </div>
-            <p className="text-sm font-bold text-content">{active}</p>
-          </div>
-
-          <div className="p-2 rounded-lg bg-surface-muted border border-border/50 text-center">
-            <div className="flex items-center justify-center gap-1 text-[11px] text-content-muted mb-0.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>Done</span>
-            </div>
-            <p className="text-sm font-bold text-content">{completed}</p>
-          </div>
-
-          <div className="p-2 rounded-lg bg-surface-muted border border-border/50 text-center">
-            <div className="flex items-center justify-center gap-1 text-[11px] text-content-muted mb-0.5">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span>Overdue</span>
-            </div>
-            <p className="text-sm font-bold text-content">{overdue}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/**
- * Segmented Workload Bar showing task state proportions
- */
-export const WorkloadDistributionBar = ({ active = 0, dueToday = 0, upcoming = 0, overdue = 0, completed = 0 }) => {
-  const total = active + completed;
-  const activePct = total > 0 ? (active / total) * 100 : 0;
-  const completedPct = total > 0 ? (completed / total) * 100 : 0;
-  const overduePct = total > 0 ? (overdue / total) * 100 : 0;
-
-  return (
-    <div className="p-4 rounded-xl bg-surface border border-border space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <LuTrendingUp className="w-4 h-4 text-primary" />
-          <h3 className="text-xs font-semibold text-content">Task Distribution</h3>
-        </div>
-        <span className="text-[11px] font-medium text-content-muted">{total} Total Tracked</span>
-      </div>
-
-      {/* Segmented Bar */}
-      <div className="h-3 w-full rounded-full bg-surface-muted overflow-hidden flex shadow-inner">
-        {completedPct > 0 && (
-          <div
-            style={{ width: `${completedPct}%` }}
-            className="bg-emerald-500 transition-all duration-500"
-            title={`Completed: ${completed} (${Math.round(completedPct)}%)`}
-          />
-        )}
-        {activePct > 0 && (
-          <div
-            style={{ width: `${activePct}%` }}
-            className="bg-blue-500 transition-all duration-500"
-            title={`Active: ${active} (${Math.round(activePct)}%)`}
-          />
-        )}
-        {overduePct > 0 && (
-          <div
-            style={{ width: `${overduePct}%` }}
-            className="bg-rose-500 transition-all duration-500"
-            title={`Overdue: ${overdue} (${Math.round(overduePct)}%)`}
-          />
-        )}
-      </div>
-
-      {/* Breakdown Pills */}
-      <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px]">
-        <span className="inline-flex items-center gap-1.5 text-content-muted">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span>Completed: <strong className="text-content">{completed}</strong></span>
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-content-muted">
-          <span className="w-2 h-2 rounded-full bg-blue-500" />
-          <span>In Progress: <strong className="text-content">{active}</strong></span>
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-content-muted">
-          <span className="w-2 h-2 rounded-full bg-amber-500" />
-          <span>Due Today: <strong className="text-content">{dueToday}</strong></span>
-        </span>
-        {overdue > 0 && (
-          <span className="inline-flex items-center gap-1.5 text-rose-600 font-medium">
-            <span className="w-2 h-2 rounded-full bg-rose-500" />
-            <span>Overdue: <strong>{overdue}</strong></span>
-          </span>
-        )}
-      </div>
-    </div>
-  );
-};
-
-/**
- * 7-Day Mini Activity Histogram
- */
-export const WeeklyActivityMiniBar = ({ week = [], calendarItemsByDay = new Map() }) => {
-  const counts = week.map((day) => (calendarItemsByDay.get(day.key) || []).length);
-  const maxCount = Math.max(1, ...counts);
-
-  return (
-    <div className="flex items-end gap-1.5 h-12 pt-2 px-1">
-      {week.map((day, idx) => {
-        const count = counts[idx];
-        const heightPct = Math.max(15, Math.round((count / maxCount) * 100));
-
-        return (
-          <div
-            key={day.key}
-            className="flex-1 flex flex-col items-center gap-1 group relative cursor-pointer"
-          >
-            {/* Tooltip */}
-            <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 px-1.5 py-0.5 rounded bg-gray-900 text-white text-[10px] whitespace-nowrap shadow">
-              {count} {count === 1 ? 'item' : 'items'}
-            </div>
-            {/* Bar */}
-            <div className="w-full flex items-end justify-center h-8">
+        {/* Sleek Segmented Bar */}
+        <div className="mt-4">
+          <div className="h-2 w-full bg-surface-muted rounded-full overflow-hidden flex gap-0.5">
+            {urgentPct > 0 && (
               <div
-                style={{ height: `${heightPct}%` }}
-                className={`w-full max-w-[12px] rounded-t-sm transition-all duration-300 ${
-                  day.isToday
-                    ? 'bg-primary shadow-xs'
-                    : count > 0
-                    ? 'bg-blue-300 dark:bg-blue-700 hover:bg-blue-400'
-                    : 'bg-border/60 hover:bg-border'
-                }`}
+                style={{ width: `${urgentPct}%` }}
+                className="bg-red-500 h-full rounded-xs transition-all duration-500"
+                title={`Urgent: ${counts.Urgent}`}
               />
-            </div>
-            {/* Day letter */}
-            <span className={`text-[9px] font-semibold ${day.isToday ? 'text-primary font-bold' : 'text-content-muted'}`}>
-              {day.date.toLocaleDateString('en-US', { weekday: 'narrow' })}
-            </span>
+            )}
+            {highPct > 0 && (
+              <div
+                style={{ width: `${highPct}%` }}
+                className="bg-amber-500 h-full rounded-xs transition-all duration-500"
+                title={`High: ${counts.High}`}
+              />
+            )}
+            {mediumPct > 0 && (
+              <div
+                style={{ width: `${mediumPct}%` }}
+                className="bg-blue-500 h-full rounded-xs transition-all duration-500"
+                title={`Medium: ${counts.Medium}`}
+              />
+            )}
+            {lowPct > 0 && (
+              <div
+                style={{ width: `${lowPct}%` }}
+                className="bg-zinc-400 dark:bg-zinc-600 h-full rounded-xs transition-all duration-500"
+                title={`Low: ${counts.Low}`}
+              />
+            )}
+            {total === 0 && (
+              <div className="w-full bg-border h-full rounded-xs" />
+            )}
           </div>
-        );
-      })}
+
+          {/* Refined Linear-style Priority rows */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 text-xs">
+            <div className="p-2 rounded bg-surface-muted/60 border border-border flex flex-col">
+              <div className="flex items-center gap-1.5 text-[11px] text-content-muted">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                <span>Urgent</span>
+              </div>
+              <span className="text-sm font-semibold text-content mt-1">{counts.Urgent}</span>
+            </div>
+
+            <div className="p-2 rounded bg-surface-muted/60 border border-border flex flex-col">
+              <div className="flex items-center gap-1.5 text-[11px] text-content-muted">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                <span>High</span>
+              </div>
+              <span className="text-sm font-semibold text-content mt-1">{counts.High}</span>
+            </div>
+
+            <div className="p-2 rounded bg-surface-muted/60 border border-border flex flex-col">
+              <div className="flex items-center gap-1.5 text-[11px] text-content-muted">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                <span>Medium</span>
+              </div>
+              <span className="text-sm font-semibold text-content mt-1">{counts.Medium}</span>
+            </div>
+
+            <div className="p-2 rounded bg-surface-muted/60 border border-border flex flex-col">
+              <div className="flex items-center gap-1.5 text-[11px] text-content-muted">
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500 shrink-0" />
+                <span>Low</span>
+              </div>
+              <span className="text-sm font-semibold text-content mt-1">{counts.Low}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="pt-3 mt-3 border-t border-border/60 flex items-center justify-between text-[11px] text-content-muted">
+        <span>
+          {immediateAttentionCount > 0
+            ? `${immediateAttentionCount} task${immediateAttentionCount > 1 ? 's' : ''} require immediate attention`
+            : 'All workloads on schedule'}
+        </span>
+        <Link to="/tasks/my" className="text-content hover:text-primary font-medium transition-colors">
+          Filter urgent →
+        </Link>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Workflow Stages Card (Linear/Stripe Craft Style)
+ * Renders an SVG Donut chart (% Done) and a 2x2 grid of lifecycle stages.
+ */
+export const WorkflowStagesCard = ({
+  tasks = [],
+  focus,
+  completionPercentage = 0,
+}) => {
+  const counts = {
+    Done: 0,
+    InReview: 0,
+    InProgress: 0,
+    ToDo: 0,
+  };
+
+  if (tasks.length > 0) {
+    for (const t of tasks) {
+      const cat = String(t.semanticCategory || '').toUpperCase();
+      if (cat === 'COMPLETED') counts.Done++;
+      else if (cat === 'IN_REVIEW' || cat === 'REVIEW') counts.InReview++;
+      else if (cat === 'IN_PROGRESS') counts.InProgress++;
+      else counts.ToDo++;
+    }
+  } else if (focus) {
+    counts.Done = focus.completed || 0;
+    counts.InProgress = focus.active || 0;
+    counts.InReview = 0;
+    counts.ToDo = Math.max(0, (focus.total || 0) - counts.Done - counts.InProgress);
+  }
+
+  const effectiveTotal = counts.Done + counts.InReview + counts.InProgress + counts.ToDo;
+  const radius = 38;
+  const circumference = 2 * Math.PI * radius; // ~238.76
+
+  // SVG segments calculation
+  const getStrokeDash = (count) => {
+    if (effectiveTotal === 0 || count === 0) return `0 ${circumference}`;
+    const len = (count / effectiveTotal) * circumference;
+    return `${len} ${circumference - len}`;
+  };
+
+  const doneLen = effectiveTotal > 0 ? (counts.Done / effectiveTotal) * circumference : 0;
+  const reviewLen = effectiveTotal > 0 ? (counts.InReview / effectiveTotal) * circumference : 0;
+  const inProgressLen = effectiveTotal > 0 ? (counts.InProgress / effectiveTotal) * circumference : 0;
+
+  return (
+    <div className="bg-surface border border-border rounded-lg p-4 shadow-xs flex flex-col justify-between">
+      <div>
+        <div className="flex items-center justify-between pb-3 border-b border-border/60">
+          <div>
+            <h3 className="text-xs font-semibold text-content uppercase tracking-wider">
+              Workflow Stages
+            </h3>
+            <p className="text-[11px] text-content-muted">Task lifecycle velocity</p>
+          </div>
+          <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-medium">
+            {completionPercentage}% complete
+          </span>
+        </div>
+
+        {/* Donut and Grid */}
+        <div className="mt-4 flex flex-col sm:flex-row items-center gap-5">
+          {/* Donut Graphic */}
+          <div className="relative flex items-center justify-center shrink-0">
+            <svg className="w-24 h-24 -rotate-90 transform" viewBox="0 0 100 100">
+              {/* Background Circle */}
+              <circle
+                cx="50"
+                cy="50"
+                r={radius}
+                fill="transparent"
+                className="stroke-surface-muted"
+                stroke="currentColor"
+                strokeWidth="6"
+              />
+              {/* Done (Emerald) */}
+              {counts.Done > 0 && (
+                <circle
+                  cx="50"
+                  cy="50"
+                  r={radius}
+                  fill="transparent"
+                  stroke="#10b981"
+                  strokeWidth="6"
+                  strokeDasharray={getStrokeDash(counts.Done)}
+                  strokeDashoffset={0}
+                  strokeLinecap="round"
+                />
+              )}
+              {/* In Review (Purple) */}
+              {counts.InReview > 0 && (
+                <circle
+                  cx="50"
+                  cy="50"
+                  r={radius}
+                  fill="transparent"
+                  stroke="#a855f7"
+                  strokeWidth="6"
+                  strokeDasharray={getStrokeDash(counts.InReview)}
+                  strokeDashoffset={-doneLen}
+                  strokeLinecap="round"
+                />
+              )}
+              {/* In Progress (Blue) */}
+              {counts.InProgress > 0 && (
+                <circle
+                  cx="50"
+                  cy="50"
+                  r={radius}
+                  fill="transparent"
+                  stroke="#3b82f6"
+                  strokeWidth="6"
+                  strokeDasharray={getStrokeDash(counts.InProgress)}
+                  strokeDashoffset={-(doneLen + reviewLen)}
+                  strokeLinecap="round"
+                />
+              )}
+              {/* To Do (Zinc) */}
+              {counts.ToDo > 0 && (
+                <circle
+                  cx="50"
+                  cy="50"
+                  r={radius}
+                  fill="transparent"
+                  stroke="#94a3b8"
+                  strokeWidth="6"
+                  strokeDasharray={getStrokeDash(counts.ToDo)}
+                  strokeDashoffset={-(doneLen + reviewLen + inProgressLen)}
+                  strokeLinecap="round"
+                />
+              )}
+            </svg>
+            <div className="absolute flex flex-col items-center justify-center text-center select-none pointer-events-none">
+              <span className="text-xs font-semibold text-content tracking-tight">
+                {completionPercentage}%
+              </span>
+              <span className="text-[9px] font-medium text-content-muted uppercase tracking-wider">
+                Done
+              </span>
+            </div>
+          </div>
+
+          {/* 2x2 Stages Grid */}
+          <div className="grid grid-cols-2 gap-2 flex-1 w-full text-xs">
+            <div className="p-2 rounded bg-surface-muted/60 border border-border flex items-center justify-between">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                <span className="text-[11px] text-content truncate">Done</span>
+              </div>
+              <span className="text-xs font-semibold text-content font-mono ml-2">
+                {counts.Done}
+              </span>
+            </div>
+
+            <div className="p-2 rounded bg-surface-muted/60 border border-border flex items-center justify-between">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
+                <span className="text-[11px] text-content truncate">In Review</span>
+              </div>
+              <span className="text-xs font-semibold text-content font-mono ml-2">
+                {counts.InReview}
+              </span>
+            </div>
+
+            <div className="p-2 rounded bg-surface-muted/60 border border-border flex items-center justify-between">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                <span className="text-[11px] text-content truncate">In Progress</span>
+              </div>
+              <span className="text-xs font-semibold text-content font-mono ml-2">
+                {counts.InProgress}
+              </span>
+            </div>
+
+            <div className="p-2 rounded bg-surface-muted/60 border border-border flex items-center justify-between">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500 shrink-0" />
+                <span className="text-[11px] text-content truncate">To Do</span>
+              </div>
+              <span className="text-xs font-semibold text-content font-mono ml-2">
+                {counts.ToDo}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="pt-3 mt-3 border-t border-border/60 flex items-center justify-between text-[11px] text-content-muted">
+        <span>{counts.Done} of {effectiveTotal} tasks completed</span>
+        <Link to="/tasks/my" className="text-content hover:text-primary font-medium transition-colors">
+          View all tasks →
+        </Link>
+      </div>
     </div>
   );
 };

@@ -1,50 +1,45 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import {
-  LuArrowRight,
-  LuCalendarDays,
-  LuCircleAlert,
-  LuClipboardCheck,
-  LuClock3,
   LuListTodo,
-  LuShieldCheck,
-  LuSparkles,
-  LuFolderKanban,
   LuCircleCheck,
-  LuActivity,
-  LuCircle,
-  LuChartColumn,
-  LuChartPie,
+  LuTriangleAlert,
+  LuFilter,
+  LuClock,
 } from 'react-icons/lu';
 import DashboardLayout from '../../components/layouts/DashboardLayout.jsx';
 import { EmptyState, ErrorState, LoadingState } from '../../components/PageState.jsx';
 import useUserAuth from '../../hooks/useUserAuth.jsx';
-import { useGetDashboardQuery } from '../../services/dashboardApi.js';
-import { CustomBarchart, CustomPieChart } from '../../components/Charts/index.js';
+import { useGetDashboardQuery, dashboardApi } from '../../services/dashboardApi.js';
+import { useResolveApprovalMutation } from '../../services/taskApi.js';
+import { useDispatch } from 'react-redux';
 import { DashboardSchedule } from './components/DashboardSchedule.jsx';
+import {
+  PriorityDistributionCard,
+  WorkflowStagesCard,
+} from './components/DashboardCharts.jsx';
+import {
+  PriorityBars,
+  LinearStatusIcon,
+} from '../../components/task/index.js';
+import { isTaskOverdue } from '../../utils/taskAttention.js';
 
-const DATE_FORMAT = new Intl.DateTimeFormat('en-US', {
+const SHORT_DATE = new Intl.DateTimeFormat('en-US', {
   month: 'short',
   day: 'numeric',
 });
 
-const PRIORITY_BADGE = {
-  URGENT: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900',
-  HIGH: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
-  MEDIUM: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900',
-  LOW: 'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-800',
-};
-
-const PROJECT_STATE_BADGE = {
-  ACTIVE: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900',
-  DRAFT: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-300 dark:border-yellow-900',
-  COMPLETED: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900',
-  ARCHIVED: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-800',
+const PROJECT_STATE_CONFIG = {
+  ACTIVE: { label: 'Active', dotColor: 'bg-emerald-500' },
+  DRAFT: { label: 'Draft', dotColor: 'bg-amber-500' },
+  COMPLETED: { label: 'Done', dotColor: 'bg-zinc-400' },
+  ARCHIVED: { label: 'Archived', dotColor: 'bg-zinc-300 dark:bg-zinc-600' },
 };
 
 const DashboardPage = () => {
+  const dispatch = useDispatch();
   const {
-    user,
     activeOrganization,
     activeOrganizationId,
     organizationsInitialized,
@@ -56,6 +51,9 @@ const DashboardPage = () => {
   const { data, isLoading, isError, error, refetch } = useGetDashboardQuery(undefined, {
     skip: workspacePending || noActiveWorkspace,
   });
+
+  const [resolveApproval, { isLoading: isResolving }] = useResolveApprovalMutation();
+  const [resolvingId, setResolvingId] = useState(null);
 
   const week = useMemo(() => nextSevenDays(), []);
 
@@ -70,85 +68,88 @@ const DashboardPage = () => {
     return items;
   }, [data?.calendarItems]);
 
-  const priorityChartData = useMemo(() => {
-    const counts = {
-      Urgent: 0,
-      High: 0,
-      Medium: 0,
-      Low: 0,
-    };
+  const rawAssignedTasks = data?.assignedTasks || [];
+  const pendingApprovals = data?.pendingApprovals || [];
+  const recentProjects = data?.recentProjects || [];
+  const calendarItems = data?.calendarItems || [];
+  const focus = data?.focus || emptyFocus();
 
-    const tasks = data?.assignedTasks || [];
-    const focusData = data?.focus;
+  // Sort assigned tasks: Overdue first, active next by priority, completed last
+  const assignedTasks = useMemo(() => {
+    return [...rawAssignedTasks].sort((a, b) => {
+      const aOverdue = isTaskOverdue(a.dueAt, a.semanticCategory);
+      const bOverdue = isTaskOverdue(b.dueAt, b.semanticCategory);
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
 
-    if (tasks.length > 0) {
-      for (const t of tasks) {
-        const p = String(t.priorityCode || '').toUpperCase();
-        if (p === 'URGENT') counts.Urgent++;
-        else if (p === 'HIGH') counts.High++;
-        else if (p === 'MEDIUM') counts.Medium++;
-        else counts.Low++;
+      const aTerminal = a.semanticCategory === 'COMPLETED' || a.semanticCategory === 'CANCELLED';
+      const bTerminal = b.semanticCategory === 'COMPLETED' || b.semanticCategory === 'CANCELLED';
+      if (!aTerminal && bTerminal) return -1;
+      if (aTerminal && !bTerminal) return 1;
+
+      const priorityOrder = { URGENT: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+      const aPri = priorityOrder[String(a.priorityCode || '').toUpperCase()] || 0;
+      const bPri = priorityOrder[String(b.priorityCode || '').toUpperCase()] || 0;
+      if (aPri !== bPri) return bPri - aPri;
+
+      if (a.dueAt && b.dueAt) {
+        return new Date(a.dueAt) - new Date(b.dueAt);
       }
-    } else if (focusData && focusData.total > 0) {
-      counts.Urgent = focusData.overdue || 0;
-      counts.High = focusData.dueToday || 0;
-      counts.Medium = focusData.upcoming || 0;
-      counts.Low = Math.max(0, focusData.total - counts.Urgent - counts.High - counts.Medium);
-    }
+      if (a.dueAt) return -1;
+      if (b.dueAt) return 1;
 
-    return [
-      { priority: 'Urgent', count: counts.Urgent },
-      { priority: 'High', count: counts.High },
-      { priority: 'Medium', count: counts.Medium },
-      { priority: 'Low', count: counts.Low },
-    ];
-  }, [data?.assignedTasks, data?.focus]);
+      return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+    });
+  }, [rawAssignedTasks]);
 
-  const statusChartData = useMemo(() => {
-    const tasks = data?.assignedTasks || [];
-    const focusData = data?.focus;
+  // Counts for active work breakdown
+  const inProgressCount = useMemo(() => {
+    return rawAssignedTasks.filter((t) => String(t.semanticCategory || '').toUpperCase() === 'IN_PROGRESS').length;
+  }, [rawAssignedTasks]);
 
-    if (tasks.length > 0) {
-      const counts = {
-        'In Progress': 0,
-        'In Review': 0,
-        'Done': 0,
-        'To Do': 0,
-      };
+  const inReviewCount = useMemo(() => {
+    return rawAssignedTasks.filter((t) => {
+      const cat = String(t.semanticCategory || '').toUpperCase();
+      return cat === 'IN_REVIEW' || cat === 'REVIEW';
+    }).length;
+  }, [rawAssignedTasks]);
 
-      for (const t of tasks) {
-        const cat = String(t.semanticCategory || '').toUpperCase();
-        if (cat === 'IN_PROGRESS') counts['In Progress']++;
-        else if (cat === 'IN_REVIEW') counts['In Review']++;
-        else if (cat === 'COMPLETED') counts['Done']++;
-        else counts['To Do']++;
-      }
+  const firstDueTodayTask = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
 
-      return [
-        { status: 'In Progress', count: counts['In Progress'], color: '#3B82F6' },
-        { status: 'In Review', count: counts['In Review'], color: '#8B5CF6' },
-        { status: 'Done', count: counts['Done'], color: '#10B981' },
-        { status: 'To Do', count: counts['To Do'], color: '#94A3B8' },
-      ];
-    }
-
-    return [
-      { status: 'In Progress', count: focusData?.active || 0, color: '#3B82F6' },
-      { status: 'Completed', count: focusData?.completed || 0, color: '#10B981' },
-      { status: 'Overdue', count: focusData?.overdue || 0, color: '#EF4444' },
-      { status: 'Upcoming', count: focusData?.upcoming || 0, color: '#8B5CF6' },
-    ];
-  }, [data?.assignedTasks, data?.focus]);
+    return rawAssignedTasks.find((t) => {
+      if (!t.dueAt) return false;
+      const due = new Date(t.dueAt);
+      return due >= startOfToday && due < startOfTomorrow && t.semanticCategory !== 'COMPLETED';
+    });
+  }, [rawAssignedTasks]);
 
   const completionPercentage = useMemo(() => {
-    const total = data?.focus?.total || 0;
+    const total = focus.total || 0;
     if (total === 0) return 0;
-    return Math.round(((data?.focus?.completed || 0) / total) * 100);
-  }, [data?.focus?.completed, data?.focus?.total]);
+    return Math.round(((focus.completed || 0) / total) * 100);
+  }, [focus.completed, focus.total]);
 
-  const urgentAndHighCount = useMemo(() => {
-    return (priorityChartData[0]?.count || 0) + (priorityChartData[1]?.count || 0);
-  }, [priorityChartData]);
+  const handleQuickApproval = async (approval, action) => {
+    setResolvingId(approval.id);
+    try {
+      await resolveApproval({
+        projectId: approval.projectId,
+        taskId: approval.taskId,
+        action,
+      }).unwrap();
+      toast.success(`Task ${action === 'approve' ? 'approved' : 'rejected'} successfully.`);
+      dispatch(dashboardApi.util.invalidateTags(['Dashboard']));
+      refetch();
+    } catch (err) {
+      toast.error(err?.data?.message || `Failed to ${action} task.`);
+    } finally {
+      setResolvingId(null);
+    }
+  };
 
   if (workspacePending || isLoading) {
     return (
@@ -167,7 +168,7 @@ const DashboardPage = () => {
   if (isError) {
     return (
       <DashboardLayout activeMenu="/dashboard">
-        <div className="mx-auto my-6 max-w-7xl">
+        <div className="space-y-5 pb-12">
           <ErrorState
             title="Unable to load your dashboard"
             message={error?.data?.message || 'Your workspace data could not be loaded. Try again in a moment.'}
@@ -178,12 +179,6 @@ const DashboardPage = () => {
     );
   }
 
-  const focus = data?.focus || emptyFocus();
-  const assignedTasks = data?.assignedTasks || [];
-  const pendingApprovals = data?.pendingApprovals || [];
-  const recentProjects = data?.recentProjects || [];
-  const calendarItems = data?.calendarItems || [];
-
   const todayLabel = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     month: 'short',
@@ -192,482 +187,434 @@ const DashboardPage = () => {
 
   return (
     <DashboardLayout activeMenu="/dashboard">
-      <div className="space-y-6 max-w-7xl mx-auto">
-        {/* Dynamic Context Greeting & Header */}
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between p-5 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-border">
+      <div className="space-y-5 pb-12 select-none">
+        {/* Header Section: Clean, restrained & informative (Linear / Stripe style) */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border/60">
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-primary uppercase tracking-wider">
-              <LuSparkles className="w-3.5 h-3.5" />
-              <span>{activeOrganization?.name || 'Workspace'} · {todayLabel}</span>
+            <div className="flex items-center gap-2 text-xs text-content-muted font-medium">
+              <span>{todayLabel}</span>
+              <span className="text-content-muted/60">•</span>
+              <span>{activeOrganization?.name || 'Workspace'}</span>
             </div>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-content sm:text-3xl">
-              Welcome back, {firstName(user?.name)}
+            <h1 className="text-xl font-semibold text-content tracking-tight mt-0.5">
+              Overview
             </h1>
-            <p className="mt-1 text-sm text-content-muted">
-              Here is your daily snapshot of active assignments, deadlines, and approvals.
-            </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Link
               to="/tasks/my"
-              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 hover:shadow cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-content-muted hover:text-content bg-surface border border-border px-2.5 py-1.5 rounded-md shadow-2xs hover:bg-surface-muted transition-colors cursor-pointer"
             >
-              <LuListTodo className="h-4 w-4" aria-hidden="true" />
+              <LuFilter className="w-3.5 h-3.5 text-content-muted" />
+              <span>Filter</span>
+            </Link>
+            <Link
+              to="/tasks/my"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-content hover:text-primary bg-surface border border-border px-2.5 py-1.5 rounded-md shadow-2xs hover:bg-surface-muted transition-colors cursor-pointer"
+            >
+              <LuListTodo className="w-3.5 h-3.5 text-content-muted" />
               <span>My Tasks</span>
             </Link>
           </div>
-        </header>
+        </div>
 
-        {/* Focus Metrics (Enhanced Stat Cards) */}
-        <section aria-label="Work focus metrics" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <FocusCard
-            icon={LuClipboardCheck}
-            label="Active Assignments"
-            value={focus.active}
-            subtext={`${focus.total} assigned in total`}
+        {/* 1. Restrained Minimalist KPI Cards (Linear / Stripe Style) */}
+        <section aria-label="KPI metrics" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Metric 1: Active Assignments */}
+          <Link
             to="/tasks/my"
-            tone="blue"
-            trend={focus.active > 0 ? `${focus.active} in progress` : 'No active work'}
-          />
-
-          <FocusCard
-            icon={LuClock3}
-            label="Due Today"
-            value={focus.dueToday}
-            subtext={`${focus.upcoming} upcoming this week`}
-            to="/tasks/my"
-            tone="amber"
-            highlight={focus.dueToday > 0}
-          />
-
-          <FocusCard
-            icon={LuCircleAlert}
-            label="Overdue Tasks"
-            value={focus.overdue}
-            subtext={focus.overdue > 0 ? 'Requires immediate action' : 'All deadlines on track'}
-            to="/tasks/my"
-            tone={focus.overdue > 0 ? 'rose' : 'emerald'}
-            highlight={focus.overdue > 0}
-          />
-
-          <FocusCard
-            icon={LuShieldCheck}
-            label="Approval Requests"
-            value={pendingApprovals.length}
-            subtext="Awaiting your decision"
-            to="/tasks/approval-queue"
-            tone={pendingApprovals.length > 0 ? 'purple' : 'neutral'}
-            highlight={pendingApprovals.length > 0}
-          />
-        </section>
-
-        {/* Visual Analytics & Task Distribution Section */}
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Card 1: Task Priority Distribution (CustomBarchart) */}
-          <div className="rounded-2xl border border-border bg-surface p-5 shadow-xs flex flex-col justify-between transition-all hover:border-border/80">
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-border/60">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 flex items-center justify-center">
-                    <LuChartColumn className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-semibold text-content">
-                      Tasks by Priority
-                    </h2>
-                    <p className="text-xs text-content-muted">Urgency breakdown across assigned work</p>
-                  </div>
-                </div>
-                {urgentAndHighCount > 0 && (
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200 dark:border-rose-900">
-                    {urgentAndHighCount} Urgent / High
-                  </span>
-                )}
-              </div>
-              <div className="mt-4">
-                <CustomBarchart data={priorityChartData} height={280} />
-              </div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-border/40 flex items-center justify-between text-xs text-content-muted">
-              <span>Urgent · High · Medium · Low</span>
-              <span className="font-mono">{priorityChartData.reduce((acc, d) => acc + d.count, 0)} Tasks Tracked</span>
-            </div>
-          </div>
-
-          {/* Card 2: Task Status Distribution (CustomPieChart) */}
-          <div className="rounded-2xl border border-border bg-surface p-5 shadow-xs flex flex-col justify-between transition-all hover:border-border/80">
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-border/60">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                    <LuChartPie className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-semibold text-content">
-                      Task Status Breakdown
-                    </h2>
-                    <p className="text-xs text-content-muted">Progression across workflow stages</p>
-                  </div>
-                </div>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900">
-                  {completionPercentage}% Complete
-                </span>
-              </div>
-              <div className="mt-4">
-                <CustomPieChart data={statusChartData} height={280} />
-              </div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-border/40 flex items-center justify-between text-xs text-content-muted">
-              <span>Hover slice for details</span>
-              <span className="font-medium text-content">{focus.total} Total Tasks</span>
-            </div>
-          </div>
-        </section>
-
-        {/* 7-Day Schedule & Approval Queue Section */}
-        <section className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(20rem,1fr)]">
-          {/* Interactive 7-Day Schedule with Grid & Agenda views */}
-          <DashboardSchedule
-            week={week}
-            calendarItemsByDay={calendarItemsByDay}
-            totalItemsCount={calendarItems.length}
-          />
-
-          {/* Approval Queue Panel */}
-          <section
-            className="rounded-xl border border-border bg-surface p-5 shadow-sm flex flex-col justify-between"
-            aria-labelledby="approval-heading"
+            className="bg-surface border border-border rounded-lg p-3.5 shadow-xs hover:border-border/80 transition-colors block group cursor-pointer"
           >
+            <div className="text-[11px] font-medium text-content-muted uppercase tracking-wider">
+              Active Assignments
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-semibold text-content tracking-tight group-hover:text-primary transition-colors">
+                {focus.active}
+              </span>
+              <span className="text-xs text-content-muted">of {focus.total} assigned</span>
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-content-muted">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+              <span>
+                {inProgressCount} in progress{inReviewCount > 0 ? `, ${inReviewCount} in review` : ''}
+              </span>
+            </div>
+          </Link>
+
+          {/* Metric 2: Due Today */}
+          <Link
+            to="/tasks/my"
+            className="bg-surface border border-border rounded-lg p-3.5 shadow-xs hover:border-border/80 transition-colors block group cursor-pointer"
+          >
+            <div className="text-[11px] font-medium text-content-muted uppercase tracking-wider">
+              Due Today
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-semibold text-content tracking-tight group-hover:text-primary transition-colors">
+                {focus.dueToday}
+              </span>
+              {firstDueTodayTask ? (
+                <span className="text-xs text-amber-600 dark:text-amber-400 font-medium truncate max-w-[130px]">
+                  {firstDueTodayTask.title}
+                </span>
+              ) : (
+                <span className="text-xs text-content-muted font-medium">All caught up</span>
+              )}
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-content-muted">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+              <span>{focus.upcoming} upcoming this week</span>
+            </div>
+          </Link>
+
+          {/* Metric 3: Overdue Tasks (Smart zero-state handling) */}
+          <Link
+            to="/tasks/my"
+            className="bg-surface border border-border rounded-lg p-3.5 shadow-xs hover:border-border/80 transition-colors block group cursor-pointer"
+          >
+            <div className="text-[11px] font-medium text-content-muted uppercase tracking-wider">
+              Overdue Tasks
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-semibold text-content tracking-tight group-hover:text-primary transition-colors">
+                {focus.overdue}
+              </span>
+              {focus.overdue === 0 ? (
+                <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                  On track
+                </span>
+              ) : (
+                <span className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+                  Action required
+                </span>
+              )}
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-content-muted">
+              {focus.overdue === 0 ? (
+                <>
+                  <LuCircleCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <span>All milestones healthy</span>
+                </>
+              ) : (
+                <>
+                  <LuTriangleAlert className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                  <span className="text-rose-600 dark:text-rose-400">
+                    {focus.overdue} past deadline
+                  </span>
+                </>
+              )}
+            </div>
+          </Link>
+
+          {/* Metric 4: Approval Requests */}
+          <Link
+            to="/tasks/approval-queue"
+            className="bg-surface border border-border rounded-lg p-3.5 shadow-xs hover:border-border/80 transition-colors block group cursor-pointer"
+          >
+            <div className="text-[11px] font-medium text-content-muted uppercase tracking-wider">
+              Approval Requests
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-semibold text-content tracking-tight group-hover:text-primary transition-colors">
+                {pendingApprovals.length}
+              </span>
+              <span className="text-xs text-content-muted">
+                {pendingApprovals.length > 0 ? 'pending review' : 'cleared'}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-content-muted">
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
+              <span>Assigned to you</span>
+            </div>
+          </Link>
+        </section>
+
+        {/* 2. Visual Analytics (Sleek Segmented Bar & SVG Donut Chart) */}
+        <section aria-label="Visual Analytics" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <PriorityDistributionCard
+            tasks={assignedTasks}
+            focus={focus}
+          />
+          <WorkflowStagesCard
+            tasks={assignedTasks}
+            focus={focus}
+            completionPercentage={completionPercentage}
+          />
+        </section>
+
+        {/* 3. Schedule Strip & Approvals Row (7 cols / 5 cols) */}
+        <section aria-label="Timeline and Approvals" className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {/* 7-Day Timeline Strip (7 cols) */}
+          <div className="lg:col-span-7">
+            <DashboardSchedule
+              week={week}
+              calendarItemsByDay={calendarItemsByDay}
+              totalItemsCount={calendarItems.length}
+            />
+          </div>
+
+          {/* Approval Queue (5 cols) */}
+          <div className="lg:col-span-5 bg-surface border border-border rounded-lg p-4 shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between pb-3 border-b border-border/60">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center">
-                    <LuShieldCheck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h2 id="approval-heading" className="text-base font-semibold text-content">
-                      Approval Queue
-                    </h2>
-                    <p className="text-xs text-content-muted">Decisions assigned to you</p>
-                  </div>
+                  <h3 className="text-xs font-semibold text-content uppercase tracking-wider">
+                    Approval Queue
+                  </h3>
+                  {pendingApprovals.length > 0 && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                  )}
                 </div>
                 <Link
                   to="/tasks/approval-queue"
-                  className="text-xs font-semibold text-primary hover:underline"
+                  className="text-[11px] font-medium text-content-muted hover:text-content transition-colors"
                 >
-                  View all
+                  View all ({pendingApprovals.length})
                 </Link>
               </div>
 
+              {/* Approval Items */}
               {pendingApprovals.length === 0 ? (
-                <div className="my-8 text-center space-y-2">
-                  <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 mx-auto flex items-center justify-center">
-                    <LuCircleCheck className="w-5 h-5" />
-                  </div>
-                  <p className="text-sm font-semibold text-content">No pending approvals</p>
-                  <p className="text-xs text-content-muted">
+                <div className="my-8 text-center space-y-1.5 text-content-muted">
+                  <LuCircleCheck className="w-7 h-7 text-emerald-500 mx-auto opacity-80" />
+                  <p className="text-xs font-semibold text-content">No approvals pending</p>
+                  <p className="text-[11px]">
                     You have reviewed and cleared all task completion requests.
                   </p>
                 </div>
               ) : (
-                <div className="mt-3 divide-y divide-border/60">
-                  {pendingApprovals.slice(0, 4).map((approval) => (
-                    <Link
+                <div className="mt-3 space-y-2.5">
+                  {pendingApprovals.slice(0, 2).map((approval) => (
+                    <div
                       key={approval.id}
-                      to={taskHref(approval.projectId, approval.taskId)}
-                      className="block py-3 hover:bg-surface-muted/50 rounded-lg px-2 -mx-2 transition-colors group"
+                      className="p-3 rounded-md border border-border/80 bg-surface-muted/50 hover:bg-surface-muted transition-colors text-xs"
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 bg-amber-50 dark:bg-amber-950/50 px-1.5 py-0.5 rounded">
-                          Review Needed
+                      <div className="flex items-center justify-between text-[11px] mb-1.5">
+                        <span className="font-mono text-content-muted">
+                          DEC-{approval.taskId.slice(0, 4).toUpperCase()}
                         </span>
-                        <span className="text-[11px] text-content-muted">
-                          {formatDate(approval.requestedAt)}
+                        <span className="text-content-muted">
+                          {formatShortDate(approval.requestedAt)}
                         </span>
                       </div>
-                      <p className="truncate text-xs font-semibold text-content group-hover:text-primary mt-1">
+                      <Link
+                        to={taskHref(approval.projectId, approval.taskId)}
+                        className="font-semibold text-content hover:text-primary transition-colors line-clamp-1 block"
+                      >
                         {approval.title}
+                      </Link>
+                      <p className="text-[11px] text-content-muted mt-0.5 truncate">
+                        {approval.projectName}
                       </p>
-                      <div className="flex items-center justify-between mt-1 text-[11px] text-content-muted">
-                        <span className="truncate">{approval.projectName}</span>
-                        <span className="inline-flex items-center gap-1 text-primary font-medium">
-                          Review <LuArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+
+                      <div className="flex items-center justify-between pt-3 mt-2 border-t border-border/60">
+                        <span className="text-[11px] text-content-muted">
+                          Requires Owner sign-off
                         </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={isResolving && resolvingId === approval.id}
+                            onClick={() => handleQuickApproval(approval, 'reject')}
+                            className="px-2 py-1 text-[11px] font-medium text-content-muted hover:text-content bg-surface border border-border rounded shadow-2xs hover:bg-surface-muted transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            Reject
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isResolving && resolvingId === approval.id}
+                            onClick={() => handleQuickApproval(approval, 'approve')}
+                            className="px-2 py-1 text-[11px] font-medium text-white bg-content hover:bg-content/90 dark:bg-primary dark:hover:bg-primary/90 rounded shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            Approve
+                          </button>
+                        </div>
                       </div>
-                    </Link>
+                    </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {pendingApprovals.length > 0 && (
-              <div className="pt-3 border-t border-border/60">
-                <Link
-                  to="/tasks/approval-queue"
-                  className="w-full py-2 px-3 rounded-lg bg-surface-muted hover:bg-primary hover:text-white text-xs font-semibold text-content transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span>Open Full Approval Queue</span>
-                  <LuArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
-            )}
-          </section>
+            <div className="pt-2.5 mt-2 border-t border-border/60 text-right">
+              <Link
+                to="/tasks/approval-queue"
+                className="text-[11px] font-medium text-content-muted hover:text-content transition-colors"
+              >
+                Manage approval workflows →
+              </Link>
+            </div>
+          </div>
         </section>
 
-        {/* Assigned Tasks & Recent Projects Row */}
-        <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Assigned Work with Progress Bars */}
-          <section
-            className="rounded-xl border border-border bg-surface p-5 shadow-sm space-y-4"
-            aria-labelledby="assigned-heading"
-          >
+        {/* 4. Bottom Workspaces: Assigned Tasks & Recent Projects (7 cols / 5 cols) */}
+        <section aria-label="Assigned Tasks and Recent Projects" className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {/* Left: Assigned Tasks (7 cols) */}
+          <div className="lg:col-span-7 bg-surface border border-border rounded-lg p-4 shadow-xs">
             <div className="flex items-center justify-between pb-3 border-b border-border/60">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-primary flex items-center justify-center">
-                  <LuClipboardCheck className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 id="assigned-heading" className="text-base font-semibold text-content">
-                    Assigned to You
-                  </h2>
-                  <p className="text-xs text-content-muted">Your active priorities and progress</p>
-                </div>
+              <div>
+                <h3 className="text-xs font-semibold text-content uppercase tracking-wider">
+                  Assigned to You
+                </h3>
+                <p className="text-[11px] text-content-muted">Your direct queue and progress</p>
               </div>
               <Link
                 to="/tasks/my"
-                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                className="text-[11px] font-medium text-content-muted hover:text-content transition-colors"
               >
-                <span>All tasks</span>
-                <LuArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                All tasks ({assignedTasks.length}) →
               </Link>
             </div>
 
+            {/* Linear-style Clean Issue List */}
             {assignedTasks.length === 0 ? (
-              <div className="py-6">
+              <div className="py-8">
                 <EmptyState
                   title="No assigned tasks"
-                  description="Tasks assigned to you in visible projects will show up here."
+                  description="Tasks assigned to you will show up here."
                 />
               </div>
             ) : (
-              <div className="divide-y divide-border/60">
+              <div className="mt-2 divide-y divide-border/60 text-xs">
                 {assignedTasks.slice(0, 5).map((task) => {
-                  const priorityClass =
-                    PRIORITY_BADGE[task.priorityCode] ||
-                    'bg-surface-muted text-content-muted border-border';
-                  const progress = Math.min(100, Math.max(0, task.effectiveProgress || 0));
+                  const isCompleted = String(task.semanticCategory || '').toUpperCase() === 'COMPLETED';
+                  const isOverdue = isTaskOverdue(task.dueAt, task.semanticCategory);
+                  const taskKey = `TF-${task.id.slice(0, 4).toUpperCase()}`;
 
                   return (
                     <Link
                       key={task.id}
                       to={taskHref(task.projectId, task.id)}
-                      className="block py-3 hover:bg-surface-muted/50 rounded-lg px-2 -mx-2 transition-colors group"
+                      className="py-2.5 flex items-center justify-between gap-3 group hover:bg-surface-muted/60 -mx-2 px-2 rounded transition-colors cursor-pointer"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <LinearStatusIcon category={task.semanticCategory} />
+                        <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span
-                              className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${priorityClass}`}
-                            >
-                              {task.priorityCode || 'TASK'}
+                            <span className="font-mono text-[11px] text-content-muted shrink-0">
+                              {taskKey}
                             </span>
-                            <span className="text-xs font-semibold text-content group-hover:text-primary truncate">
+                            <span
+                              className={`font-medium truncate transition-colors ${
+                                isCompleted
+                                  ? 'line-through text-content-muted'
+                                  : 'text-content group-hover:text-primary'
+                              }`}
+                            >
                               {task.title}
                             </span>
                           </div>
-                          <p className="mt-1 text-[11px] text-content-muted truncate">
-                            {task.projectName} · <span className="font-medium">{task.statusName}</span>
-                          </p>
-                        </div>
-
-                        <div className="shrink-0 text-right">
-                          <span className="text-[11px] font-medium text-content-muted block">
-                            {task.dueAt ? formatDate(task.dueAt) : 'No due date'}
-                          </span>
-                          <span className="text-[10px] text-primary font-semibold">
-                            {progress}%
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Mini Progress Bar */}
-                      <div className="mt-2 h-1.5 w-full rounded-full bg-surface-muted overflow-hidden">
-                        <div
-                          style={{ width: `${progress}%` }}
-                          className={`h-full rounded-full transition-all duration-300 ${
-                            progress === 100
-                              ? 'bg-emerald-500'
-                              : progress > 50
-                              ? 'bg-blue-500'
-                              : 'bg-primary/70'
-                          }`}
-                        />
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          {/* Recent Projects with Badges & Metadata */}
-          <section
-            className="rounded-xl border border-border bg-surface p-5 shadow-sm space-y-4"
-            aria-labelledby="recent-heading"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-border/60">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-600 flex items-center justify-center">
-                  <LuFolderKanban className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 id="recent-heading" className="text-base font-semibold text-content">
-                    Recent Projects
-                  </h2>
-                  <p className="text-xs text-content-muted">Accessible workspaces & boards</p>
-                </div>
-              </div>
-              <Link
-                to="/projects"
-                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-              >
-                <span>All projects</span>
-                <LuArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </Link>
-            </div>
-
-            {recentProjects.length === 0 ? (
-              <div className="py-6">
-                <EmptyState
-                  title="No visible projects"
-                  description="Projects you join or create will be listed here."
-                />
-              </div>
-            ) : (
-              <div className="divide-y divide-border/60">
-                {recentProjects.map((project) => {
-                  const stateBadge =
-                    PROJECT_STATE_BADGE[project.state] ||
-                    'bg-surface-muted text-content-muted border-border';
-
-                  return (
-                    <Link
-                      key={project.id}
-                      to={`/projects/${project.id}`}
-                      className="flex items-center justify-between gap-3 py-3 hover:bg-surface-muted/50 rounded-lg px-2 -mx-2 transition-colors group"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-surface-muted border border-border flex items-center justify-center shrink-0 font-bold text-xs text-primary group-hover:border-primary transition-colors">
-                          {project.name?.charAt(0)?.toUpperCase() || 'P'}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-content group-hover:text-primary truncate">
-                            {project.name}
-                          </p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span
-                              className={`text-[9px] font-semibold uppercase px-1.5 py-0.2 rounded border ${stateBadge}`}
-                            >
-                              {project.state}
-                            </span>
-                            <span className="text-[10px] text-content-muted truncate">
-                              {project.dueDate ? `Due ${formatDate(project.dueDate)}` : 'No deadline'}
-                            </span>
+                          <div className="text-[11px] text-content-muted truncate mt-0.5">
+                            {task.projectName}
                           </div>
                         </div>
                       </div>
 
-                      <LuArrowRight className="w-4 h-4 text-content-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+                      <div className="flex items-center gap-3 shrink-0 text-[11px]">
+                        <PriorityBars priority={task.priorityCode} />
+                        <span
+                          className={`font-mono text-[11px] ${
+                            isOverdue
+                              ? 'text-rose-600 dark:text-rose-400 font-medium'
+                              : 'text-content-muted'
+                          }`}
+                        >
+                          {task.dueAt ? formatShortDate(task.dueAt) : '—'}
+                        </span>
+                      </div>
                     </Link>
                   );
                 })}
               </div>
             )}
-          </section>
+          </div>
+
+          {/* Right: Active Projects (5 cols) */}
+          <div className="lg:col-span-5 bg-surface border border-border rounded-lg p-4 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                <div>
+                  <h3 className="text-xs font-semibold text-content uppercase tracking-wider">
+                    Active Projects
+                  </h3>
+                  <p className="text-[11px] text-content-muted">Workspaces &amp; repositories</p>
+                </div>
+                <Link
+                  to="/projects"
+                  className="text-[11px] font-medium text-content-muted hover:text-content transition-colors"
+                >
+                  All projects ({recentProjects.length}) →
+                </Link>
+              </div>
+
+              {/* Modern Craft Project Rows */}
+              {recentProjects.length === 0 ? (
+                <div className="py-8">
+                  <EmptyState
+                    title="No visible projects"
+                    description="Projects you join or create will be listed here."
+                  />
+                </div>
+              ) : (
+                <div className="mt-2 divide-y divide-border/60 text-xs">
+                  {recentProjects.slice(0, 5).map((project) => {
+                    const stateCfg = PROJECT_STATE_CONFIG[project.state] || {
+                      label: project.state || 'Active',
+                      dotColor: 'bg-zinc-400',
+                    };
+
+                    return (
+                      <Link
+                        key={project.id}
+                        to={`/projects/${project.id}`}
+                        className="py-2.5 flex items-center justify-between group hover:bg-surface-muted/60 -mx-2 px-2 rounded transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-5 h-5 rounded bg-surface-muted border border-border flex items-center justify-center font-mono text-[10px] font-semibold text-content shrink-0">
+                            {project.name?.charAt(0)?.toUpperCase() || 'P'}
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-medium text-content group-hover:text-primary truncate transition-colors leading-tight">
+                              {project.name}
+                            </h4>
+                            <span className="text-[10px] text-content-muted">
+                              {project.dueDate ? `Due ${formatShortDate(project.dueDate)}` : 'No deadline'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`w-1.5 h-1.5 rounded-full ${stateCfg.dotColor}`} />
+                          <span className="text-[11px] text-content-muted">{stateCfg.label}</span>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2.5 mt-2 border-t border-border/60 flex items-center justify-between text-[11px] text-content-muted">
+              <span>{recentProjects.length} total projects tracked</span>
+              <Link
+                to="/projects"
+                className="text-content hover:text-primary font-medium transition-colors"
+              >
+                + New Project
+              </Link>
+            </div>
+          </div>
         </section>
       </div>
     </DashboardLayout>
   );
 };
 
-/**
- * Modern Focus Metric Card
- */
-const FocusCard = ({
-  icon: Icon,
-  label,
-  value,
-  subtext,
-  to,
-  tone = 'blue',
-  highlight = false,
-  trend,
-}) => {
-  const toneStyles = {
-    blue: {
-      bg: 'bg-blue-50 dark:bg-blue-950/40',
-      text: 'text-blue-600 dark:text-blue-400',
-      border: 'hover:border-blue-300 dark:hover:border-blue-800',
-    },
-    amber: {
-      bg: 'bg-amber-50 dark:bg-amber-950/40',
-      text: 'text-amber-600 dark:text-amber-400',
-      border: 'hover:border-amber-300 dark:hover:border-amber-800',
-    },
-    rose: {
-      bg: 'bg-rose-50 dark:bg-rose-950/40',
-      text: 'text-rose-600 dark:text-rose-400',
-      border: 'hover:border-rose-300 dark:hover:border-rose-800',
-    },
-    emerald: {
-      bg: 'bg-emerald-50 dark:bg-emerald-950/40',
-      text: 'text-emerald-600 dark:text-emerald-400',
-      border: 'hover:border-emerald-300 dark:hover:border-emerald-800',
-    },
-    purple: {
-      bg: 'bg-purple-50 dark:bg-purple-950/40',
-      text: 'text-purple-600 dark:text-purple-400',
-      border: 'hover:border-purple-300 dark:hover:border-purple-800',
-    },
-    neutral: {
-      bg: 'bg-surface-muted',
-      text: 'text-content-muted',
-      border: 'hover:border-border',
-    },
-  };
-
-  const style = toneStyles[tone] || toneStyles.blue;
-
-  return (
-    <Link
-      to={to}
-      className={`rounded-xl border border-border bg-surface p-4 sm:p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer block ${
-        style.border
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${style.bg} ${style.text}`}>
-          <Icon className="w-5 h-5" aria-hidden="true" />
-        </div>
-        {highlight && (
-          <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-        )}
-      </div>
-
-      <div className="mt-3">
-        <p className="text-2xl sm:text-3xl font-bold tracking-tight text-content">{value}</p>
-        <p className="text-xs font-semibold text-content mt-0.5">{label}</p>
-        <p className="text-[11px] text-content-muted mt-1 truncate">{subtext}</p>
-      </div>
-    </Link>
-  );
-};
-
 const emptyFocus = () => ({ active: 0, total: 0, dueToday: 0, upcoming: 0, overdue: 0, completed: 0 });
-const firstName = (name) => String(name || 'there').trim().split(/\s+/)[0] || 'there';
 const taskHref = (projectId, taskId) => `/projects/${projectId}?tab=tasks&task=${taskId}`;
-const formatDate = (value) => (value ? DATE_FORMAT.format(calendarDate(value)) : 'No date');
+const formatShortDate = (value) => (value ? SHORT_DATE.format(calendarDate(value)) : '');
 const calendarDayKey = (value) => calendarDate(value).toLocaleDateString('en-CA');
 const calendarDate = (value) =>
   typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)

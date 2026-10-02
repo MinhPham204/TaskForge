@@ -27,11 +27,14 @@ import {
   useUnlinkTaskAttachmentMutation,
   downloadTaskAttachment,
 } from '../../../services/collaborationApi';
+import { ApprovalStateBadge } from './TaskStatusBadge';
 import {
-  TaskStatusBadge,
-  PriorityBadge,
-  ApprovalStateBadge,
-} from './TaskStatusBadge';
+  StatusText,
+  PriorityText,
+  AttentionFlag,
+  CountText,
+} from '../../../components/task';
+import { isTaskOverdue } from '../../../utils/taskAttention';
 import {
   LuCalendar,
   LuCircleCheck,
@@ -333,6 +336,7 @@ const TaskDetailModal = ({
   const pendingApproval = task?.approvals?.find((a) => a.state === 'PENDING');
   const isCompleted = task?.semanticCategory === 'COMPLETED';
   const hasChecklist = task?.checklist?.length > 0;
+  const isOverdue = isTaskOverdue(task);
 
   return (
     <Modal
@@ -364,9 +368,9 @@ const TaskDetailModal = ({
           )}
 
           {/* Top Status and Actions Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-surface-muted p-3 rounded-xl border border-border">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border/60">
             <div className="flex items-center gap-2">
-              <label htmlFor="transition-status" className="text-xs font-semibold text-content">
+              <label htmlFor="transition-status" className="text-xs font-medium text-content-muted">
                 Status:
               </label>
               <select
@@ -374,11 +378,11 @@ const TaskDetailModal = ({
                 value={selectedStatusId}
                 onChange={(e) => setSelectedStatusId(e.target.value)}
                 disabled={isTransitioning}
-                className="text-xs border border-border rounded px-2 py-1 bg-surface text-content focus:ring-1 focus:ring-primary"
+                className="text-xs border border-border rounded-md px-2 py-1 bg-surface text-content focus:ring-1 focus:ring-primary"
               >
                 {statuses.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} ({s.semanticCategory})
+                    {s.name}
                   </option>
                 ))}
               </select>
@@ -387,24 +391,21 @@ const TaskDetailModal = ({
                   type="button"
                   onClick={handleStatusTransition}
                   disabled={isTransitioning}
-                  className="px-2 py-1 text-xs font-medium text-white bg-primary rounded hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
+                  className="px-2.5 py-1 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
                 >
                   {isTransitioning ? 'Moving...' : 'Move'}
                 </button>
               )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <TaskStatusBadge
-                category={task.semanticCategory}
-                label={task.statusName}
-              />
-              <PriorityBadge priority={task.priorityCode} />
+            <div className="flex items-center gap-2.5">
+              <PriorityText priority={task.priorityCode} />
+              <AttentionFlag task={task} includeOverdue={false} />
 
               <button
                 type="button"
                 onClick={() => onEditTask?.(task)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-content-muted bg-surface border border-border rounded hover:text-content hover:bg-surface-muted cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-content-muted bg-surface border border-border rounded-md hover:text-content hover:bg-surface-muted cursor-pointer"
               >
                 <LuPencil className="w-3.5 h-3.5" />
                 Edit
@@ -414,7 +415,7 @@ const TaskDetailModal = ({
                 <button
                   type="button"
                   onClick={() => setConfirmArchive(true)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-surface dark:bg-rose-950/20 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-surface dark:bg-rose-950/20 border border-red-200 dark:border-red-900 rounded-md hover:bg-red-50 dark:hover:bg-rose-950/40 cursor-pointer"
                 >
                   <LuTrash2 className="w-3.5 h-3.5" />
                   Archive
@@ -423,45 +424,45 @@ const TaskDetailModal = ({
             </div>
           </div>
 
-          {/* Metadata Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-            <div className="p-3 bg-surface border border-border rounded-xl">
-              <span className="text-content-muted block mb-1">Owning Team</span>
-              <span className="font-semibold text-content">
-                {task.owningTeamName || task.owningTeamId}
+          {/* Consolidated Seamless Metadata Strip */}
+          <div className="flex flex-wrap items-center gap-y-2 gap-x-6 py-2.5 px-3 bg-surface-muted/50 rounded-lg text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="text-content-muted">Team:</span>
+              <span className="font-medium text-content">{task.owningTeamName || task.owningTeamId || '—'}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-content-muted">Due:</span>
+              <span className={`font-medium ${isOverdue ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-content'}`}>
+                {task.dueAt ? new Date(task.dueAt).toLocaleDateString() : '—'}
               </span>
             </div>
-            <div className="p-3 bg-surface border border-border rounded-xl">
-              <span className="text-content-muted block mb-1">Due Date</span>
-              <span className="font-semibold text-content">
-                {task.dueAt ? new Date(task.dueAt).toLocaleDateString() : 'None'}
-              </span>
-            </div>
-            <div className="p-3 bg-surface border border-border rounded-xl">
-              <span className="text-content-muted block mb-1">Effective Progress</span>
-              <div className="flex items-center gap-2 mt-1">
-                <div className="flex-1 bg-surface-muted rounded-full h-2 overflow-hidden border border-border/40">
+            <div className="flex items-center gap-2">
+              <span className="text-content-muted">Progress:</span>
+              <span className="font-medium text-content">{task.effectiveProgress ?? 0}%</span>
+              {task.effectiveProgress > 0 && task.effectiveProgress < 100 && (
+                <div className="w-16 bg-border/60 rounded-full h-1.5 overflow-hidden">
                   <div
-                    className="bg-primary h-2 rounded-full transition-all"
+                    className="bg-primary h-1.5 rounded-full"
                     style={{ width: `${task.effectiveProgress}%` }}
                   />
                 </div>
-                <span className="font-semibold text-content">{task.effectiveProgress}%</span>
+              )}
+            </div>
+            {task.requiresApproval && (
+              <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium">
+                <LuShieldCheck className="w-3.5 h-3.5" />
+                <span>Approval required</span>
               </div>
-            </div>
-            <div className="p-3 bg-surface border border-border rounded-xl">
-              <span className="text-content-muted block mb-1">Approval Required</span>
-              <span className="font-semibold text-content">
-                {task.requiresApproval ? 'Yes' : 'No'}
-              </span>
-            </div>
+            )}
           </div>
 
           {/* Description */}
           {task.description && (
-            <div className="p-4 bg-surface-muted border border-border rounded-xl">
-              <h4 className="text-xs font-semibold text-content mb-1">Description</h4>
-              <p className="text-xs text-content-muted whitespace-pre-wrap leading-relaxed">
+            <div className="space-y-1">
+              <h4 className="text-[11px] font-semibold text-content-muted uppercase tracking-wider">
+                Description
+              </h4>
+              <p className="text-xs text-content whitespace-pre-wrap leading-relaxed">
                 {task.description}
               </p>
             </div>
@@ -469,16 +470,16 @@ const TaskDetailModal = ({
 
           {/* Manual Progress Slider if No Checklist */}
           {!hasChecklist && !isCompleted && (
-            <div className="p-4 bg-surface border border-border rounded-xl">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-content">
+            <div className="pt-3 border-t border-border/60 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-content">
                   Manual Progress: {progressInput}%
                 </span>
                 <button
                   type="button"
                   onClick={handleProgressSave}
                   disabled={isUpdatingProgress || Number(progressInput) === task.manualProgress}
-                  className="px-3 py-1 text-xs font-medium text-white bg-primary rounded hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
+                  className="px-2.5 py-1 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
                 >
                   {isUpdatingProgress ? 'Saving...' : 'Update Progress'}
                 </button>
@@ -495,22 +496,23 @@ const TaskDetailModal = ({
           )}
 
           {/* Checklist Section */}
-          <div className="p-4 bg-surface border border-border rounded-lg space-y-3">
+          <div className="pt-4 border-t border-border/60 space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-content flex items-center gap-1.5">
-                <LuCircleCheck className="w-4 h-4 text-primary" />
-                Checklist ({task.checklist?.filter((c) => c.completedAt).length || 0}/
-                {task.checklist?.length || 0})
+              <h4 className="text-xs font-semibold text-content flex items-center gap-2">
+                <span>Checklist</span>
+                <CountText
+                  count={`${task.checklist?.filter((c) => c.completedAt).length || 0}/${task.checklist?.length || 0}`}
+                />
               </h4>
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               {task.checklist?.map((item) => {
                 const isItemDone = Boolean(item.completedAt);
                 return (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between p-2 rounded hover:bg-surface-muted border border-transparent hover:border-border transition-colors"
+                    className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-surface-muted transition-colors"
                   >
                     <label className="flex items-center gap-2.5 cursor-pointer text-xs">
                       <input
@@ -538,24 +540,24 @@ const TaskDetailModal = ({
               })}
 
               {!hasChecklist && (
-                <p className="text-xs text-content-muted italic">No checklist items yet.</p>
+                <p className="text-xs text-content-muted">No checklist items yet.</p>
               )}
             </div>
 
             {!isCompleted && (
-              <form onSubmit={handleAddChecklist} className="flex gap-2 pt-2">
+              <form onSubmit={handleAddChecklist} className="flex gap-2 pt-1">
                 <input
                   type="text"
                   maxLength={1000}
                   value={newChecklistText}
                   onChange={(e) => setNewChecklistText(e.target.value)}
                   placeholder="Add a checklist item..."
-                  className="flex-1 px-3 py-1.5 text-xs border border-border bg-surface text-content placeholder:text-content-muted rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="flex-1 px-3 py-1.5 text-xs border border-border bg-surface text-content placeholder:text-content-muted rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                 />
                 <button
                   type="submit"
                   disabled={isAddingChecklist || !newChecklistText.trim()}
-                  className="px-3 py-1.5 text-xs font-medium text-white bg-primary rounded hover:bg-primary/90 disabled:opacity-50 cursor-pointer inline-flex items-center gap-1"
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 cursor-pointer inline-flex items-center gap-1"
                 >
                   <LuPlus className="w-3.5 h-3.5" />
                   Add
@@ -565,19 +567,19 @@ const TaskDetailModal = ({
           </div>
 
           {/* Assignees Section */}
-          <div className="p-4 bg-surface border border-border rounded-lg space-y-3">
-            <h4 className="text-xs font-semibold text-content flex items-center gap-1.5">
-              <LuUsers className="w-4 h-4 text-primary" />
-              Assignees ({task.assigneeProjectMembershipIds?.length || 0})
+          <div className="pt-4 border-t border-border/60 space-y-3">
+            <h4 className="text-xs font-semibold text-content flex items-center gap-2">
+              <span>Assignees</span>
+              <CountText count={task.assigneeProjectMembershipIds?.length || 0} />
             </h4>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {task.assigneeProjectMembershipIds?.map((id) => {
                 const member = members.find((m) => (m.id || m.organizationMembershipId) === id);
                 return (
                   <span
                     key={id}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-primary/10 text-primary border border-primary/20 rounded-md"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-surface-muted text-content border border-border/70 rounded-md"
                   >
                     <span>{member?.user?.name || member?.user?.email || id}</span>
                     {canManage && !isCompleted && (
@@ -585,7 +587,7 @@ const TaskDetailModal = ({
                         type="button"
                         onClick={() => handleUnassign(id)}
                         disabled={isUnassigning}
-                        className="text-primary hover:text-red-500 cursor-pointer"
+                        className="text-content-muted hover:text-red-500 cursor-pointer"
                         title="Remove assignee"
                       >
                         <LuX className="w-3.5 h-3.5" />
@@ -597,12 +599,12 @@ const TaskDetailModal = ({
 
               {(!task.assigneeProjectMembershipIds ||
                 task.assigneeProjectMembershipIds.length === 0) && (
-                <p className="text-xs text-content-muted italic">No assignees assigned.</p>
+                <p className="text-xs text-content-muted">No assignees assigned.</p>
               )}
             </div>
 
             {canManage && !isCompleted && (
-              <div className="flex flex-col sm:flex-row gap-2 pt-2">
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
                 <Select
                   className="flex-1 text-xs"
                   classNamePrefix="taskforge-select"
@@ -628,7 +630,7 @@ const TaskDetailModal = ({
                   type="button"
                   onClick={handleAssign}
                   disabled={isAssigning || !selectedAssigneeId}
-                  className="px-3 py-1.5 text-xs font-medium text-white bg-primary rounded hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
                 >
                   Assign
                 </button>
@@ -638,11 +640,10 @@ const TaskDetailModal = ({
 
           {/* Approval Workflow & History */}
           {(task.requiresApproval || (task.approvals && task.approvals.length > 0)) && (
-            <div className="p-4 bg-surface border border-border rounded-lg space-y-3">
+            <div className="pt-4 border-t border-border/60 space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold text-content flex items-center gap-1.5">
-                  <LuShieldCheck className="w-4 h-4 text-primary" />
-                  Approval Workflow
+                <h4 className="text-xs font-semibold text-content flex items-center gap-2">
+                  <span>Approval Workflow</span>
                 </h4>
 
                 <div className="flex items-center gap-2">
@@ -650,7 +651,7 @@ const TaskDetailModal = ({
                     <button
                       type="button"
                       onClick={() => setApprovalActionModal('request')}
-                      className="px-3 py-1 text-xs font-medium text-white bg-primary rounded hover:bg-primary/90 cursor-pointer"
+                      className="px-3 py-1 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 cursor-pointer"
                     >
                       Request Approval
                     </button>
@@ -661,21 +662,21 @@ const TaskDetailModal = ({
                       <button
                         type="button"
                         onClick={() => setApprovalActionModal('approve')}
-                        className="px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700 cursor-pointer"
+                        className="px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 cursor-pointer"
                       >
                         Approve
                       </button>
                       <button
                         type="button"
                         onClick={() => setApprovalActionModal('reject')}
-                        className="px-2.5 py-1 text-xs font-medium text-white bg-rose-600 rounded hover:bg-rose-700 cursor-pointer"
+                        className="px-2.5 py-1 text-xs font-medium text-white bg-rose-600 rounded-md hover:bg-rose-700 cursor-pointer"
                       >
                         Reject
                       </button>
                       <button
                         type="button"
                         onClick={() => setApprovalActionModal('cancel')}
-                        className="px-2.5 py-1 text-xs font-medium text-content bg-surface-muted border border-border rounded hover:bg-surface cursor-pointer"
+                        className="px-2.5 py-1 text-xs font-medium text-content bg-surface-muted border border-border rounded-md hover:bg-surface cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -704,7 +705,7 @@ const TaskDetailModal = ({
               {/* History Table */}
               {task.approvals?.length > 0 && (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border border-border">
+                  <table className="w-full text-left text-xs border border-border rounded-lg overflow-hidden">
                     <thead>
                       <tr className="bg-surface-muted text-content-muted border-b border-border">
                         <th className="py-1.5 px-2">Cycle</th>
@@ -740,11 +741,11 @@ const TaskDetailModal = ({
           )}
 
           {/* Attachments Section */}
-          <div className="p-4 bg-surface border border-border rounded-lg space-y-3">
+          <div className="pt-4 border-t border-border/60 space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-content flex items-center gap-1.5">
-                <LuPaperclip className="w-4 h-4 text-primary" />
-                Attachments ({attachments.length})
+              <h4 className="text-xs font-semibold text-content flex items-center gap-2">
+                <span>Attachments</span>
+                <CountText count={attachments.length} />
               </h4>
             </div>
 
@@ -758,16 +759,16 @@ const TaskDetailModal = ({
             )}
 
             {/* List of Attachments */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {isLoadingAttachments ? (
-                <p className="text-xs text-content-muted py-2">Loading attachments...</p>
+                <p className="text-xs text-content-muted py-1">Loading attachments...</p>
               ) : attachments.length === 0 ? (
-                <p className="text-xs text-content-muted italic">No attachments attached to this task.</p>
+                <p className="text-xs text-content-muted">No attachments attached to this task.</p>
               ) : (
                 attachments.map((att) => (
                   <div
                     key={att.id}
-                    className="flex items-center justify-between p-2.5 rounded-lg bg-surface-muted border border-border hover:bg-surface transition-colors text-xs"
+                    className="flex items-center justify-between p-2 rounded-lg bg-surface-muted/50 border border-border/60 hover:bg-surface-muted transition-colors text-xs"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <LuFileText className="w-4 h-4 text-primary shrink-0" />
@@ -824,12 +825,12 @@ const TaskDetailModal = ({
                   accept=".pdf,.png,.jpg,.jpeg,.txt"
                   onChange={handleAttachmentFileChange}
                   disabled={isUploadingAttachment}
-                  className="flex-1 text-xs text-content-muted file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 file:cursor-pointer border border-border rounded p-1"
+                  className="flex-1 text-xs text-content-muted file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 file:cursor-pointer border border-border rounded-md p-1"
                 />
                 <button
                   type="submit"
                   disabled={isUploadingAttachment || !attachmentFile}
-                  className="px-3 py-1.5 text-xs font-medium text-white bg-primary rounded hover:bg-primary/90 disabled:opacity-50 cursor-pointer inline-flex items-center justify-center gap-1"
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 cursor-pointer inline-flex items-center justify-center gap-1"
                 >
                   {isUploadingAttachment ? (
                     <>
@@ -848,13 +849,13 @@ const TaskDetailModal = ({
           </div>
 
           {/* Comments Section */}
-          <div className="p-4 bg-surface border border-border rounded-lg space-y-4">
-            <h4 className="text-xs font-semibold text-content flex items-center gap-1.5">
-              <LuMessageSquare className="w-4 h-4 text-primary" />
-              Comments ({task.comments?.length || 0})
+          <div className="pt-4 border-t border-border/60 space-y-3">
+            <h4 className="text-xs font-semibold text-content flex items-center gap-2">
+              <span>Comments</span>
+              <CountText count={task.comments?.length || 0} />
             </h4>
 
-            <div className="space-y-3 max-h-60 overflow-y-auto">
+            <div className="space-y-2.5 max-h-60 overflow-y-auto">
               {task.comments?.map((comment) => {
                 const authorMember = members.find(
                   (m) =>
@@ -863,7 +864,7 @@ const TaskDetailModal = ({
                 const isEditingThis = editingCommentId === comment.id;
 
                 return (
-                  <div key={comment.id} className="p-3 bg-surface-muted rounded-lg text-xs space-y-1.5">
+                  <div key={comment.id} className="p-3 bg-surface-muted/50 rounded-lg text-xs space-y-1.5 border border-border/40">
                     <div className="flex items-center justify-between text-content-muted text-[11px]">
                       <span className="font-semibold text-content">
                         {authorMember?.user?.name ||
@@ -930,7 +931,7 @@ const TaskDetailModal = ({
               })}
 
               {(!task.comments || task.comments.length === 0) && (
-                <p className="text-xs text-content-muted italic">No comments yet.</p>
+                <p className="text-xs text-content-muted">No comments yet.</p>
               )}
             </div>
 
@@ -949,7 +950,7 @@ const TaskDetailModal = ({
                 className="px-4 py-2 text-xs font-medium text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5"
               >
                 <LuSend className="w-3.5 h-3.5" />
-                Post
+                <span>Post</span>
               </button>
             </form>
           </div>

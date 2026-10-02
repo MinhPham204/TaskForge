@@ -227,6 +227,19 @@ export class PostgresOnboardingController {
     );
   }
 
+  @Post('organizations/:organizationId/leave')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  @ApiOperation({ summary: 'Leave the verified active Organization as non-owner' })
+  leaveOrganization(
+    @PostgresCurrentUserId() userId: string,
+    @Param('organizationId') organizationId: string,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.invitations.leaveOrganization(userId, organizationId);
+  }
+
   private requireVerifiedOrganization(
     request: PostgresTenantRequest,
     organizationId: string,

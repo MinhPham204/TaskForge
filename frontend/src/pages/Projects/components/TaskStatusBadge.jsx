@@ -41,4 +41,13 @@ export const ApprovalStateBadge = ({ state }) => {
   );
 };
 
+// Re-export new shared semantic micro-components (Plan 10)
+export {
+  StatusText,
+  PriorityText,
+  AttentionFlag,
+  CountText,
+  TaskMeta,
+} from '../../../components/task/index.js';
+
 export default TaskStatusBadge;

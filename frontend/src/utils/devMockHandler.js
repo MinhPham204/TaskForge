@@ -181,9 +181,11 @@ let projectParticipantsStore = {
 let projectStatusesStore = {
   'p-dev-1': [
     { id: 's-dev-1', name: 'Backlog', semanticCategory: 'NOT_STARTED', position: 0 },
-    { id: 's-dev-2', name: 'In Progress', semanticCategory: 'IN_PROGRESS', position: 1 },
-    { id: 's-dev-3', name: 'Code Review', semanticCategory: 'IN_PROGRESS', position: 2 },
-    { id: 's-dev-4', name: 'Done', semanticCategory: 'COMPLETED', position: 3 },
+    { id: 's-dev-6', name: 'To Do', semanticCategory: 'NOT_STARTED', position: 1 },
+    { id: 's-dev-2', name: 'In Progress', semanticCategory: 'IN_PROGRESS', position: 2 },
+    { id: 's-dev-3', name: 'Review', semanticCategory: 'REVIEW', position: 3 },
+    { id: 's-dev-4', name: 'Completed', semanticCategory: 'COMPLETED', position: 4 },
+    { id: 's-dev-5', name: 'Cancelled', semanticCategory: 'CANCELLED', position: 5 },
   ],
 };
 
@@ -227,8 +229,8 @@ let projectTasksStore = {
       projectId: 'p-dev-1',
       owningTeamId: 't-dev-1',
       owningTeamName: 'General',
-      statusId: 's-dev-1',
-      statusName: 'Backlog',
+      statusId: 's-dev-6',
+      statusName: 'To Do',
       semanticCategory: 'NOT_STARTED',
       creatorProjectMembershipId: 'm-dev-1',
       title: 'Finalize review acceptance checklist',
@@ -275,7 +277,7 @@ let projectTasksStore = {
       owningTeamId: 't-dev-3',
       owningTeamName: 'Backend & Infrastructure',
       statusId: 's-dev-4',
-      statusName: 'Done',
+      statusName: 'Completed',
       semanticCategory: 'COMPLETED',
       creatorProjectMembershipId: 'm-dev-2',
       title: 'Validate PostgreSQL task read models',
@@ -422,9 +424,12 @@ export const handleDevMockRequest = async ({ url = '', method = 'get', data = {}
         ],
       };
       projectStatusesStore[newProj.id] = [
-        { id: `s-d-${Date.now()}-1`, name: 'To Do', semanticCategory: 'NOT_STARTED', position: 0 },
-        { id: `s-d-${Date.now()}-2`, name: 'In Progress', semanticCategory: 'IN_PROGRESS', position: 1 },
-        { id: `s-d-${Date.now()}-3`, name: 'Done', semanticCategory: 'COMPLETED', position: 2 },
+        { id: `s-d-${Date.now()}-0`, name: 'Backlog', semanticCategory: 'NOT_STARTED', position: 0 },
+        { id: `s-d-${Date.now()}-1`, name: 'To Do', semanticCategory: 'NOT_STARTED', position: 1 },
+        { id: `s-d-${Date.now()}-2`, name: 'In Progress', semanticCategory: 'IN_PROGRESS', position: 2 },
+        { id: `s-d-${Date.now()}-3`, name: 'Review', semanticCategory: 'REVIEW', position: 3 },
+        { id: `s-d-${Date.now()}-4`, name: 'Completed', semanticCategory: 'COMPLETED', position: 4 },
+        { id: `s-d-${Date.now()}-5`, name: 'Cancelled', semanticCategory: 'CANCELLED', position: 5 },
       ];
       projectModulesStore[newProj.id] = [
         { moduleCode: 'MILESTONES', enabled: true },

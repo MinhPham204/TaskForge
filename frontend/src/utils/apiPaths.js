@@ -134,6 +134,7 @@ export const API_PATHS = {
         REVOKE_INVITATION: (organizationId, invitationId) => `/api/organizations/${organizationId}/invitations/${invitationId}`,
         SUSPEND_MEMBER: (organizationId, userId) => `/api/organizations/${organizationId}/members/${userId}/suspend`,
         REVOKE_MEMBER: (organizationId, userId) => `/api/organizations/${organizationId}/members/${userId}`,
+        LEAVE: (organizationId) => `/api/organizations/${organizationId}/leave`,
     },
 
     INVITATIONS: {

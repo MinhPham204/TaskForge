@@ -100,6 +100,14 @@ export const organizationApi = createApi({
             }),
             invalidatesTags: (result, error, { organizationId }) => [{ type: 'OrganizationMembers', id: organizationId }],
         }),
+
+        leaveOrganization: builder.mutation({
+            query: (organizationId) => ({
+                url: API_PATHS.ORGANIZATIONS.LEAVE(organizationId),
+                method: 'post',
+            }),
+            invalidatesTags: ['Organization', 'OrganizationMembers'],
+        }),
     }),
 });
 
@@ -115,4 +123,6 @@ export const {
     useRevokeOrganizationInvitationMutation,
     useSuspendOrganizationMemberMutation,
     useRevokeOrganizationMemberMutation,
+    useLeaveOrganizationMutation,
 } = organizationApi;
+

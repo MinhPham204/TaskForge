@@ -33,6 +33,7 @@ import {
   useUpdateProjectMutation,
   useTransitionProjectLifecycleMutation,
 } from '../../services/projectApi';
+import useUserAuth from '../../hooks/useUserAuth.jsx';
 
 import ProjectOverviewTab from './components/ProjectOverviewTab';
 import ProjectParticipantsTab from './components/ProjectParticipantsTab';
@@ -93,7 +94,14 @@ const ProjectDetailPage = () => {
   // Queries & Mutations
   const { data: project, isLoading, isError, error, refetch } = useGetProjectByIdQuery(projectId);
 
-  const canManage = Boolean(project?.viewer?.canManage);
+  const { role: orgRole } = useUserAuth();
+  const isOrgAdmin = orgRole === 'owner' || orgRole === 'admin';
+  const canManage = Boolean(
+    project?.viewer?.canManage ||
+    isOrgAdmin ||
+    project?.viewer?.organizationRole?.toLowerCase() === 'owner' ||
+    project?.viewer?.organizationRole?.toLowerCase() === 'admin'
+  );
 
   useEffect(() => {
     if (PROJECT_TAB_KEYS.has(requestedTab)) setActiveTab(requestedTab);
@@ -101,12 +109,36 @@ const ProjectDetailPage = () => {
       setActiveTab('tasks');
       setSelectedTaskId(requestedTaskId);
     }
-    if (shouldCreateTask && canManage) {
-      setActiveTab('tasks');
+    if (shouldCreateTask) {
+      if (requestedTab) {
+        setActiveTab(requestedTab);
+      }
       setTaskToEdit(null);
       setIsTaskFormOpen(true);
     }
-  }, [requestedTab, requestedTaskId, shouldCreateTask, canManage]);
+  }, [requestedTab, requestedTaskId, shouldCreateTask]);
+
+  // Keyboard shortcut listener: 'c' or 'C' for new task
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          activeEl.isContentEditable);
+
+      if ((e.key === 'c' || e.key === 'C') && !isInput && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setTaskToEdit(null);
+        setIsTaskFormOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const [updateProject, { isLoading: isUpdating }] = useUpdateProjectMutation();
   const [transitionLifecycle, { isLoading: isTransitioning }] =
@@ -194,9 +226,9 @@ const ProjectDetailPage = () => {
 
   return (
     <DashboardLayout activeMenu="/projects">
-      <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="space-y-5 pb-12 select-none">
         {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-content-muted">
+        <div className="flex items-center gap-2 text-xs text-content-muted">
           <button
             type="button"
             onClick={() => navigate('/projects')}
@@ -253,9 +285,25 @@ const ProjectDetailPage = () => {
                     &rarr;{' '}
                     {project.endDate
                       ? new Date(project.endDate).toLocaleDateString()
-                      : 'No end date'}
+                      : 'Ongoing'}
                   </span>
                 )}
+                <span className="text-border">•</span>
+                <div className="flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="text-content font-medium">On track</span>
+                </div>
+                <span className="text-border">•</span>
+                <div className="flex items-center space-x-2">
+                  <span className="text-content-muted text-[11px]">Core Team:</span>
+                  <div className="flex -space-x-1.5 overflow-hidden">
+                    <div className="inline-block h-5 w-5 rounded-full ring-2 ring-surface bg-zinc-800 text-white text-[9px] font-bold flex items-center justify-center">AJ</div>
+                    <div className="inline-block h-5 w-5 rounded-full ring-2 ring-surface bg-purple-600 text-white text-[9px] font-bold flex items-center justify-center">SL</div>
+                    <div className="inline-block h-5 w-5 rounded-full ring-2 ring-surface bg-amber-600 text-white text-[9px] font-bold flex items-center justify-center">MR</div>
+                    <div className="inline-block h-5 w-5 rounded-full ring-2 ring-surface bg-teal-600 text-white text-[9px] font-bold flex items-center justify-center">DK</div>
+                    <div className="inline-block h-5 w-5 rounded-full ring-2 ring-surface bg-surface-muted text-content-muted text-[9px] font-semibold flex items-center justify-center border border-border">+4</div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -460,6 +508,7 @@ const ProjectDetailPage = () => {
                 setTaskToEdit(null);
                 setIsTaskFormOpen(true);
               }}
+              onSwitchTab={setActiveTab}
             />
           )}
 
@@ -652,16 +701,18 @@ const ProjectDetailPage = () => {
       />
 
       {/* Task Create / Edit Modal */}
-      <TaskFormModal
-        isOpen={isTaskFormOpen}
-        onClose={() => {
-          setIsTaskFormOpen(false);
-          setTaskToEdit(null);
-        }}
-        projectId={projectId}
-        task={taskToEdit}
-        canManage={canManage}
-      />
+      {isTaskFormOpen && (
+        <TaskFormModal
+          isOpen={isTaskFormOpen}
+          onClose={() => {
+            setIsTaskFormOpen(false);
+            setTaskToEdit(null);
+          }}
+          projectId={projectId}
+          task={taskToEdit}
+          canManage={canManage}
+        />
+      )}
     </DashboardLayout>
   );
 };

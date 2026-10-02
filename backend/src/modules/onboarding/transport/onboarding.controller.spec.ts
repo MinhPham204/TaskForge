@@ -8,6 +8,7 @@ describe('PostgresOnboardingController', () => {
     acceptInvitation: jest.fn(),
     createInvitation: jest.fn(),
     listMyPendingInvitations: jest.fn(),
+    leaveOrganization: jest.fn(),
   };
   const controller = new PostgresOnboardingController(
     organizations as never,
@@ -94,4 +95,32 @@ describe('PostgresOnboardingController', () => {
 
     expect(response).not.toHaveProperty('token');
   });
+
+  it('leaves the verified Organization for the authenticated subject', async () => {
+    invitations.leaveOrganization.mockResolvedValue({
+      id: 'membership-id',
+      state: 'LEFT',
+    });
+
+    const response = await controller.leaveOrganization(
+      'user-id',
+      'organization-id',
+      {
+        headers: {},
+        postgresTenant: {
+          id: 'membership-id',
+          userId: 'user-id',
+          organizationId: 'organization-id',
+          role: 'MEMBER' as never,
+        },
+      },
+    );
+
+    expect(response).toEqual({ id: 'membership-id', state: 'LEFT' });
+    expect(invitations.leaveOrganization).toHaveBeenCalledWith(
+      'user-id',
+      'organization-id',
+    );
+  });
 });
+

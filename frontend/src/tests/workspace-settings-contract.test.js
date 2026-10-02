@@ -48,6 +48,10 @@ assert.equal(
   API_PATHS.ORGANIZATIONS.REVOKE_MEMBER('org-1', 'usr-88'),
   '/api/organizations/org-1/members/usr-88'
 );
+assert.equal(
+  API_PATHS.ORGANIZATIONS.LEAVE('org-1'),
+  '/api/organizations/org-1/leave'
+);
 
 // 2. Tenant scoping verification
 assert.equal(isTenantScopedRequest('/api/organizations'), false, 'Create org is control plane');
@@ -58,6 +62,7 @@ for (const endpoint of [
   '/api/organizations/org-1/invitations/inv-99',
   '/api/organizations/org-1/members/usr-88/suspend',
   '/api/organizations/org-1/members/usr-88',
+  '/api/organizations/org-1/leave',
 ]) {
   assert.equal(isTenantScopedRequest(endpoint), true, `${endpoint} must be tenant scoped`);
 }
