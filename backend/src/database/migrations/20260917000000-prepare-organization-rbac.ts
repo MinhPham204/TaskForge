@@ -7,9 +7,7 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  * the write input and database triggers mirror them into role_id. No custom
  * role is assignable during this compatibility interval.
  */
-export class PrepareOrganizationRbac20260917000000
-  implements MigrationInterface
-{
+export class PrepareOrganizationRbac20260917000000 implements MigrationInterface {
   name = 'PrepareOrganizationRbac20260917000000';
 
   async up(queryRunner: QueryRunner): Promise<void> {

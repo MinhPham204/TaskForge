@@ -114,14 +114,24 @@ export async function runPortfolioSeed(
       await manager.delete(ProjectEntity, { organizationId: orgId });
       await manager.delete(TeamMemberEntity, { organizationId: orgId });
       await manager.delete(TeamEntity, { organizationId: orgId });
-      await manager.query('ALTER TABLE organizations DROP CONSTRAINT fk_organizations_owner_membership_same_organization');
+      await manager.query(
+        'ALTER TABLE organizations DROP CONSTRAINT fk_organizations_owner_membership_same_organization',
+      );
       await manager.delete(OrganizationMembershipEntity, {
         organizationId: orgId,
       });
-      await manager.query('DELETE FROM organization_role_permissions WHERE organization_id = $1', [orgId]);
-      await manager.query('DELETE FROM organization_roles WHERE organization_id = $1', [orgId]);
+      await manager.query(
+        'DELETE FROM organization_role_permissions WHERE organization_id = $1',
+        [orgId],
+      );
+      await manager.query(
+        'DELETE FROM organization_roles WHERE organization_id = $1',
+        [orgId],
+      );
       await manager.delete(OrganizationEntity, { id: orgId });
-      await manager.query(`ALTER TABLE organizations ADD CONSTRAINT fk_organizations_owner_membership_same_organization FOREIGN KEY (id, owner_membership_id) REFERENCES organization_memberships (organization_id, id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED`);
+      await manager.query(
+        `ALTER TABLE organizations ADD CONSTRAINT fk_organizations_owner_membership_same_organization FOREIGN KEY (id, owner_membership_id) REFERENCES organization_memberships (organization_id, id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED`,
+      );
     });
   }
 
@@ -166,25 +176,38 @@ export async function runPortfolioSeed(
   // 3. Seed Organization
   log('🏢 Creating demo Organization...');
   const ownerMembershipId = randomUUID();
-  const { organization, roleIds, ownerMembership } = await dataSource.transaction(async (manager) => {
-    const organization = await manager.getRepository(OrganizationEntity).save({
-      name: 'Acme Cloud Technologies',
-      logoUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=128&auto=format&fit=crop&q=80',
-      ownerMembershipId,
+  const { organization, roleIds, ownerMembership } =
+    await dataSource.transaction(async (manager) => {
+      const organization = await manager
+        .getRepository(OrganizationEntity)
+        .save({
+          name: 'Acme Cloud Technologies',
+          logoUrl:
+            'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=128&auto=format&fit=crop&q=80',
+          ownerMembershipId,
+        });
+      const roleRows = await manager
+        .getRepository(OrganizationRoleDefinitionEntity)
+        .findBy({ organizationId: organization.id });
+      const roleIds = Object.fromEntries<string>(
+        roleRows.flatMap((role) =>
+          role.systemCode === null ? [] : [[role.systemCode, role.id] as const],
+        ),
+      );
+      if (!roleIds.OWNER || !roleIds.ADMIN || !roleIds.MEMBER)
+        throw new Error('Organization default roles were not provisioned');
+      const ownerMembership = await manager
+        .getRepository(OrganizationMembershipEntity)
+        .save({
+          organizationId: organization.id,
+          id: ownerMembershipId,
+          userId: ownerUser.id,
+          roleId: roleIds.OWNER,
+          state: OrganizationMembershipState.ACTIVE,
+          joinedAt: new Date('2026-01-01T00:00:00Z'),
+        });
+      return { organization, roleIds, ownerMembership };
     });
-    const roleRows = await manager.getRepository(OrganizationRoleDefinitionEntity).findBy({ organizationId: organization.id });
-    const roleIds = Object.fromEntries(roleRows.map((role) => [role.systemCode, role.id]));
-    if (!roleIds.OWNER || !roleIds.ADMIN || !roleIds.MEMBER) throw new Error('Organization default roles were not provisioned');
-    const ownerMembership = await manager.getRepository(OrganizationMembershipEntity).save({
-      organizationId: organization.id,
-      id: ownerMembershipId,
-      userId: ownerUser.id,
-      roleId: roleIds.OWNER,
-      state: OrganizationMembershipState.ACTIVE,
-      joinedAt: new Date('2026-01-01T00:00:00Z'),
-    });
-    return { organization, roleIds, ownerMembership };
-  });
 
   // 4. Seed Organization Memberships
   log('👥 Establishing workspace memberships...');
