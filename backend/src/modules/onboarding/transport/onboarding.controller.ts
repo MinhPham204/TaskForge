@@ -6,7 +6,9 @@ import {
   Get,
   Patch,
   Param,
+  ParseUUIDPipe,
   Post,
+  Put,
   Req,
   UseGuards,
   UseInterceptors,
@@ -21,6 +23,8 @@ import {
 import { PostgresInvitationMembershipService } from '../application/invitation-membership.service';
 import { PostgresOrganizationOnboardingService } from '../application/organization-onboarding.service';
 import { PostgresWorkspaceService } from '../application/workspace.service';
+import { PostgresOrganizationPermissionService } from '../application/organization-permission.service';
+import { PostgresOrganizationRoleService } from '../application/organization-role.service';
 import {
   PostgresTenantMembershipGuard,
   type PostgresTenantRequest,
@@ -32,7 +36,7 @@ import { CreatePostgresInvitationDto } from './dto/create-invitation.dto';
 import { CreatePostgresOrganizationDto } from './dto/create-organization.dto';
 import { UpdatePostgresOrganizationDto } from './dto/create-organization.dto';
 import { PostgresCurrentUserId } from './current-user.decorator';
-import type { OrganizationRole } from '../persistence/typeorm/onboarding.entities';
+import { AssignOrganizationRoleDto, CreateOrganizationRoleDto, OrganizationRoleVersionDto, ReplaceOrganizationRolePermissionsDto, UpdateOrganizationRoleDto } from './dto/organization-role.dto';
 
 /**
  * Target REST/OpenAPI contract. It is deliberately not registered in AppModule
@@ -47,6 +51,8 @@ export class PostgresOnboardingController {
     private readonly organizations: PostgresOrganizationOnboardingService,
     private readonly workspaces: PostgresWorkspaceService,
     private readonly invitations: PostgresInvitationMembershipService,
+    private readonly permissions: PostgresOrganizationPermissionService,
+    private readonly roles: PostgresOrganizationRoleService,
   ) {}
 
   @Get('workspaces')
@@ -56,6 +62,84 @@ export class PostgresOnboardingController {
   @ApiOkResponse({ description: 'Membership-derived workspace list' })
   listWorkspaces(@PostgresCurrentUserId() userId: string) {
     return this.workspaces.listWorkspaces(userId);
+  }
+
+  @Get('organizations/:organizationId/permissions/me')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  @ApiOperation({ summary: 'Read effective Organization capabilities for the authenticated Member' })
+  @ApiOkResponse({ description: 'Current role summary and effective permissions' })
+  getMyOrganizationPermissions(
+    @PostgresCurrentUserId() userId: string,
+    @Param('organizationId') organizationId: string,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.permissions.resolve(userId, organizationId);
+  }
+
+  @Get('organizations/:organizationId/permissions')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  listOrganizationPermissions(@PostgresCurrentUserId() userId: string, @Param('organizationId') organizationId: string, @Req() request: PostgresTenantRequest) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.roles.listPermissions(userId, organizationId);
+  }
+
+  @Get('organizations/:organizationId/roles')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  listOrganizationRoles(@PostgresCurrentUserId() userId: string, @Param('organizationId') organizationId: string, @Req() request: PostgresTenantRequest) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.roles.listRoles(userId, organizationId);
+  }
+
+  @Post('organizations/:organizationId/roles')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  createOrganizationRole(@PostgresCurrentUserId() userId: string, @Param('organizationId') organizationId: string, @Body() dto: CreateOrganizationRoleDto, @Req() request: PostgresTenantRequest) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.roles.create(userId, organizationId, dto);
+  }
+
+  @Patch('organizations/:organizationId/roles/:roleId')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  updateOrganizationRole(@PostgresCurrentUserId() userId: string, @Param('organizationId') organizationId: string, @Param('roleId', new ParseUUIDPipe({ version: '4' })) roleId: string, @Body() dto: UpdateOrganizationRoleDto, @Req() request: PostgresTenantRequest) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.roles.update(userId, organizationId, roleId, dto);
+  }
+
+  @Put('organizations/:organizationId/roles/:roleId/permissions')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  replaceOrganizationRolePermissions(@PostgresCurrentUserId() userId: string, @Param('organizationId') organizationId: string, @Param('roleId', new ParseUUIDPipe({ version: '4' })) roleId: string, @Body() dto: ReplaceOrganizationRolePermissionsDto, @Req() request: PostgresTenantRequest) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.roles.replaceRolePermissions(userId, organizationId, roleId, dto);
+  }
+
+  @Post('organizations/:organizationId/roles/:roleId/archive')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  archiveOrganizationRole(@PostgresCurrentUserId() userId: string, @Param('organizationId') organizationId: string, @Param('roleId', new ParseUUIDPipe({ version: '4' })) roleId: string, @Body() dto: OrganizationRoleVersionDto, @Req() request: PostgresTenantRequest) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.roles.archive(userId, organizationId, roleId, dto.expectedVersion);
+  }
+
+  @Patch('organizations/:organizationId/members/:userId/role')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  assignOrganizationRole(@PostgresCurrentUserId() userId: string, @Param('organizationId') organizationId: string, @Param('userId', new ParseUUIDPipe({ version: '4' })) targetUserId: string, @Body() dto: AssignOrganizationRoleDto, @Req() request: PostgresTenantRequest) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.roles.assignMembershipRole(userId, organizationId, targetUserId, dto.roleId);
+  }
+
+  @Get('organizations/:organizationId/invitation-roles')
+  @UseGuards(PostgresTenantMembershipGuard)
+  @UseInterceptors(PostgresTenantInterceptor)
+  listInvitationRoles(@PostgresCurrentUserId() userId: string, @Param('organizationId') organizationId: string, @Req() request: PostgresTenantRequest) {
+    this.requireVerifiedOrganization(request, organizationId);
+    return this.roles.listInvitationRoles(userId, organizationId);
   }
 
   @Post('organizations')
@@ -164,14 +248,13 @@ export class PostgresOnboardingController {
       organizationId,
       {
         ...dto,
-        role: dto.role as OrganizationRole.ADMIN | OrganizationRole.MEMBER,
       },
     );
     return {
       id: invitation.id,
       organizationId: invitation.organizationId,
       email: invitation.email,
-      role: invitation.invitedRole,
+      roleId: invitation.roleId,
       state: invitation.state,
       expiresAt: invitation.expiresAt,
     };

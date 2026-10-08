@@ -1,11 +1,12 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
 import { createPostgresDataSourceOptions } from '../data-source.options';
 import {
   OrganizationEntity,
   OrganizationMembershipEntity,
-  OrganizationRole,
+  OrganizationRoleDefinitionEntity,
   OrganizationMembershipState,
   TeamEntity,
   TeamMemberEntity,
@@ -113,10 +114,14 @@ export async function runPortfolioSeed(
       await manager.delete(ProjectEntity, { organizationId: orgId });
       await manager.delete(TeamMemberEntity, { organizationId: orgId });
       await manager.delete(TeamEntity, { organizationId: orgId });
+      await manager.query('ALTER TABLE organizations DROP CONSTRAINT fk_organizations_owner_membership_same_organization');
       await manager.delete(OrganizationMembershipEntity, {
         organizationId: orgId,
       });
+      await manager.query('DELETE FROM organization_role_permissions WHERE organization_id = $1', [orgId]);
+      await manager.query('DELETE FROM organization_roles WHERE organization_id = $1', [orgId]);
       await manager.delete(OrganizationEntity, { id: orgId });
+      await manager.query(`ALTER TABLE organizations ADD CONSTRAINT fk_organizations_owner_membership_same_organization FOREIGN KEY (id, owner_membership_id) REFERENCES organization_memberships (organization_id, id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED`);
     });
   }
 
@@ -160,34 +165,36 @@ export async function runPortfolioSeed(
 
   // 3. Seed Organization
   log('🏢 Creating demo Organization...');
-  const orgRepo = dataSource.getRepository(OrganizationEntity);
-  const organization = await orgRepo.save(
-    orgRepo.create({
+  const ownerMembershipId = randomUUID();
+  const { organization, roleIds, ownerMembership } = await dataSource.transaction(async (manager) => {
+    const organization = await manager.getRepository(OrganizationEntity).save({
       name: 'Acme Cloud Technologies',
-      logoUrl:
-        'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=128&auto=format&fit=crop&q=80',
-    }),
-  );
+      logoUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=128&auto=format&fit=crop&q=80',
+      ownerMembershipId,
+    });
+    const roleRows = await manager.getRepository(OrganizationRoleDefinitionEntity).findBy({ organizationId: organization.id });
+    const roleIds = Object.fromEntries(roleRows.map((role) => [role.systemCode, role.id]));
+    if (!roleIds.OWNER || !roleIds.ADMIN || !roleIds.MEMBER) throw new Error('Organization default roles were not provisioned');
+    const ownerMembership = await manager.getRepository(OrganizationMembershipEntity).save({
+      organizationId: organization.id,
+      id: ownerMembershipId,
+      userId: ownerUser.id,
+      roleId: roleIds.OWNER,
+      state: OrganizationMembershipState.ACTIVE,
+      joinedAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    return { organization, roleIds, ownerMembership };
+  });
 
   // 4. Seed Organization Memberships
   log('👥 Establishing workspace memberships...');
   const memberRepo = dataSource.getRepository(OrganizationMembershipEntity);
 
-  const ownerMembership = await memberRepo.save(
-    memberRepo.create({
-      organizationId: organization.id,
-      userId: ownerUser.id,
-      role: OrganizationRole.OWNER,
-      state: OrganizationMembershipState.ACTIVE,
-      joinedAt: new Date('2026-01-01T00:00:00Z'),
-    }),
-  );
-
   const pmMembership = await memberRepo.save(
     memberRepo.create({
       organizationId: organization.id,
       userId: pmUser.id,
-      role: OrganizationRole.ADMIN,
+      roleId: roleIds.ADMIN,
       state: OrganizationMembershipState.ACTIVE,
       joinedAt: new Date('2026-01-05T00:00:00Z'),
     }),
@@ -197,7 +204,7 @@ export async function runPortfolioSeed(
     memberRepo.create({
       organizationId: organization.id,
       userId: devUser.id,
-      role: OrganizationRole.MEMBER,
+      roleId: roleIds.MEMBER,
       state: OrganizationMembershipState.ACTIVE,
       joinedAt: new Date('2026-01-10T00:00:00Z'),
     }),
@@ -207,7 +214,7 @@ export async function runPortfolioSeed(
     memberRepo.create({
       organizationId: organization.id,
       userId: designerUser.id,
-      role: OrganizationRole.MEMBER,
+      roleId: roleIds.MEMBER,
       state: OrganizationMembershipState.ACTIVE,
       joinedAt: new Date('2026-01-15T00:00:00Z'),
     }),

@@ -8,6 +8,7 @@ import {
   LuUserCheck,
 } from 'react-icons/lu';
 import Modal from '../../../components/common/Modal';
+import RoleBadge from '../../../components/RoleBadge.jsx';
 import { EmptyState } from '../../../components/common/PageState';
 import {
   useAddProjectTeamMutation,
@@ -53,6 +54,14 @@ const ProjectParticipantsTab = ({
   // Remove Member Modal
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [removeMemberError, setRemoveMemberError] = useState('');
+  React.useEffect(() => {
+    setIsAddTeamOpen(false);
+    setTeamToRemove(null);
+    setIsAddMemberOpen(false);
+    setSelectedMember(null);
+    setEligibleMembers([]);
+    setMemberToRemove(null);
+  }, [canManage, projectId]);
 
   const availableTeamsToAdd = allOrgTeams.filter(
     (orgTeam) => !projectTeams.some((pt) => pt.id === orgTeam.id)
@@ -317,7 +326,7 @@ const ProjectParticipantsTab = ({
                       </span>
                     </td>
                     <td className="py-3 px-4 text-xs text-content-muted">
-                      {pm.organizationRole || 'MEMBER'}
+                      <RoleBadge role={pm.organizationRole} />
                     </td>
                     <td className="py-3 px-4 text-xs text-content-muted">
                       {pm.addedAt ? new Date(pm.addedAt).toLocaleDateString() : '—'}

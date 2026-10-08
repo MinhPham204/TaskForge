@@ -7,13 +7,15 @@ import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { PostgresAuthService } from '../src/modules/onboarding/application/auth.service';
 import { PostgresInvitationMembershipService } from '../src/modules/onboarding/application/invitation-membership.service';
+import { PostgresOrganizationRoleService } from '../src/modules/onboarding/application/organization-role.service';
+import { PostgresWorkspaceService } from '../src/modules/onboarding/application/workspace.service';
 import { PostgresOrganizationOnboardingService } from '../src/modules/onboarding/application/organization-onboarding.service';
 import {
   OrganizationMembershipEntity,
   OrganizationMembershipState,
   OrganizationEntity,
   OrganizationInvitationEntity,
-  OrganizationRole,
+  OrganizationRoleDefinitionEntity,
   TeamEntity,
   TeamMemberEntity,
   UserEntity,
@@ -83,7 +85,8 @@ describe('PostgreSQL onboarding integration', () => {
     const membership = await dataSource
       .getRepository(OrganizationMembershipEntity)
       .findOneByOrFail({ organizationId, userId: user.id });
-    expect(membership.role).toBe(OrganizationRole.OWNER);
+    await expect(dataSource.getRepository(OrganizationRoleDefinitionEntity).findOneByOrFail({ id: membership.roleId, organizationId }))
+      .resolves.toMatchObject({ systemCode: 'OWNER', isProtected: true });
     expect(membership.state).toBe(OrganizationMembershipState.ACTIVE);
 
     const team = await dataSource
@@ -126,6 +129,78 @@ describe('PostgreSQL onboarding integration', () => {
     await expect(
       dataSource.getRepository(OrganizationMembershipEntity).count(),
     ).resolves.toBe(0);
+  });
+
+  it('keeps custom Membership and invitation roles on roleId through acceptance and ownership transfer', async () => {
+    const owner = await createUser('role-cutover-owner');
+    const member = await createUser('role-cutover-member');
+    const invitee = await createUser('role-cutover-invitee');
+    const workspace = await onboarding.createOrganization(owner.id, { name: 'RoleId Cutover Workspace' });
+    const memberRoleId = await defaultRoleId(workspace.organizationId, 'MEMBER');
+    await dataSource.getRepository(OrganizationMembershipEntity).save({
+      organizationId: workspace.organizationId,
+      userId: member.id,
+      roleId: memberRoleId,
+      state: OrganizationMembershipState.ACTIVE,
+      joinedAt: new Date(),
+      stateChangedAt: new Date(),
+    });
+
+    const roles = app.get(PostgresOrganizationRoleService);
+    const hr = await roles.create(owner.id, workspace.organizationId, {
+      name: 'HR',
+      permissionCodes: ['org.members.read'],
+    });
+    await roles.assignMembershipRole(owner.id, workspace.organizationId, member.id, hr.id);
+    const memberToken = await accessToken(member.id);
+    await request(httpServer)
+      .get(`/organizations/${workspace.organizationId}/permissions/me`)
+      .set('authorization', `Bearer ${memberToken}`)
+      .set('x-organization-id', workspace.organizationId)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ isOwner: false, role: { id: hr.id, name: 'HR', systemCode: null }, permissions: ['org.members.read'] });
+      });
+    await request(httpServer)
+      .get(`/organizations/${workspace.organizationId}`)
+      .set('authorization', `Bearer ${memberToken}`)
+      .set('x-organization-id', workspace.organizationId)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ roleId: hr.id, roleName: 'HR', systemCode: null, isOwner: false });
+      });
+    await request(httpServer)
+      .get('/workspaces')
+      .set('authorization', `Bearer ${memberToken}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual(expect.arrayContaining([expect.objectContaining({ organizationId: workspace.organizationId, roleId: hr.id, roleName: 'HR', systemCode: null, isOwner: false })]));
+      });
+    await request(httpServer)
+      .patch(`/organizations/${workspace.organizationId}`)
+      .set('authorization', `Bearer ${memberToken}`)
+      .set('x-organization-id', workspace.organizationId)
+      .send({ name: 'HR cannot edit profile' })
+      .expect(403);
+    const invited = await invitations.createInvitation(owner.id, workspace.organizationId, {
+      email: invitee.email,
+      expiresAt: new Date(Date.now() + 60_000),
+      roleId: hr.id,
+    });
+    const accepted = await invitations.acceptInvitation(invitee.id, invited.token);
+    expect(accepted.roleId).toBe(hr.id);
+
+    const adminRoleId = await defaultRoleId(workspace.organizationId, 'ADMIN');
+    await app.get(PostgresWorkspaceService).transferOwner(owner.id, workspace.organizationId, {
+      targetUserId: member.id,
+      previousOwnerRoleId: adminRoleId,
+    });
+    const ownerPointer = await dataSource.getRepository(OrganizationEntity).findOneByOrFail({ id: workspace.organizationId });
+    const targetMembership = await dataSource.getRepository(OrganizationMembershipEntity).findOneByOrFail({ organizationId: workspace.organizationId, userId: member.id });
+    const formerOwnerMembership = await dataSource.getRepository(OrganizationMembershipEntity).findOneByOrFail({ organizationId: workspace.organizationId, userId: owner.id });
+    expect(ownerPointer.ownerMembershipId).toBe(targetMembership.id);
+    expect(targetMembership.roleId).toBe(await defaultRoleId(workspace.organizationId, 'OWNER'));
+    expect(formerOwnerMembership.roleId).toBe(adminRoleId);
   });
 
   it('rolls every onboarding write back when the General Team insert fails in PostgreSQL', async () => {
@@ -180,7 +255,7 @@ describe('PostgreSQL onboarding integration', () => {
       .send({
         email: 'recipient@example.test',
         expiresAt: '2026-12-01T00:00:00.000Z',
-        role: 'MEMBER',
+        roleId: await defaultRoleId(second.organizationId, 'MEMBER'),
       })
       .expect(403);
 
@@ -191,14 +266,14 @@ describe('PostgreSQL onboarding integration', () => {
       .send({
         email: 'non-member-recipient@example.test',
         expiresAt: '2026-12-01T00:00:00.000Z',
-        role: 'MEMBER',
+        roleId: await defaultRoleId(first.organizationId, 'MEMBER'),
       })
       .expect(403);
 
     await dataSource.getRepository(OrganizationMembershipEntity).save({
       organizationId: first.organizationId,
       userId: inactiveMember.id,
-      role: OrganizationRole.MEMBER,
+      roleId: await defaultRoleId(first.organizationId, 'MEMBER'),
       state: OrganizationMembershipState.SUSPENDED,
       joinedAt: new Date(),
       stateChangedAt: new Date(),
@@ -210,7 +285,7 @@ describe('PostgreSQL onboarding integration', () => {
       .send({
         email: 'inactive-member-recipient@example.test',
         expiresAt: '2026-12-01T00:00:00.000Z',
-        role: 'MEMBER',
+        roleId: await defaultRoleId(first.organizationId, 'MEMBER'),
       })
       .expect(403);
 
@@ -230,7 +305,7 @@ describe('PostgreSQL onboarding integration', () => {
       {
         organizationId: workspace.organizationId,
         userId: admin.id,
-        role: OrganizationRole.ADMIN,
+        roleId: await defaultRoleId(workspace.organizationId, 'ADMIN'),
         state: OrganizationMembershipState.ACTIVE,
         joinedAt: new Date(),
         stateChangedAt: new Date(),
@@ -238,7 +313,7 @@ describe('PostgreSQL onboarding integration', () => {
       {
         organizationId: workspace.organizationId,
         userId: member.id,
-        role: OrganizationRole.MEMBER,
+        roleId: await defaultRoleId(workspace.organizationId, 'MEMBER'),
         state: OrganizationMembershipState.ACTIVE,
         joinedAt: new Date(),
         stateChangedAt: new Date(),
@@ -257,7 +332,11 @@ describe('PostgreSQL onboarding integration', () => {
         expect(body).toMatchObject({
           id: workspace.organizationId,
           name: 'Governed Workspace',
-          role: OrganizationRole.MEMBER,
+          role: 'Member',
+          roleName: 'Member',
+          roleId: expect.any(String),
+          systemCode: 'MEMBER',
+          isOwner: false,
         });
       });
 
@@ -285,8 +364,8 @@ describe('PostgreSQL onboarding integration', () => {
       .expect(({ body }) => {
         expect(body).toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ userId: owner.id, role: OrganizationRole.OWNER }),
-            expect.objectContaining({ userId: member.id, role: OrganizationRole.MEMBER }),
+            expect.objectContaining({ userId: owner.id, roleName: 'Owner', roleId: expect.any(String), isOwner: true }),
+            expect.objectContaining({ userId: member.id, roleName: 'Member', roleId: expect.any(String), isOwner: false }),
           ]),
         );
       });
@@ -353,7 +432,7 @@ describe('PostgreSQL onboarding integration', () => {
       {
         email: recipient.email,
         expiresAt: new Date('2026-12-01T00:00:00.000Z'),
-        role: OrganizationRole.MEMBER,
+        roleId: await defaultRoleId(first.organizationId, 'MEMBER'),
       },
     );
 
@@ -402,7 +481,7 @@ describe('PostgreSQL onboarding integration', () => {
     const created = await invitations.createInvitation(owner.id, workspace.organizationId, {
       email: recipient.email,
       expiresAt: new Date('2026-12-01T00:00:00.000Z'),
-      role: OrganizationRole.MEMBER,
+      roleId: await defaultRoleId(workspace.organizationId, 'MEMBER'),
     });
     const token = await accessToken(recipient.id);
 
@@ -489,6 +568,11 @@ describe('PostgreSQL onboarding integration', () => {
       refreshTokenHash: null,
       disabledAt: null,
     });
+  }
+
+  async function defaultRoleId(organizationId: string, systemCode: 'OWNER' | 'ADMIN' | 'MEMBER') {
+    const role = await dataSource.getRepository(OrganizationRoleDefinitionEntity).findOneByOrFail({ organizationId, systemCode });
+    return role.id;
   }
 
   function accessToken(userId: string): Promise<string> {

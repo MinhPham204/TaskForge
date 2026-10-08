@@ -1,14 +1,13 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectEntityManager } from '@nestjs/typeorm';
 import type { EntityManager } from 'typeorm';
-import type { OrganizationRole } from '../persistence/typeorm/onboarding.entities';
 import { PostgresOrganizationMembershipRepository } from '../persistence/typeorm/onboarding.repositories';
 
 export interface VerifiedPostgresTenantMembership {
   id: string;
   userId: string;
   organizationId: string;
-  role: OrganizationRole;
+  roleId: string;
 }
 
 /**
@@ -37,7 +36,7 @@ export class PostgresTenantAccessService {
       id: membership.id,
       userId: membership.userId,
       organizationId: membership.organizationId,
-      role: membership.role,
+      roleId: membership.roleId,
     };
   }
 }

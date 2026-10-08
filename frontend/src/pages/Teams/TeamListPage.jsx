@@ -18,8 +18,9 @@ const KEYBOARD_SHORTCUTS = [{ key: 'C', desc: 'Create new team' }];
 const TeamListPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { role, activeOrganization, activeOrganizationId } = useUserAuth();
-  const isOrgAdmin = role === 'owner' || role === 'admin';
+  const { hasPermission, activeOrganization, activeOrganizationId } = useUserAuth();
+  const canCreateTeam = hasPermission('team.create');
+  const canInvite = hasPermission('org.members.invite');
 
   const { data: teams = [], isLoading, isError, error, refetch } = useGetTeamsQuery();
   const [createTeam, { isLoading: isCreating }] = useCreateTeamMutation();
@@ -27,8 +28,14 @@ const TeamListPage = () => {
   const [viewMode, setViewMode] = useState('grid');
   const [activeTab, setActiveTab] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(searchParams.get('create') === 'true');
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  useEffect(() => {
+    setIsModalOpen(canCreateTeam && searchParams.get('create') === 'true');
+  }, [canCreateTeam, searchParams, activeOrganizationId]);
+  useEffect(() => {
+    setIsInviteModalOpen(false);
+  }, [canInvite, activeOrganizationId]);
 
   const filterTabs = useMemo(() => {
     const isCross = (t) => t.name?.toLowerCase().includes('cross') || t.isCrossFunctional;
@@ -60,6 +67,7 @@ const TeamListPage = () => {
   );
 
   const handleCreateTeamSubmit = async (payload) => {
+    if (!canCreateTeam) return;
     const created = await createTeam(payload).unwrap();
     if (created?.id) navigate(`/teams/${created.id}`);
     return created;
@@ -114,14 +122,14 @@ const TeamListPage = () => {
               </button>
             </div>
 
-            <button
+            {canCreateTeam && <button
               type="button"
               onClick={() => setIsModalOpen(true)}
               className="inline-flex items-center space-x-1.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-medium px-3 py-1.5 rounded-md shadow-2xs transition-colors cursor-pointer"
             >
               <LuPlus className="w-3.5 h-3.5" />
               <span>New Team</span>
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -150,7 +158,7 @@ const TeamListPage = () => {
             icon={LuUsers}
             title="No teams created yet"
             description="Group workspace members into teams to coordinate projects, approvals, and shared deliverables."
-            action={
+            action={canCreateTeam &&
               <button
                 type="button"
                 onClick={() => setIsModalOpen(true)}
@@ -193,15 +201,14 @@ const TeamListPage = () => {
             <TeamOverviewSidebar
               totalTeams={teams.length}
               totalMembers={totalMembers || 48}
-              onInviteClick={() => setIsInviteModalOpen(true)}
-              onResendInvite={() => {}}
+              onInviteClick={canInvite ? () => setIsInviteModalOpen(true) : undefined}
             />
           </div>
         )}
 
         {/* Create Team Modal */}
         <CreateTeamModal
-          isOpen={isModalOpen}
+          isOpen={isModalOpen && canCreateTeam}
           onClose={() => setIsModalOpen(false)}
           onCreateTeam={handleCreateTeamSubmit}
           isCreating={isCreating}
@@ -209,7 +216,7 @@ const TeamListPage = () => {
 
         {/* Invite Organization Member Modal */}
         <InviteOrgMemberModal
-          isOpen={isInviteModalOpen}
+          isOpen={isInviteModalOpen && canInvite}
           onClose={() => setIsInviteModalOpen(false)}
           organizationId={activeOrganizationId}
         />

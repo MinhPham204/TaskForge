@@ -94,14 +94,16 @@ const ProjectDetailPage = () => {
   // Queries & Mutations
   const { data: project, isLoading, isError, error, refetch } = useGetProjectByIdQuery(projectId);
 
-  const { role: orgRole } = useUserAuth();
-  const isOrgAdmin = orgRole === 'owner' || orgRole === 'admin';
-  const canManage = Boolean(
-    project?.viewer?.canManage ||
-    isOrgAdmin ||
-    project?.viewer?.organizationRole?.toLowerCase() === 'owner' ||
-    project?.viewer?.organizationRole?.toLowerCase() === 'admin'
+  const { activeOrganizationId } = useUserAuth();
+  const canCreateTask = project?.viewer?.canCreateTask ?? (
+    ['PROJECT_MANAGER', 'CONTRIBUTOR'].includes(project?.viewer?.projectRole) &&
+    !['COMPLETED', 'ARCHIVED'].includes(project?.state)
   );
+  const canManage = project?.viewer?.canManage === true;
+  useEffect(() => {
+    setIsTaskFormOpen(false);
+    setTaskToEdit(null);
+  }, [activeOrganizationId, canManage, canCreateTask]);
 
   useEffect(() => {
     if (PROJECT_TAB_KEYS.has(requestedTab)) setActiveTab(requestedTab);
@@ -503,6 +505,7 @@ const ProjectDetailPage = () => {
             <ProjectTaskBoardTab
               projectId={projectId}
               canManage={canManage}
+              canCreateTask={canCreateTask}
               onSelectTask={(id) => setSelectedTaskId(id)}
               onCreateTask={() => {
                 setTaskToEdit(null);
@@ -515,7 +518,7 @@ const ProjectDetailPage = () => {
           {activeTab === 'tasks' && (
             <ProjectTaskListTab
               projectId={projectId}
-              canManage={canManage}
+              canCreateTask={canCreateTask}
               onSelectTask={(id) => setSelectedTaskId(id)}
               onCreateTask={() => {
                 setTaskToEdit(null);

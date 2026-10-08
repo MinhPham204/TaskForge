@@ -44,7 +44,7 @@ const KIND_CONFIG = {
 
 const CommandPalette = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
-  const { user, activeOrganizationId } = useUserAuth();
+  const { user, activeOrganizationId, capabilities } = useUserAuth();
 
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -82,7 +82,11 @@ const CommandPalette = ({ isOpen, onClose }) => {
     setDebouncedQuery('');
     setSelectedIndex(0);
     setCachedQuickCreate(null);
-  }, [activeOrganizationId]);
+  }, [activeOrganizationId, user?.id]);
+
+  useEffect(() => {
+    setCachedQuickCreate(null);
+  }, [capabilities]);
 
   // Focus input and reset selected index when opening
   useEffect(() => {
@@ -98,7 +102,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
   }, [isOpen]);
 
   const {
-    data: searchData,
+    currentData: searchData,
     isLoading: isSearching,
     isFetching,
     isError,
@@ -121,7 +125,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
     const caps = searchData?.quickCreate || cachedQuickCreate;
     if (!caps) return [];
     const actions = [];
-    if (caps.canCreateProject) {
+    if (caps.canCreateProject && capabilities?.permissions?.includes('org.projects.create')) {
       actions.push({
         id: 'qa-project',
         type: 'QUICK_ACTION',
@@ -131,7 +135,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
         icon: LuFolderKanban,
       });
     }
-    if (caps.canCreateTeam) {
+    if (caps.canCreateTeam && capabilities?.permissions?.includes('team.create')) {
       actions.push({
         id: 'qa-team',
         type: 'QUICK_ACTION',
@@ -152,7 +156,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
       });
     }
     return actions;
-  }, [searchData?.quickCreate, cachedQuickCreate]);
+  }, [searchData?.quickCreate, cachedQuickCreate, capabilities]);
 
   // Build the selectable item list
   const activeItems = useMemo(() => {

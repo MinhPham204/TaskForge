@@ -30,7 +30,6 @@ import { isDevMockActive, enableDevMockSession } from "./utils/devMockHandler";
 import {
   fetchProfile,
   fetchMyOrganizations,
-  selectActiveOrganizationId,
   selectOrganizationsInitialized,
 } from './store/authSlice';
 import { useEffect } from 'react';
@@ -67,14 +66,15 @@ const App = () => {
             <Route path="/forgot-password" element={<ForgotPassword />}/>
             {/* Retired route aliases redirect bookmarks to canonical v0.3 paths. */}
             <Route element={<PrivateRoute requireWorkspace={false} />}>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/admin/dashboard" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/user/dashboard" element={<Navigate to="/dashboard" replace />} />
               <Route path="/account" element={<Profile />} />
               <Route path="/profile" element={<Navigate to="/account" replace />} />
               <Route path="/settings/personal" element={<PersonalSettings />} />
             </Route>
 
             <Route element={<PrivateRoute />}>
-              <Route path="/admin/dashboard" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/user/dashboard" element={<Navigate to="/dashboard" replace />} />
               <Route path="/admin/tasks" element={<Navigate to="/tasks/my" replace />} />
               <Route path="/admin/create-task" element={<Navigate to="/projects" replace />} />
               <Route path="/admin/tasks/edit/:taskId" element={<Navigate to="/projects" replace />} />
@@ -89,7 +89,6 @@ const App = () => {
               <Route path="/workspace/onboarding" element={<WorkspaceOnboarding />} />
               <Route path="/settings/workspace" element={<WorkspaceSettingsPage />} />
               <Route path="/inbox" element={<NotificationInbox />} />
-              <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/teams" element={<TeamListPage />} />
               <Route path="/teams/:teamId" element={<TeamDetailPage />} />
               <Route path="/projects" element={<ProjectListPage />} />
@@ -111,7 +110,6 @@ export default App
 
 const Root = () => {
   const { user, loading } = useSelector((state) => state.auth);
-  const activeOrganizationId = useSelector(selectActiveOrganizationId);
   const organizationsInitialized = useSelector(selectOrganizationsInitialized);
 
   if (loading || (user && !organizationsInitialized)) return <Outlet />;
@@ -119,8 +117,5 @@ const Root = () => {
   if (!user) {
     return <Navigate to="/login" replace />;
   }
-  if (activeOrganizationId) {
-    return <Navigate to="/dashboard" replace />;
-  }
-  return <Navigate to="/workspace/onboarding" replace />;
+  return <Navigate to="/dashboard" replace />;
 };

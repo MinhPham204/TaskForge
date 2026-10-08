@@ -1,8 +1,8 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { PostgresTransactionRunner } from '../../../database/transaction-runner';
-import { OrganizationRole } from '../../onboarding/persistence/typeorm/onboarding.entities';
 import { PostgresOrganizationMembershipRepository } from '../../onboarding/persistence/typeorm/onboarding.repositories';
+import { PostgresOrganizationPermissionService } from '../../onboarding/application/organization-permission.service';
 import {
   PostgresProjectMembershipRepository,
   PostgresProjectRepository,
@@ -328,7 +328,8 @@ export class PostgresTaskReadService {
     const project = await new PostgresProjectRepository(manager).findById(actor.organizationId, projectId);
     if (!project) throw new NotFoundException('Project not found');
     const organizationMembership = await this.requireActiveOrganizationMembership(manager, actor);
-    if ([OrganizationRole.OWNER, OrganizationRole.ADMIN].includes(organizationMembership.role)) return;
+    const capabilities = await new PostgresOrganizationPermissionService(manager).resolve(organizationMembership.userId, actor.organizationId);
+    if (capabilities.permissions.includes('org.projects.read_all')) return;
     const projectMembership = await new PostgresProjectMembershipRepository(manager).findActiveByProjectAndOrganizationMembership(actor.organizationId, projectId, actor.membershipId);
     if (!projectMembership) throw new ForbiddenException('Active Project membership is required');
   }

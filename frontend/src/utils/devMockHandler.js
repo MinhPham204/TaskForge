@@ -1,3 +1,5 @@
+import { handleDevMockRbac } from './devMockRbac.js';
+
 /**
  * Dev Mock Handler - Local Development Review & Testing Helper
  * Only active in development mode (`import.meta.env.DEV`) when enabled.
@@ -311,7 +313,7 @@ let projectTasksStore = {
 
 export const isDevMockActive = () => {
   return (
-    import.meta.env.DEV &&
+    import.meta.env?.DEV &&
     localStorage.getItem('taskforge_dev_mock') === 'true'
   );
 };
@@ -377,6 +379,9 @@ export const handleDevMockRequest = async ({ url = '', method = 'get', data = {}
 
   const cleanUrl = url.split('?')[0];
   const m = method.toLowerCase();
+
+  const rbacResult = handleDevMockRbac({ url: cleanUrl, method: m, data });
+  if (rbacResult) return rbacResult;
 
   const filterTasks = (tasks) => tasks.filter((task) => {
     const search = String(params.search || '').trim().toLowerCase();
@@ -680,6 +685,41 @@ export const handleDevMockRequest = async ({ url = '', method = 'get', data = {}
   }
 
   const projectTaskListMatch = cleanUrl.match(/^\/api\/projects\/([a-zA-Z0-9_-]+)\/tasks$/);
+  if (projectTaskListMatch && m === 'post') {
+    const projectId = projectTaskListMatch[1];
+    const statuses = projectStatusesStore[projectId] || projectStatusesStore['p-dev-1'];
+    const teams = projectParticipantsStore[projectId]?.teams || projectParticipantsStore['p-dev-1'].teams;
+    const status = statuses.find((item) => item.id === data.statusId);
+    const team = teams.find((item) => item.id === data.owningTeamId);
+    const now = new Date().toISOString();
+    const task = {
+      id: `task-dev-${Date.now()}`,
+      projectId,
+      owningTeamId: data.owningTeamId,
+      owningTeamName: team?.name || team?.teamName || '',
+      statusId: data.statusId,
+      statusName: status?.name || '',
+      semanticCategory: status?.semanticCategory || 'NOT_STARTED',
+      creatorProjectMembershipId: 'm-dev-1',
+      title: String(data.title || '').trim(),
+      description: data.description || '',
+      priorityCode: data.priorityCode || 'MEDIUM',
+      dueAt: data.dueAt || null,
+      milestoneId: data.milestoneId || null,
+      manualProgress: 0,
+      effectiveProgress: 0,
+      requiresApproval: false,
+      approverProjectMembershipId: null,
+      assigneeProjectMembershipIds: [],
+      createdAt: now,
+      updatedAt: now,
+      checklist: [],
+      comments: [],
+      approvals: [],
+    };
+    projectTasksStore[projectId] = [...(projectTasksStore[projectId] || []), task];
+    return { data: task };
+  }
   if (projectTaskListMatch && m === 'get') {
     return { data: filterTasks(projectTasksStore[projectTaskListMatch[1]] || []) };
   }
@@ -1076,62 +1116,6 @@ export const handleDevMockRequest = async ({ url = '', method = 'get', data = {}
             email: 'alex@taskforge.dev',
           },
           createdAt: '2026-09-01T08:00:00.000Z',
-        },
-      };
-    }
-  }
-
-  const orgMembersMatch = cleanUrl.match(/^\/api\/organizations\/([a-zA-Z0-9_-]+)\/members$/);
-  if (orgMembersMatch && m === 'get') {
-    return {
-      data: [
-        {
-          membershipId: 'm-dev-1',
-          userId: 'u-dev-1',
-          name: 'Alex Johnson',
-          email: 'alex@taskforge.dev',
-          profileImageUrl: null,
-          role: 'OWNER',
-          state: 'ACTIVE',
-          joinedAt: '2026-09-01T08:00:00.000Z',
-        },
-        {
-          membershipId: 'm-dev-2',
-          userId: 'u-dev-2',
-          name: 'Sarah Miller',
-          email: 'sarah@taskforge.dev',
-          profileImageUrl: null,
-          role: 'ADMIN',
-          state: 'ACTIVE',
-          joinedAt: '2026-09-02T09:00:00.000Z',
-        },
-        {
-          membershipId: 'm-dev-3',
-          userId: 'u-dev-3',
-          name: 'David Chen',
-          email: 'david@taskforge.dev',
-          profileImageUrl: null,
-          role: 'MEMBER',
-          state: 'ACTIVE',
-          joinedAt: '2026-09-03T11:00:00.000Z',
-        },
-      ],
-    };
-  }
-
-  const orgInvitationsMatch = cleanUrl.match(/^\/api\/organizations\/([a-zA-Z0-9_-]+)\/invitations$/);
-  if (orgInvitationsMatch) {
-    if (m === 'get') {
-      return { data: [] };
-    }
-    if (m === 'post') {
-      return {
-        data: {
-          id: `inv-${Date.now()}`,
-          email: data.email,
-          role: data.role || 'MEMBER',
-          status: 'PENDING',
-          createdAt: new Date().toISOString(),
         },
       };
     }

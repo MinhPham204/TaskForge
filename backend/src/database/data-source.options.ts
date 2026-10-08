@@ -5,6 +5,9 @@ import {
   OrganizationEntity,
   OrganizationInvitationEntity,
   OrganizationMembershipEntity,
+  OrganizationPermissionEntity,
+  OrganizationRoleDefinitionEntity,
+  OrganizationRolePermissionEntity,
   TeamEntity,
   TeamMemberEntity,
   UserEntity,
@@ -46,7 +49,7 @@ type DataSourcePurpose = 'runtime' | 'migration';
 export function createPostgresDataSourceOptions(
   environment: Environment,
   purpose: DataSourcePurpose = 'migration',
-): DataSourceOptions {
+): Extract<DataSourceOptions, { type: 'postgres' }> {
   const postgres = getPostgresConfig(environment);
   const url =
     purpose === 'migration'
@@ -79,6 +82,9 @@ export function createPostgresDataSourceOptions(
       UserEntity,
       UserPreferenceEntity,
       OrganizationEntity,
+      OrganizationPermissionEntity,
+      OrganizationRoleDefinitionEntity,
+      OrganizationRolePermissionEntity,
       OrganizationMembershipEntity,
       OrganizationInvitationEntity,
       TeamEntity,

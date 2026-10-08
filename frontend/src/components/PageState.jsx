@@ -32,15 +32,28 @@ export const ErrorState = ({ title = 'Something went wrong', message, onRetry })
 
 export const Dialog = ({ open, title, children, onClose, actions }) => {
   const dialogRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     if (!open) return undefined;
+    const previousFocus = document.activeElement;
     const closeOnEscape = (event) => {
-      if (event.key === 'Escape') onClose?.();
+      if (event.key === 'Escape') onCloseRef.current?.();
+      if (event.key === 'Tab') {
+        const controls = [...(dialogRef.current?.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]') || [])];
+        const first = controls[0], last = controls[controls.length - 1];
+        if (!first) { event.preventDefault(); return; }
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialogRef.current)) { event.preventDefault(); first.focus(); }
+      }
     };
     document.addEventListener('keydown', closeOnEscape);
     dialogRef.current?.focus();
-    return () => document.removeEventListener('keydown', closeOnEscape);
-  }, [open, onClose]);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [open]);
 
   if (!open) return null;
   return (

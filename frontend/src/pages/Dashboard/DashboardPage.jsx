@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   LuListTodo,
@@ -162,7 +162,22 @@ const DashboardPage = () => {
   }
 
   if (noActiveWorkspace) {
-    return <Navigate to="/workspace/onboarding" replace />;
+    return (
+      <DashboardLayout activeMenu="/dashboard">
+        <div className="space-y-5 pb-12">
+          <h1 className="text-2xl font-bold text-content">Dashboard</h1>
+          <EmptyState
+            title="Welcome to TaskForge"
+            description="Create a workspace to start organizing your projects and tasks."
+          />
+          <div className="text-center">
+            <Link to="/workspace/onboarding" className="inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+              Create workspace
+            </Link>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
   }
 
   if (isError) {

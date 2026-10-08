@@ -6,12 +6,12 @@ import {
   OrganizationInvitationEntity,
   OrganizationMembershipEntity,
   OrganizationMembershipState,
+  OrganizationRoleDefinitionEntity,
   TeamEntity,
   TeamMemberEntity,
   UserEntity,
   UserPreferenceEntity,
 } from './onboarding.entities';
-import type { OrganizationRole } from './onboarding.entities';
 
 /**
  * These repositories are deliberately manager-scoped. P2 onboarding commands
@@ -170,7 +170,11 @@ export class PostgresOrganizationMembershipRepository {
       organizationId: string;
       name: string;
       logoUrl: string | null;
-      role: OrganizationRole;
+      role: string;
+      roleId: string;
+      roleName: string;
+      systemCode: string | null;
+      isOwner: boolean;
       joinedAt: Date;
     }>
   > {
@@ -182,10 +186,15 @@ export class PostgresOrganizationMembershipRepository {
         'organization',
         'organization.id = membership.organization_id',
       )
+      .innerJoin(OrganizationRoleDefinitionEntity, 'roleDefinition', 'roleDefinition.id = membership.role_id AND roleDefinition.organization_id = membership.organization_id')
       .select('organization.id', 'organizationId')
       .addSelect('organization.name', 'name')
       .addSelect('organization.logo_url', 'logoUrl')
-      .addSelect('membership.role', 'role')
+      .addSelect('roleDefinition.name', 'role')
+      .addSelect('roleDefinition.id', 'roleId')
+      .addSelect('roleDefinition.name', 'roleName')
+      .addSelect('roleDefinition.system_code', 'systemCode')
+      .addSelect('organization.owner_membership_id = membership.id', 'isOwner')
       .addSelect('membership.joined_at', 'joinedAt')
       .where('membership.user_id = :userId', { userId })
       .andWhere('membership.state = :state', {
@@ -237,10 +246,13 @@ export class PostgresOrganizationMembershipRepository {
       .getRepository(OrganizationMembershipEntity)
       .createQueryBuilder('membership')
       .setLock('pessimistic_write')
+      .innerJoin(OrganizationRoleDefinitionEntity, 'roleDefinition', 'roleDefinition.id = membership.role_id AND roleDefinition.organization_id = membership.organization_id')
       .where('membership.organization_id = :organizationId', {
         organizationId,
       })
-      .andWhere('membership.role = :role', { role: 'OWNER' })
+      .andWhere('roleDefinition.system_code = :role', { role: 'OWNER' })
+      .andWhere('roleDefinition.is_protected = true')
+      .andWhere('roleDefinition.archived_at IS NULL')
       .andWhere('membership.state = :state', {
         state: OrganizationMembershipState.ACTIVE,
       })
@@ -289,7 +301,11 @@ export class PostgresOrganizationMembershipRepository {
       name: string;
       email: string;
       profileImageUrl: string | null;
-      role: OrganizationRole;
+      role: string;
+      roleId: string;
+      roleName: string;
+      systemCode: string | null;
+      isOwner: boolean;
       state: OrganizationMembershipState;
       joinedAt: Date;
       stateChangedAt: Date;
@@ -299,12 +315,18 @@ export class PostgresOrganizationMembershipRepository {
       .getRepository(OrganizationMembershipEntity)
       .createQueryBuilder('membership')
       .innerJoin(UserEntity, 'user', 'user.id = membership.user_id')
+      .innerJoin(OrganizationEntity, 'organization', 'organization.id = membership.organization_id')
+      .innerJoin(OrganizationRoleDefinitionEntity, 'roleDefinition', 'roleDefinition.id = membership.role_id AND roleDefinition.organization_id = membership.organization_id')
       .select('membership.id', 'membershipId')
       .addSelect('membership.user_id', 'userId')
       .addSelect('user.name', 'name')
       .addSelect('user.email', 'email')
       .addSelect('user.profile_image_url', 'profileImageUrl')
-      .addSelect('membership.role', 'role')
+      .addSelect('roleDefinition.name', 'role')
+      .addSelect('roleDefinition.id', 'roleId')
+      .addSelect('roleDefinition.name', 'roleName')
+      .addSelect('roleDefinition.system_code', 'systemCode')
+      .addSelect('organization.owner_membership_id = membership.id', 'isOwner')
       .addSelect('membership.state', 'state')
       .addSelect('membership.joined_at', 'joinedAt')
       .addSelect('membership.state_changed_at', 'stateChangedAt')
@@ -382,6 +404,10 @@ export class PostgresOrganizationInvitationRepository {
       .setLock('pessimistic_write')
       .where('invitation.token_hash = :tokenHash', { tokenHash })
       .getOne();
+  }
+
+  findByTokenHash(tokenHash: string): Promise<OrganizationInvitationEntity | null> {
+    return this.manager.getRepository(OrganizationInvitationEntity).findOneBy({ tokenHash });
   }
 
   listPendingByOrganization(
@@ -543,8 +569,9 @@ export class PostgresTeamMemberRepository {
         'membership.id = teamMember.organization_membership_id AND membership.organization_id = teamMember.organization_id',
       )
       .innerJoin(UserEntity, 'user', 'user.id = membership.user_id')
+      .innerJoin(OrganizationRoleDefinitionEntity, 'roleDefinition', 'roleDefinition.id = membership.role_id AND roleDefinition.organization_id = membership.organization_id')
       .select('membership.id', 'organizationMembershipId')
-      .addSelect('membership.role', 'organizationRole')
+      .addSelect('roleDefinition.name', 'organizationRole')
       .addSelect('teamMember.joined_at', 'joinedAt')
       .addSelect('user.id', 'userId')
       .addSelect('user.name', 'userName')
@@ -559,7 +586,7 @@ export class PostgresTeamMemberRepository {
       .orderBy('teamMember.joined_at', 'ASC')
       .getRawMany<{
         organizationMembershipId: string;
-        organizationRole: OrganizationRole;
+        organizationRole: string;
         joinedAt: Date;
         userId: string;
         userName: string;

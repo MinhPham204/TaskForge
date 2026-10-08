@@ -1,3 +1,4 @@
+import { IsNull } from 'typeorm';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { UserEntity } from '../src/modules/onboarding/persistence/typeorm/onboarding.entities';
@@ -51,7 +52,7 @@ describe('PostgreSQL Project lifecycle integration', () => {
     await expect(
       dataSource
         .getRepository(ProjectTaskStatusEntity)
-        .countBy({ projectId: project.id, archivedAt: null }),
+        .countBy({ projectId: project.id, archivedAt: IsNull() }),
     ).resolves.toBe(4);
     await expect(
       dataSource

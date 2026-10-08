@@ -10,7 +10,8 @@ import { getMinioConfig } from '../src/config/minio.config';
 import { LocalFileStorageAdapter, MinioFileStorageAdapter, PostgresFileStorageService, type FileStorageAdapter } from '../src/modules/collaboration/application/file-storage';
 import { PostgresTransactionRunner } from '../src/database/transaction-runner';
 import { PostgresOrganizationOnboardingService } from '../src/modules/onboarding/application/organization-onboarding.service';
-import { UserEntity } from '../src/modules/onboarding/persistence/typeorm/onboarding.entities';
+import { OrganizationMembershipEntity, OrganizationMembershipState, UserEntity } from '../src/modules/onboarding/persistence/typeorm/onboarding.entities';
+import { testOrganizationRoleId } from '../src/testing/organization-role.fixture';
 import { StoredFileEntity } from '../src/modules/collaboration/persistence/typeorm/collaboration.entities';
 import { PostgresOnboardingTestModule } from '../src/testing/onboarding-test.module';
 
@@ -83,8 +84,9 @@ describe('PostgreSQL stored-file storage integration', () => {
 
   it('rejects an uploader whose organization membership is no longer active', async () => {
     const workspaceData = await workspace('revoked');
-    await dataSource.query(`UPDATE organization_memberships SET state = 'REVOKED' WHERE id = $1`, [workspaceData.membershipId]);
-    await expect(files.upload({ organizationId: workspaceData.organizationId, membershipId: workspaceData.membershipId }, { originalName: 'evidence.txt', mediaType: 'text/plain', bytes: Buffer.from('x') })).rejects.toBeInstanceOf(ForbiddenException);
+    const uploader = await dataSource.getRepository(UserEntity).save({ name: 'Revoked uploader', email: `revoked-uploader-${sequence}@example.test`, passwordHash: 'fixture' });
+    const membership = await dataSource.getRepository(OrganizationMembershipEntity).save({ organizationId: workspaceData.organizationId, userId: uploader.id, roleId: await testOrganizationRoleId(dataSource, workspaceData.organizationId, 'MEMBER'), state: OrganizationMembershipState.REVOKED, joinedAt: new Date(), stateChangedAt: new Date() });
+    await expect(files.upload({ organizationId: workspaceData.organizationId, membershipId: membership.id }, { originalName: 'evidence.txt', mediaType: 'text/plain', bytes: Buffer.from('x') })).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('archives database metadata before best-effort cleanup and retries cleanup idempotently', async () => {

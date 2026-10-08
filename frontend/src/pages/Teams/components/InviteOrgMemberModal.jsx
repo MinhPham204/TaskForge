@@ -1,12 +1,25 @@
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import Modal from '../../../components/common/Modal';
-import { useCreateOrganizationInvitationMutation } from '../../../services/organizationApi';
+import { useCreateOrganizationInvitationMutation, useGetInvitationRolesQuery } from '../../../services/organizationApi';
+import useUserAuth from '../../../hooks/useUserAuth.jsx';
+import { invitableOrganizationRoles } from '../../../utils/organizationPermissions.js';
 import { invitationValidationMessage } from '../../../utils/workspaceSettings';
 
 const InviteOrgMemberModal = ({ isOpen, onClose, organizationId }) => {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('MEMBER');
+  const [roleId, setRoleId] = useState('');
+  const { capabilities, hasPermission } = useUserAuth();
+  const canInvite = hasPermission('org.members.invite');
+  const { currentData: roleData, isFetching: isLoadingRoles, error: rolesError } = useGetInvitationRolesQuery(organizationId, {
+    skip: !isOpen || !organizationId || !canInvite,
+  });
+  const roles = invitableOrganizationRoles(roleData, capabilities);
+  React.useEffect(() => {
+    setEmail('');
+    setRoleId('');
+    setError('');
+  }, [organizationId, canInvite]);
   const [expiryDays, setExpiryDays] = useState('7');
   const [error, setError] = useState('');
 
@@ -16,14 +29,21 @@ const InviteOrgMemberModal = ({ isOpen, onClose, organizationId }) => {
     if (isLoading) return;
     setError('');
     setEmail('');
-    setRole('MEMBER');
+    setRoleId('');
     setExpiryDays('7');
     onClose();
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!canInvite) return;
     setError('');
+    const invitedRole = roles.find((role) => role.id === roleId) ||
+      (!roleId ? roles.find((role) => role.systemCode === 'MEMBER') : null);
+    if (!invitedRole) {
+      setError('Select an available invitation role.');
+      return;
+    }
 
     const trimmedEmail = email.trim();
     const expiresAt = new Date(
@@ -33,7 +53,7 @@ const InviteOrgMemberModal = ({ isOpen, onClose, organizationId }) => {
     const payload = {
       organizationId,
       email: trimmedEmail,
-      role,
+      roleId: invitedRole.id,
       expiresAt,
     };
 
@@ -53,7 +73,7 @@ const InviteOrgMemberModal = ({ isOpen, onClose, organizationId }) => {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Invite Organization Member">
+    <Modal isOpen={isOpen && canInvite} onClose={handleClose} title="Invite Organization Member">
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
           <div
@@ -86,12 +106,13 @@ const InviteOrgMemberModal = ({ isOpen, onClose, organizationId }) => {
             </label>
             <select
               id="invite-role"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
+              value={roleId || roles.find((role) => role.systemCode === 'MEMBER')?.id || ''}
+              onChange={(e) => setRoleId(e.target.value)}
+              disabled={isLoadingRoles}
               className="w-full px-3 py-2 text-xs bg-surface border border-border rounded-lg text-content focus:outline-none focus:border-primary cursor-pointer"
             >
-              <option value="MEMBER">Member</option>
-              <option value="ADMIN">Admin</option>
+              <option value="" disabled>Select a role</option>
+              {roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
             </select>
           </div>
 
@@ -117,6 +138,7 @@ const InviteOrgMemberModal = ({ isOpen, onClose, organizationId }) => {
         <p className="text-[11px] text-content-muted">
           An invitation link will be sent to the email address above to join your organization workspace.
         </p>
+        {rolesError && <p role="alert" className="text-xs text-danger-content">Unable to load invitation roles.</p>}
 
         <div className="flex justify-end gap-2 pt-3 border-t border-border">
           <button
@@ -129,7 +151,7 @@ const InviteOrgMemberModal = ({ isOpen, onClose, organizationId }) => {
           </button>
           <button
             type="submit"
-            disabled={isLoading || !email.trim()}
+            disabled={isLoading || !email.trim() || isLoadingRoles || !roles.length}
             className="px-4 py-2 text-xs font-semibold text-white bg-primary hover:bg-blue-600 rounded-lg shadow-xs transition-colors cursor-pointer disabled:opacity-50"
           >
             {isLoading ? 'Sending...' : 'Send Invitation'}

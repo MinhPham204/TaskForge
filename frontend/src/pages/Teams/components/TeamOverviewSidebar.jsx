@@ -72,7 +72,7 @@ const TeamOverviewSidebar = ({
       </div>
 
       {/* Pending Invites */}
-      <div className="pt-4 border-t border-border space-y-3">
+      {onResendInvite && <div className="pt-4 border-t border-border space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
             Pending Invites
@@ -102,10 +102,10 @@ const TeamOverviewSidebar = ({
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* Invite CTA Button */}
-      <div className="pt-2">
+      {onInviteClick && <div className="pt-2">
         <button
           type="button"
           onClick={onInviteClick}
@@ -114,7 +114,7 @@ const TeamOverviewSidebar = ({
           <LuUserPlus className="w-3.5 h-3.5 text-content-muted" />
           <span>Invite Organization Members</span>
         </button>
-      </div>
+      </div>}
     </aside>
   );
 };

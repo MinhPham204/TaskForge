@@ -1,3 +1,4 @@
+import { testOrganizationRoleId } from '../src/testing/organization-role.fixture';
 import { ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -259,7 +260,7 @@ describe('PostgreSQL personal Dashboard read contract', () => {
       .save({
         organizationId,
         userId: user.id,
-        role: OrganizationRole.MEMBER,
+        roleId: await testOrganizationRoleId(dataSource, organizationId, OrganizationRole.MEMBER),
         state: OrganizationMembershipState.ACTIVE,
         joinedAt: new Date(),
         stateChangedAt: new Date(),

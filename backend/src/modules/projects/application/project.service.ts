@@ -7,7 +7,6 @@ import {
 import type { EntityManager } from 'typeorm';
 import { PostgresTransactionRunner } from '../../../database/transaction-runner';
 import {
-  OrganizationRole,
   type TeamEntity,
 } from '../../onboarding/persistence/typeorm/onboarding.entities';
 import {
@@ -33,6 +32,7 @@ import {
 import { PostgresTaskDependencyRepository } from '../../task/persistence/typeorm/task.repositories';
 import { writePostgresActivity } from '../../collaboration/application/activity.writer';
 import { writePostgresAudit } from '../../collaboration/application/audit.writer';
+import { PostgresOrganizationPermissionService } from '../../onboarding/application/organization-permission.service';
 
 export interface PostgresProjectActor {
   organizationId: string;
@@ -78,7 +78,7 @@ export class PostgresProjectService {
     const name = requiredName(input.name);
     assertDateRange(input.startDate, input.dueDate);
     return this.transactions.run(async (manager) => {
-      await this.requireActiveAdministrator(manager, actor);
+      await this.requireActiveAdministrator(manager, actor, 'org.projects.create');
       const generalTeam = await this.requireCreatorGeneralTeam(manager, actor);
       const projects = new PostgresProjectRepository(manager);
       const now = new Date();
@@ -200,11 +200,8 @@ export class PostgresProjectService {
         throw new ForbiddenException(
           'Active Organization membership is required',
         );
-      if (
-        organizationMembership.role === OrganizationRole.OWNER ||
-        organizationMembership.role === OrganizationRole.ADMIN
-      )
-        return project;
+      const capabilities = await new PostgresOrganizationPermissionService(manager).resolve(organizationMembership.userId, actor.organizationId);
+      if (capabilities.permissions.includes('org.projects.read_all')) return project;
       const projectMembership = await new PostgresProjectMembershipRepository(
         manager,
       ).findActiveByProjectAndOrganizationMembershipForUpdate(
@@ -277,6 +274,7 @@ export class PostgresProjectService {
   private async requireActiveAdministrator(
     manager: EntityManager,
     actor: PostgresProjectActor,
+    permissionCode: string,
   ): Promise<void> {
     const organization = await new PostgresOrganizationRepository(
       manager,
@@ -286,15 +284,12 @@ export class PostgresProjectService {
     const membership = await new PostgresOrganizationMembershipRepository(
       manager,
     ).findActiveByIdForUpdate(actor.organizationId, actor.membershipId);
-    if (
-      !membership ||
-      (membership.role !== OrganizationRole.OWNER &&
-        membership.role !== OrganizationRole.ADMIN)
-    ) {
+    if (!membership) {
       throw new ForbiddenException(
-        'An active organization owner or admin is required',
+        'An active Organization Membership is required',
       );
     }
+    await new PostgresOrganizationPermissionService(manager).requirePermission(membership.userId, actor.organizationId, permissionCode);
   }
 
   private async requireCreatorGeneralTeam(

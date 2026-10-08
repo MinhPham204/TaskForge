@@ -1,3 +1,4 @@
+import { IsNull } from 'typeorm';
 import { ConflictException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
@@ -58,7 +59,7 @@ describe('PostgreSQL Project status integration', () => {
     await statuses.rename(actor, project.id, extra.id, 'Waiting');
     await statuses.reorder(actor, project.id, extra.id, 0);
     const active = await db.getRepository(ProjectTaskStatusEntity).find({
-      where: { projectId: project.id, archivedAt: null },
+      where: { projectId: project.id, archivedAt: IsNull() },
       order: { position: 'ASC' },
     });
     expect(active.map((status) => status.position)).toEqual([0, 1, 2, 3, 4]);

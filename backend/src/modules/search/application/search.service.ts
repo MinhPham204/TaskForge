@@ -4,8 +4,8 @@ import { PostgresTransactionRunner } from '../../../database/transaction-runner'
 import {
   OrganizationMembershipEntity,
   OrganizationMembershipState,
-  OrganizationRole,
 } from '../../onboarding/persistence/typeorm/onboarding.entities';
+import { PostgresOrganizationPermissionService } from '../../onboarding/application/organization-permission.service';
 import type { PostgresProjectActor } from '../../projects/application/project.service';
 
 export type PostgresSearchResultKind = 'PROJECT' | 'TASK' | 'TEAM';
@@ -52,12 +52,12 @@ export class PostgresGlobalSearchService {
       if (!membership) {
         throw new ForbiddenException('Active organization membership is required');
       }
-      const canManageOrganization = [
-        OrganizationRole.OWNER,
-        OrganizationRole.ADMIN,
-      ].includes(membership.role);
+      const capabilities = await new PostgresOrganizationPermissionService(manager).resolve(membership.userId, actor.organizationId);
+      const canReadAllProjects = capabilities.permissions.includes('org.projects.read_all');
+      const canCreateProject = capabilities.permissions.includes('org.projects.create');
+      const canCreateTeam = capabilities.permissions.includes('team.create');
       const pattern = `%${query}%`;
-      const visibleProjectSql = canManageOrganization
+      const visibleProjectSql = canReadAllProjects
         ? `SELECT project.id
              FROM projects project
             WHERE project.organization_id = $1 AND project.archived_at IS NULL`
@@ -81,8 +81,8 @@ export class PostgresGlobalSearchService {
         query,
         results: [...projects, ...tasks, ...teams],
         quickCreate: {
-          canCreateProject: canManageOrganization,
-          canCreateTeam: canManageOrganization,
+          canCreateProject,
+          canCreateTeam,
           taskProjectIds,
         },
       };
@@ -158,9 +158,10 @@ export class PostgresGlobalSearchService {
           AND project.id = project_membership.project_id
         WHERE project_membership.organization_id = $1
           AND project_membership.organization_membership_id = $2
-          AND project_membership.role = 'PROJECT_MANAGER'
+          AND project_membership.role IN ('PROJECT_MANAGER', 'CONTRIBUTOR')
           AND project_membership.removed_at IS NULL
           AND project.archived_at IS NULL
+          AND project.state NOT IN ('COMPLETED', 'ARCHIVED')
         ORDER BY project_membership.added_at ASC`,
       [actor.organizationId, actor.membershipId],
     );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   LuArrowLeft,
@@ -14,6 +14,7 @@ import Breadcrumb from '../../components/Breadcrumb';
 import Modal from '../../components/common/Modal';
 import { LoadingState, ErrorState, EmptyState } from '../../components/common/PageState';
 import useUserAuth from '../../hooks/useUserAuth.jsx';
+import RoleBadge from '../../components/RoleBadge.jsx';
 import {
   useGetTeamByIdQuery,
   useUpdateTeamMutation,
@@ -25,8 +26,10 @@ import {
 const TeamDetailPage = () => {
   const { teamId } = useParams();
   const navigate = useNavigate();
-  const { role } = useUserAuth();
-  const isOrgAdmin = role === 'owner' || role === 'admin';
+  const { hasPermission, activeOrganizationId } = useUserAuth();
+  const canUpdate = hasPermission('team.update');
+  const canArchive = hasPermission('team.archive');
+  const canManageMembers = hasPermission('team.members.manage');
 
   const {
     data: team,
@@ -56,9 +59,15 @@ const TeamDetailPage = () => {
 
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [removeError, setRemoveError] = useState('');
+  useEffect(() => {
+    setIsEditOpen(false);
+    setIsArchiveOpen(false);
+    setIsAddMemberOpen(false);
+    setMemberToRemove(null);
+  }, [canUpdate, canArchive, canManageMembers, activeOrganizationId]);
 
   const openEditModal = () => {
-    if (!team) return;
+    if (!team || !canUpdate) return;
     setEditName(team.name || '');
     setEditDescription(team.description || '');
     setEditError('');
@@ -67,6 +76,7 @@ const TeamDetailPage = () => {
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
+    if (!canUpdate) return;
     setEditError('');
     const trimmed = editName.trim();
     if (!trimmed) {
@@ -86,6 +96,7 @@ const TeamDetailPage = () => {
   };
 
   const handleArchiveConfirm = async () => {
+    if (!canArchive) return;
     setArchiveError('');
     try {
       await archiveTeam(teamId).unwrap();
@@ -98,6 +109,7 @@ const TeamDetailPage = () => {
 
   const handleAddMemberSubmit = async (e) => {
     e.preventDefault();
+    if (!canManageMembers) return;
     setAddMemberError('');
     const trimmedId = membershipId.trim();
     if (!trimmedId) {
@@ -117,7 +129,7 @@ const TeamDetailPage = () => {
   };
 
   const handleRemoveMemberConfirm = async () => {
-    if (!memberToRemove) return;
+    if (!memberToRemove || !canManageMembers) return;
     setRemoveError('');
     try {
       await removeTeamMember({
@@ -180,17 +192,17 @@ const TeamDetailPage = () => {
                   </div>
                 </div>
 
-                {isOrgAdmin && (
+                {(canUpdate || canArchive) && (
                   <div className="flex items-center gap-2 self-start">
-                    <button
+                    {canUpdate && <button
                       type="button"
                       onClick={openEditModal}
                       className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-content-muted bg-surface border border-border rounded-md hover:text-content hover:bg-surface-muted transition-colors cursor-pointer"
                     >
                       <LuPencil className="w-3.5 h-3.5" />
                       Edit Team
-                    </button>
-                    <button
+                    </button>}
+                    {canArchive && <button
                       type="button"
                       onClick={() => {
                         setArchiveError('');
@@ -200,7 +212,7 @@ const TeamDetailPage = () => {
                     >
                       <LuArchive className="w-3.5 h-3.5" />
                       Archive
-                    </button>
+                    </button>}
                   </div>
                 )}
               </div>
@@ -215,7 +227,7 @@ const TeamDetailPage = () => {
                     Active workspace members participating in this team.
                   </p>
                 </div>
-                {isOrgAdmin && (
+                {canManageMembers && (
                   <button
                     type="button"
                     onClick={() => {
@@ -236,12 +248,12 @@ const TeamDetailPage = () => {
                   icon={LuUser}
                   title="No members yet"
                   description={
-                    isOrgAdmin
+                    canManageMembers
                       ? 'Add active workspace members to this team.'
                       : 'No members are currently assigned to this team.'
                   }
                   action={
-                    isOrgAdmin ? (
+                    canManageMembers ? (
                       <button
                         type="button"
                         onClick={() => {
@@ -265,7 +277,7 @@ const TeamDetailPage = () => {
                         <th className="py-3 px-4">Member</th>
                         <th className="py-3 px-4">Organization Role</th>
                         <th className="py-3 px-4">Joined Team</th>
-                        {isOrgAdmin && <th className="py-3 px-4 text-right">Actions</th>}
+                        {canManageMembers && <th className="py-3 px-4 text-right">Actions</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -288,13 +300,13 @@ const TeamDetailPage = () => {
                           </td>
                           <td className="py-3 px-4">
                             <span className="inline-block px-2.5 py-0.5 text-xs font-medium rounded-full bg-surface-muted text-content-muted border border-border">
-                              {member.organizationRole || 'MEMBER'}
+                              <RoleBadge role={member.organizationRole} />
                             </span>
                           </td>
                           <td className="py-3 px-4 text-xs text-content-muted">
                             {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : '—'}
                           </td>
-                          {isOrgAdmin && (
+                          {canManageMembers && (
                             <td className="py-3 px-4 text-right">
                               <button
                                 type="button"
@@ -320,7 +332,7 @@ const TeamDetailPage = () => {
         )}
 
         {/* Edit Team Modal */}
-        <Modal isOpen={isEditOpen} onClose={() => !isUpdating && setIsEditOpen(false)} title="Edit Team">
+        <Modal isOpen={isEditOpen && canUpdate} onClose={() => !isUpdating && setIsEditOpen(false)} title="Edit Team">
           <form onSubmit={handleEditSubmit} className="space-y-4">
             {editError && (
               <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">
@@ -376,7 +388,7 @@ const TeamDetailPage = () => {
 
         {/* Archive Confirmation Modal */}
         <Modal
-          isOpen={isArchiveOpen}
+          isOpen={isArchiveOpen && canArchive}
           onClose={() => !isArchiving && setIsArchiveOpen(false)}
           title="Archive Team"
         >
@@ -412,7 +424,7 @@ const TeamDetailPage = () => {
 
         {/* Add Member Modal */}
         <Modal
-          isOpen={isAddMemberOpen}
+          isOpen={isAddMemberOpen && canManageMembers}
           onClose={() => !isAddingMember && setIsAddMemberOpen(false)}
           title="Add Team Member"
         >
@@ -462,7 +474,7 @@ const TeamDetailPage = () => {
 
         {/* Remove Member Confirmation Modal */}
         <Modal
-          isOpen={!!memberToRemove}
+          isOpen={!!memberToRemove && canManageMembers}
           onClose={() => !isRemovingMember && setMemberToRemove(null)}
           title="Remove Team Member"
         >

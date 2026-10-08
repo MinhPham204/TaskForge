@@ -11,6 +11,8 @@ import { PostgresAuthService } from '../modules/onboarding/application/auth.serv
 import { PostgresInvitationMembershipService } from '../modules/onboarding/application/invitation-membership.service';
 import { PostgresOrganizationOnboardingService } from '../modules/onboarding/application/organization-onboarding.service';
 import { PostgresWorkspaceService } from '../modules/onboarding/application/workspace.service';
+import { PostgresOrganizationPermissionService } from '../modules/onboarding/application/organization-permission.service';
+import { PostgresOrganizationRoleService } from '../modules/onboarding/application/organization-role.service';
 import { PostgresTeamService } from '../modules/projects/application/team.service';
 import { PostgresProjectService } from '../modules/projects/application/project.service';
 import { PostgresProjectParticipantService } from '../modules/projects/application/project-participant.service';
@@ -98,6 +100,16 @@ const testDataSourceOptions = createPostgresDataSourceOptions({
     PostgresSearchController,
   ],
   providers: [
+    {
+      provide: PostgresOrganizationPermissionService,
+      useFactory: (dataSource: DataSource) => new PostgresOrganizationPermissionService(dataSource.manager),
+      inject: [DataSource],
+    },
+    {
+      provide: PostgresOrganizationRoleService,
+      useFactory: (dataSource: DataSource, transactions: PostgresTransactionRunner) => new PostgresOrganizationRoleService(transactions, dataSource.manager),
+      inject: [DataSource, PostgresTransactionRunner],
+    },
     {
       provide: RedisService,
       useValue: {},

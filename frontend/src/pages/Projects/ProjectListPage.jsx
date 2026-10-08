@@ -89,8 +89,8 @@ function formatSmartDueDate(dueDateStr) {
 const ProjectListPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { role, activeOrganization, user } = useUserAuth();
-  const isOrgAdmin = role === 'owner' || role === 'admin';
+  const { hasPermission, activeOrganization, activeOrganizationId, user } = useUserAuth();
+  const canCreateProject = hasPermission('org.projects.create');
   const shouldCreate = searchParams.get('create') === 'true';
 
   const { data: projects = [], isLoading, isError, error, refetch } = useGetProjectsQuery();
@@ -121,12 +121,12 @@ const ProjectListPage = () => {
         setIsCreateOpen(false);
       } else if (e.key.toLowerCase() === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        handleOpenCreate();
+        if (canCreateProject) setIsCreateOpen(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [canCreateProject]);
 
   // Group projects into tiers
   const activeProjects = useMemo(
@@ -202,12 +202,14 @@ const ProjectListPage = () => {
   }, [projects, activeTab, searchFilter, leadFilter, healthFilter, sortBy]);
 
   useEffect(() => {
-    if (shouldCreate && isOrgAdmin) {
+    if (shouldCreate && canCreateProject) {
       setIsCreateOpen(true);
     }
-  }, [shouldCreate, isOrgAdmin]);
+    if (!canCreateProject) setIsCreateOpen(false);
+  }, [shouldCreate, canCreateProject, activeOrganizationId]);
 
   const handleOpenCreate = () => {
+    if (!canCreateProject) return;
     setIsCreateOpen(true);
   };
 
@@ -412,14 +414,14 @@ const ProjectListPage = () => {
             </div>
 
             {/* New Project Button */}
-            <button
+            {canCreateProject && <button
               type="button"
               onClick={handleOpenCreate}
               className="inline-flex items-center space-x-1.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-medium px-3 py-1.5 rounded-md shadow-2xs transition-colors cursor-pointer"
             >
               <LuPlus className="w-3.5 h-3.5" />
               <span>New Project</span>
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -514,7 +516,7 @@ const ProjectListPage = () => {
             icon={LuFolderKanban}
             title="No projects yet"
             description={
-              isOrgAdmin
+              canCreateProject
                 ? 'Create the first project to assemble participating teams, statuses, and manage workflows.'
                 : 'No projects have been assigned or created in this workspace yet.'
             }
@@ -634,7 +636,7 @@ const ProjectListPage = () => {
         )}
 
         {/* Create Project Modal */}
-        {isCreateOpen && (
+        {isCreateOpen && canCreateProject && (
           <CreateProjectModal
             isOpen={isCreateOpen}
             onClose={handleCloseCreate}

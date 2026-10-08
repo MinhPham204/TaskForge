@@ -18,6 +18,7 @@ export function postgresTestEnvironment() {
     ...process.env,
     POSTGRES_TEST_URL: url.toString(),
     DATABASE_URL: url.toString(),
+    MIGRATION_DATABASE_URL: url.toString(),
     DATABASE_SSL: 'false',
     DATABASE_SYNCHRONIZE: 'false',
     REDIS_URL: 'redis://127.0.0.1:6380',

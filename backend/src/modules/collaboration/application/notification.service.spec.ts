@@ -2,12 +2,12 @@ import type { EntityManager } from 'typeorm';
 import {
   OrganizationMembershipEntity,
   OrganizationMembershipState,
-  OrganizationRole,
   UserPreferenceEntity,
 } from '../../onboarding/persistence/typeorm/onboarding.entities';
 import { ProjectMembershipEntity } from '../../projects/persistence/typeorm/project.entities';
 import { NotificationEntity } from '../persistence/typeorm/collaboration.entities';
 import { PostgresNotificationService } from './notification.service';
+import { PostgresOrganizationPermissionService } from '../../onboarding/application/organization-permission.service';
 
 describe('PostgresNotificationService', () => {
   it('does not create an inbox record when the recipient opts out of in-app notifications', async () => {
@@ -40,11 +40,12 @@ describe('PostgresNotificationService', () => {
   });
 
   it('does not expose a Task deep-link after the recipient loses Project visibility', async () => {
+    jest.spyOn(PostgresOrganizationPermissionService.prototype, 'resolve').mockResolvedValue({ permissions: [], isOwner: false, role: {} as never });
     const membership = {
       id: 'membership-id',
       organizationId: 'organization-id',
       userId: 'recipient-user',
-      role: OrganizationRole.MEMBER,
+      roleId: 'member-role-id',
       state: OrganizationMembershipState.ACTIVE,
     } as OrganizationMembershipEntity;
     const notification = {

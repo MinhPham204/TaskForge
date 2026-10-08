@@ -1,25 +1,31 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { PostgresTransactionRunner } from '../../../database/transaction-runner';
+import { OrganizationRoleDefinitionEntity } from '../persistence/typeorm/onboarding.entities';
 import type {
   OrganizationEntity,
-  OrganizationRole,
 } from '../persistence/typeorm/onboarding.entities';
 import {
   PostgresOrganizationMembershipRepository,
   PostgresOrganizationRepository,
 } from '../persistence/typeorm/onboarding.repositories';
 import { writePostgresAudit } from '../../collaboration/application/audit.writer';
+import { PostgresOrganizationPermissionService } from './organization-permission.service';
 
 export interface WorkspaceSummary {
   organizationId: string;
   name: string;
   logoUrl: string | null;
-  role: OrganizationRole;
+  role: string;
+  roleId: string;
+  roleName: string;
+  systemCode: string | null;
+  isOwner: boolean;
   joinedAt: Date;
 }
 
@@ -30,14 +36,18 @@ export interface UpdatePostgresOrganizationInput {
 
 export interface TransferPostgresOrganizationOwnerInput {
   targetUserId: string;
-  previousOwnerRole: OrganizationRole.ADMIN | OrganizationRole.MEMBER;
+  previousOwnerRoleId: string;
 }
 
 export interface OrganizationSettingsSummary {
   id: string;
   name: string;
   logoUrl: string | null;
-  role: OrganizationRole;
+  role: string;
+  roleId: string;
+  roleName: string;
+  systemCode: string | null;
+  isOwner: boolean;
 }
 
 /**
@@ -76,11 +86,9 @@ export class PostgresWorkspaceService {
       throw new ForbiddenException('Active workspace access is required');
     }
 
-    return toWorkspaceSummary(
-      organization,
-      membership.role,
-      membership.joinedAt,
-    );
+    const role = await this.manager.getRepository(OrganizationRoleDefinitionEntity).findOneBy({ id: membership.roleId, organizationId });
+    if (!role || role.archivedAt) throw new ForbiddenException('Active Membership role is unavailable');
+    return toWorkspaceSummary(organization, role, membership.id, membership.joinedAt);
   }
 
   async getOrganizationSettings(
@@ -93,6 +101,10 @@ export class PostgresWorkspaceService {
       name: workspace.name,
       logoUrl: workspace.logoUrl,
       role: workspace.role,
+      roleId: workspace.roleId,
+      roleName: workspace.roleName,
+      systemCode: workspace.systemCode,
+      isOwner: workspace.isOwner,
     };
   }
 
@@ -107,6 +119,7 @@ export class PostgresWorkspaceService {
         actorUserId,
         organizationId,
       );
+      await new PostgresOrganizationPermissionService(manager).requirePermission(actorUserId, organizationId, 'org.settings.update');
       const beforeData = { name: organization.name, logoUrl: organization.logoUrl };
 
       if (input.name !== undefined) {
@@ -172,15 +185,6 @@ export class PostgresWorkspaceService {
         'Target user is already the organization owner',
       );
     }
-    if (
-      input.previousOwnerRole !== 'ADMIN' &&
-      input.previousOwnerRole !== 'MEMBER'
-    ) {
-      throw new BadRequestException(
-        'Previous owner role must be ADMIN or MEMBER',
-      );
-    }
-
     return this.transactions.run(async (manager) => {
       const organizations = new PostgresOrganizationRepository(manager);
       const memberships = new PostgresOrganizationMembershipRepository(manager);
@@ -207,11 +211,18 @@ export class PostgresWorkspaceService {
           'Target user must have an active organization membership',
         );
       }
-
-      currentOwner.role = input.previousOwnerRole;
-      target.role = 'OWNER' as OrganizationRole;
+      const previousOwnerRole = await manager.getRepository(OrganizationRoleDefinitionEntity).findOneBy({ id: input.previousOwnerRoleId, organizationId });
+      const ownerRole = await manager.getRepository(OrganizationRoleDefinitionEntity).findOneBy({ id: currentOwner.roleId, organizationId, systemCode: 'OWNER', isProtected: true });
+      const targetRole = await manager.getRepository(OrganizationRoleDefinitionEntity).findOneBy({ id: target.roleId, organizationId });
+      if (!previousOwnerRole || previousOwnerRole.systemCode === 'OWNER' || previousOwnerRole.isProtected || previousOwnerRole.archivedAt) throw new BadRequestException('Previous owner role must be an active non-Owner role in this Organization');
+      if (!ownerRole || !targetRole || targetRole.systemCode === 'OWNER' || targetRole.isProtected) throw new ConflictException('Ownership roles are inconsistent');
+      const before = { ownerUserId: currentOwner.userId, ownerRoleId: ownerRole.id, previousOwnerRoleId: target.roleId };
+      currentOwner.roleId = previousOwnerRole.id;
+      target.roleId = ownerRole.id;
       await memberships.save(currentOwner);
       await memberships.save(target);
+      organization.ownerMembershipId = target.id;
+      await organizations.save(organization);
       await writePostgresAudit(manager, {
         organizationId,
         actorUserId,
@@ -219,10 +230,11 @@ export class PostgresWorkspaceService {
         actionCode: 'ORGANIZATION_OWNERSHIP_TRANSFERRED',
         targetType: 'ORGANIZATION_MEMBERSHIP',
         targetId: target.id,
-        beforeData: { previousOwnerUserId: actorUserId },
+        beforeData: before,
         afterData: {
           ownerUserId: target.userId,
-          previousOwnerRole: currentOwner.role,
+          ownerRoleId: ownerRole.id,
+          previousOwnerRoleId: previousOwnerRole.id,
         },
       });
     });
@@ -240,7 +252,7 @@ export class PostgresWorkspaceService {
       throw new NotFoundException('Organization not found');
     }
 
-    const owner = await memberships.findActiveOwnerForUpdate(organizationId);
+    const owner = await memberships.findActiveByIdForUpdate(organizationId, organization.ownerMembershipId);
     if (!owner || owner.userId !== actorUserId) {
       throw new ForbiddenException(
         'Only the active owner can manage this organization',
@@ -265,9 +277,9 @@ export class PostgresWorkspaceService {
       actorUserId,
       organizationId,
     );
-    if (!actor || (actor.role !== 'OWNER' && actor.role !== 'ADMIN')) {
+    if (!actor) {
       throw new ForbiddenException(
-        'An active organization owner or admin is required',
+        'An active Organization Membership is required',
       );
     }
     return { organization, actor };
@@ -276,14 +288,19 @@ export class PostgresWorkspaceService {
 
 function toWorkspaceSummary(
   organization: OrganizationEntity,
-  role: OrganizationRole,
+  role: OrganizationRoleDefinitionEntity,
+  membershipId: string,
   joinedAt: Date,
 ): WorkspaceSummary {
   return {
     organizationId: organization.id,
     name: organization.name,
     logoUrl: organization.logoUrl,
-    role,
+    role: role.name,
+    roleId: role.id,
+    roleName: role.name,
+    systemCode: role.systemCode,
+    isOwner: organization.ownerMembershipId === membershipId,
     joinedAt,
   };
 }

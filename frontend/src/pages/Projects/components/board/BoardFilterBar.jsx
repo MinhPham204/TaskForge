@@ -18,7 +18,7 @@ const BoardFilterBar = ({
   onTeamChange,
   teams = [],
   onClearFilters,
-  canManage = false,
+  canCreateTask = false,
   onCreateTask,
   onSwitchView,
 }) => {
@@ -100,17 +100,19 @@ const BoardFilterBar = ({
         </div>
 
         {/* Create Task Button */}
-        <button
-          type="button"
-          onClick={onCreateTask}
-          title="Create Task (Press C)"
-          aria-label="Create Task"
-          className="flex items-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-medium px-3 py-1.5 rounded-md shadow-2xs transition-colors cursor-pointer"
-        >
-          <LuPlus className="w-3.5 h-3.5 stroke-[2.2]" />
-          <span>New Task</span>
-          <kbd className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono ml-0.5">C</kbd>
-        </button>
+        {canCreateTask && (
+          <button
+            type="button"
+            onClick={onCreateTask}
+            title="Create Task (Press C)"
+            aria-label="Create Task"
+            className="flex items-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-medium px-3 py-1.5 rounded-md shadow-2xs transition-colors cursor-pointer"
+          >
+            <LuPlus className="w-3.5 h-3.5 stroke-[2.2]" />
+            <span>New Task</span>
+            <kbd className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono ml-0.5">C</kbd>
+          </button>
+        )}
       </div>
     </div>
   );

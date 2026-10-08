@@ -1,3 +1,4 @@
+import { testOrganizationRoleId } from '../src/testing/organization-role.fixture';
 import { ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -327,7 +328,7 @@ describe('PostgreSQL Collaboration & Files HTTP Integration', () => {
     });
   }
 
-  function addActiveMembership(
+  async function addActiveMembership(
     userId: string,
     organizationId: string,
     role: OrganizationRole,
@@ -335,7 +336,7 @@ describe('PostgreSQL Collaboration & Files HTTP Integration', () => {
     return dataSource.getRepository(OrganizationMembershipEntity).save({
       userId,
       organizationId,
-      role,
+      roleId: await testOrganizationRoleId(dataSource, organizationId, role),
       state: OrganizationMembershipState.ACTIVE,
       joinedAt: new Date(),
       stateChangedAt: new Date(),

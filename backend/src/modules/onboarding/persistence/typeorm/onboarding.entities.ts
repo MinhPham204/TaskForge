@@ -102,6 +102,9 @@ export class OrganizationEntity {
   @Column({ name: 'logo_url', type: 'text', nullable: true })
   logoUrl!: string | null;
 
+  @Column({ name: 'owner_membership_id', type: 'uuid' })
+  ownerMembershipId!: string;
+
   @Column({ name: 'archived_at', type: 'timestamptz', nullable: true })
   archivedAt!: Date | null;
 
@@ -112,6 +115,79 @@ export class OrganizationEntity {
   updatedAt!: Date;
 }
 
+@Entity({ name: 'organization_permissions' })
+export class OrganizationPermissionEntity {
+  @PrimaryColumn({ type: 'varchar', length: 96 })
+  code!: string;
+
+  @Column({ type: 'varchar', length: 120 })
+  name!: string;
+
+  @Column({ type: 'text' })
+  description!: string;
+
+  @Column({ name: 'resource_group', type: 'varchar', length: 64 })
+  resourceGroup!: string;
+
+  @Column({ name: 'is_assignable', type: 'boolean', default: true })
+  isAssignable!: boolean;
+}
+
+@Entity({ name: 'organization_roles' })
+@Index('uq_organization_roles_organization_id', ['organizationId', 'id'], {
+  unique: true,
+})
+@Index('uq_organization_roles_system_code', ['organizationId', 'systemCode'], {
+  unique: true,
+  where: '"system_code" IS NOT NULL',
+})
+export class OrganizationRoleDefinitionEntity {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ name: 'organization_id', type: 'uuid' })
+  organizationId!: string;
+
+  @Column({ type: 'varchar', length: 80 })
+  name!: string;
+
+  @Column({ type: 'text', default: '' })
+  description!: string;
+
+  @Column({ name: 'system_code', type: 'varchar', length: 32, nullable: true })
+  systemCode!: 'OWNER' | 'ADMIN' | 'MEMBER' | null;
+
+  @Column({ name: 'is_default', type: 'boolean', default: false })
+  isDefault!: boolean;
+
+  @Column({ name: 'is_protected', type: 'boolean', default: false })
+  isProtected!: boolean;
+
+  @Column({ name: 'archived_at', type: 'timestamptz', nullable: true })
+  archivedAt!: Date | null;
+
+  @Column({ type: 'integer', default: 1 })
+  version!: number;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt!: Date;
+}
+
+@Entity({ name: 'organization_role_permissions' })
+export class OrganizationRolePermissionEntity {
+  @PrimaryColumn({ name: 'organization_id', type: 'uuid' })
+  organizationId!: string;
+
+  @PrimaryColumn({ name: 'role_id', type: 'uuid' })
+  roleId!: string;
+
+  @PrimaryColumn({ name: 'permission_code', type: 'varchar', length: 96 })
+  permissionCode!: string;
+}
+
 @Entity({ name: 'organization_memberships' })
 @Index('uq_organization_memberships_user_organization', ['userId', 'organizationId'], {
   unique: true,
@@ -119,15 +195,11 @@ export class OrganizationEntity {
 @Index('uq_organization_memberships_organization_id', ['organizationId', 'id'], {
   unique: true,
 })
-@Index('uq_organization_memberships_active_owner', ['organizationId'], {
-  unique: true,
-  where: `"role" = 'OWNER' AND "state" = 'ACTIVE'`,
-})
 @Index('idx_organization_memberships_user_state', ['userId', 'state'])
-@Index('idx_organization_memberships_organization_state_role', [
+@Index('idx_organization_memberships_organization_state_role_id', [
   'organizationId',
   'state',
-  'role',
+  'roleId',
 ])
 export class OrganizationMembershipEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -139,8 +211,8 @@ export class OrganizationMembershipEntity {
   @Column({ name: 'user_id', type: 'uuid' })
   userId!: string;
 
-  @Column({ type: 'enum', enum: OrganizationRole, enumName: 'organization_role' })
-  role!: OrganizationRole;
+  @Column({ name: 'role_id', type: 'uuid' })
+  roleId!: string;
 
   @Column({
     type: 'enum',
@@ -183,13 +255,8 @@ export class OrganizationInvitationEntity {
   @Column({ type: 'citext' })
   email!: string;
 
-  @Column({
-    name: 'invited_role',
-    type: 'enum',
-    enum: OrganizationRole,
-    enumName: 'organization_role',
-  })
-  invitedRole!: OrganizationRole;
+  @Column({ name: 'role_id', type: 'uuid' })
+  roleId!: string;
 
   @Column({ name: 'invited_by_membership_id', type: 'uuid' })
   invitedByMembershipId!: string;

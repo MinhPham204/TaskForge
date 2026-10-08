@@ -7,7 +7,6 @@ import {
 import type { EntityManager } from 'typeorm';
 import { PostgresTransactionRunner } from '../../../database/transaction-runner';
 import {
-  OrganizationRole,
   type TeamEntity,
   type TeamMemberEntity,
 } from '../../onboarding/persistence/typeorm/onboarding.entities';
@@ -17,6 +16,7 @@ import {
   PostgresTeamMemberRepository,
   PostgresTeamRepository,
 } from '../../onboarding/persistence/typeorm/onboarding.repositories';
+import { PostgresOrganizationPermissionService } from '../../onboarding/application/organization-permission.service';
 
 export interface PostgresTeamActor {
   organizationId: string;
@@ -81,7 +81,7 @@ export class PostgresTeamService {
   create(actor: PostgresTeamActor, input: CreatePostgresTeamInput) {
     const name = requiredName(input.name);
     return this.transactions.run(async (manager) => {
-      await this.requireActiveAdministrator(manager, actor);
+      await this.requireActiveAdministrator(manager, actor, 'team.create');
       const teams = new PostgresTeamRepository(manager);
       if (await teams.findByNameForUpdate(actor.organizationId, name)) {
         throw new ConflictException(
@@ -122,7 +122,7 @@ export class PostgresTeamService {
       throw new BadRequestException('At least one Team field is required');
     }
     return this.transactions.run(async (manager) => {
-      await this.requireActiveAdministrator(manager, actor);
+      await this.requireActiveAdministrator(manager, actor, 'team.update');
       const teams = new PostgresTeamRepository(manager);
       const team = await this.requireActiveTeam(
         teams,
@@ -160,7 +160,7 @@ export class PostgresTeamService {
 
   archive(actor: PostgresTeamActor, teamId: string): Promise<TeamEntity> {
     return this.transactions.run(async (manager) => {
-      await this.requireActiveAdministrator(manager, actor);
+      await this.requireActiveAdministrator(manager, actor, 'team.archive');
       const teams = new PostgresTeamRepository(manager);
       const team = await this.requireActiveTeam(
         teams,
@@ -178,7 +178,7 @@ export class PostgresTeamService {
     organizationMembershipId: string,
   ): Promise<TeamMemberEntity> {
     return this.transactions.run(async (manager) => {
-      await this.requireActiveAdministrator(manager, actor);
+      await this.requireActiveAdministrator(manager, actor, 'team.members.manage');
       const teams = new PostgresTeamRepository(manager);
       await this.requireActiveTeam(teams, actor.organizationId, teamId);
       const memberships = new PostgresOrganizationMembershipRepository(manager);
@@ -223,7 +223,7 @@ export class PostgresTeamService {
     organizationMembershipId: string,
   ): Promise<TeamMemberEntity> {
     return this.transactions.run(async (manager) => {
-      await this.requireActiveAdministrator(manager, actor);
+      await this.requireActiveAdministrator(manager, actor, 'team.members.manage');
       const teams = new PostgresTeamRepository(manager);
       await this.requireActiveTeam(teams, actor.organizationId, teamId);
       const teamMembers = new PostgresTeamMemberRepository(manager);
@@ -243,6 +243,7 @@ export class PostgresTeamService {
   private async requireActiveAdministrator(
     manager: EntityManager,
     actor: PostgresTeamActor,
+    permissionCode: string,
   ): Promise<void> {
     const organization = await new PostgresOrganizationRepository(
       manager,
@@ -253,15 +254,12 @@ export class PostgresTeamService {
     const membership = await new PostgresOrganizationMembershipRepository(
       manager,
     ).findActiveByIdForUpdate(actor.organizationId, actor.membershipId);
-    if (
-      !membership ||
-      (membership.role !== OrganizationRole.OWNER &&
-        membership.role !== OrganizationRole.ADMIN)
-    ) {
+    if (!membership) {
       throw new ForbiddenException(
-        'An active organization owner or admin is required',
+        'An active Organization Membership is required',
       );
     }
+    await new PostgresOrganizationPermissionService(manager).requirePermission(membership.userId, actor.organizationId, permissionCode);
   }
 
   private async requireActiveOrganizationMembership(

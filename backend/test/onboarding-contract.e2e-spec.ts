@@ -8,6 +8,8 @@ import { PostgresJwtAuthGuard } from '../src/modules/onboarding/tenant/jwt-auth.
 import { PostgresTenantMembershipGuard } from '../src/modules/onboarding/tenant/tenant-membership.guard';
 import { PostgresTenantInterceptor } from '../src/modules/onboarding/tenant/tenant.interceptor';
 import { PostgresOnboardingController } from '../src/modules/onboarding/transport/onboarding.controller';
+import { PostgresOrganizationPermissionService } from '../src/modules/onboarding/application/organization-permission.service';
+import { PostgresOrganizationRoleService } from '../src/modules/onboarding/application/organization-role.service';
 
 describe('PostgreSQL onboarding HTTP contract', () => {
   const organizations = { createOrganization: jest.fn() };
@@ -34,6 +36,8 @@ describe('PostgreSQL onboarding HTTP contract', () => {
         },
         { provide: PostgresWorkspaceService, useValue: workspaces },
         { provide: PostgresInvitationMembershipService, useValue: invitations },
+        { provide: PostgresOrganizationPermissionService, useValue: {} },
+        { provide: PostgresOrganizationRoleService, useValue: {} },
       ],
     })
       .overrideGuard(PostgresJwtAuthGuard)
@@ -96,7 +100,7 @@ describe('PostgreSQL onboarding HTTP contract', () => {
       .send({
         email: 'member@example.test',
         expiresAt: '2026-10-04T00:00:00.000Z',
-        role: 'MEMBER',
+        roleId: '00000000-0000-4000-8000-000000000003',
       })
       .expect(403);
 

@@ -2,16 +2,17 @@ import type { EntityManager } from 'typeorm';
 import {
   OrganizationMembershipEntity,
   OrganizationMembershipState,
-  OrganizationRole,
 } from '../../onboarding/persistence/typeorm/onboarding.entities';
 import { PostgresGlobalSearchService } from './search.service';
+import { PostgresOrganizationPermissionService } from '../../onboarding/application/organization-permission.service';
 
 describe('PostgresGlobalSearchService', () => {
   it('uses project membership visibility for a Member and returns only supported quick-create capabilities', async () => {
+    jest.spyOn(PostgresOrganizationPermissionService.prototype, 'resolve').mockResolvedValue({ permissions: [], isOwner: false, role: {} as never });
     const membership = {
       id: 'membership-id',
       organizationId: 'organization-id',
-      role: OrganizationRole.MEMBER,
+      roleId: 'member-role-id',
       state: OrganizationMembershipState.ACTIVE,
     } as OrganizationMembershipEntity;
     const query = jest.fn((sql: string) => {

@@ -1,3 +1,4 @@
+import { testOrganizationRoleId } from '../src/testing/organization-role.fixture';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { Queue, Worker } from 'bullmq';
@@ -53,7 +54,7 @@ describe('selective Outbox integration', () => {
     });
     const workspace = await onboarding.createOrganization(owner.id, { name: 'Outbox workspace' });
     const result = await invitations.createInvitation(owner.id, workspace.organizationId, {
-      email: 'outbox-invite@example.test', role: OrganizationRole.MEMBER, expiresAt: new Date(Date.now() + 60_000),
+      email: 'outbox-invite@example.test', expiresAt: new Date(Date.now() + 60_000),
     });
     const event = await dataSource.getRepository(OutboxEventEntity).findOneByOrFail({ aggregateId: result.invitation.id });
     expect(event.status).toBe('PENDING');
@@ -90,7 +91,7 @@ describe('selective Outbox integration', () => {
     });
     const workspace = await onboarding.createOrganization(owner.id, { name: 'Outbox recovery workspace' });
     const result = await invitations.createInvitation(owner.id, workspace.organizationId, {
-      email: 'outbox-recovery-invite@example.test', role: OrganizationRole.MEMBER, expiresAt: new Date(Date.now() + 60_000),
+      email: 'outbox-recovery-invite@example.test', expiresAt: new Date(Date.now() + 60_000),
     });
     const event = await dataSource.getRepository(OutboxEventEntity).findOneByOrFail({ aggregateId: result.invitation.id });
     const unavailableDispatcher = new PostgresOutboxDispatcher(dataSource, {
@@ -121,7 +122,7 @@ describe('selective Outbox integration', () => {
   it('persists final BullMQ failure before a job can be removed for redispatch', async () => {
     const owner = await dataSource.getRepository(UserEntity).save({ email: `outbox-final-${Date.now()}@example.test`, name: 'Owner', passwordHash: 'hash', profileImageUrl: null, emailVerifiedAt: new Date(), refreshTokenHash: null, disabledAt: null });
     const workspace = await onboarding.createOrganization(owner.id, { name: 'Outbox final failure workspace' });
-    const result = await invitations.createInvitation(owner.id, workspace.organizationId, { email: 'outbox-final-invite@example.test', role: OrganizationRole.MEMBER, expiresAt: new Date(Date.now() + 60_000) });
+    const result = await invitations.createInvitation(owner.id, workspace.organizationId, { email: 'outbox-final-invite@example.test', expiresAt: new Date(Date.now() + 60_000) });
     const event = await dataSource.getRepository(OutboxEventEntity).findOneByOrFail({ aggregateId: result.invitation.id });
     await dataSource.getRepository(OutboxEventEntity).update({ id: event.id }, { status: 'PUBLISHED', attempts: 3 });
     const dispatcher = new PostgresOutboxDispatcher(dataSource, {} as never);
@@ -139,7 +140,7 @@ describe('selective Outbox integration', () => {
     const owner = await dataSource.getRepository(UserEntity).save({ email: `outbox-approval-owner-${Date.now()}@example.test`, name: 'Owner', passwordHash: 'hash', profileImageUrl: null, emailVerifiedAt: new Date(), refreshTokenHash: null, disabledAt: null });
     const approver = await dataSource.getRepository(UserEntity).save({ email: `outbox-approval-approver-${Date.now()}@example.test`, name: 'Approver', passwordHash: 'hash', profileImageUrl: null, emailVerifiedAt: new Date(), refreshTokenHash: null, disabledAt: null });
     const workspace = await onboarding.createOrganization(owner.id, { name: 'Outbox approval workspace' });
-    const approverMembership = await dataSource.getRepository(OrganizationMembershipEntity).save({ organizationId: workspace.organizationId, userId: approver.id, role: OrganizationRole.MEMBER, state: OrganizationMembershipState.ACTIVE, joinedAt: new Date(), stateChangedAt: new Date() });
+    const approverMembership = await dataSource.getRepository(OrganizationMembershipEntity).save({ organizationId: workspace.organizationId, userId: approver.id, roleId: await testOrganizationRoleId(dataSource, workspace.organizationId, OrganizationRole.MEMBER), state: OrganizationMembershipState.ACTIVE, joinedAt: new Date(), stateChangedAt: new Date() });
     const actor = { organizationId: workspace.organizationId, membershipId: workspace.membershipId };
     const project = await projects.create(actor, { name: 'Approval project' });
     await teams.addMember(actor, workspace.generalTeamId, approverMembership.id);

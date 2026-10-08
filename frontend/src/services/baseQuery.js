@@ -2,7 +2,9 @@ import axiosInstance from '../utils/axiosInstance.js';
 import { handleDevMockRequest, isDevMockActive } from '../utils/devMockHandler.js';
 
 export const axiosBaseQuery = ({ baseUrl } = { baseUrl: '' }) =>
-  async ({ url, method, data, params }) => {
+  async ({ url, method, data, params }, api) => {
+    const auth = api?.getState()?.auth;
+    const scope = { userId: auth?.user?.id, organizationId: auth?.activeOrganizationId };
     // Development review & testing mock interceptor
     if (isDevMockActive()) {
       const mockResult = await handleDevMockRequest({
@@ -12,8 +14,9 @@ export const axiosBaseQuery = ({ baseUrl } = { baseUrl: '' }) =>
         params,
       });
       if (mockResult) {
-        return { data: mockResult.data };
+        return mockResult.error ? { error: mockResult.error } : { data: mockResult.data };
       }
+      return { error: { status: 501, data: { message: 'This action is not available in the local preview.' } } };
     }
 
     try {
@@ -26,6 +29,9 @@ export const axiosBaseQuery = ({ baseUrl } = { baseUrl: '' }) =>
       return { data: result.data };
     } catch (axiosError) {
       let err = axiosError;
+      if (err.response?.status === 403 && scope.organizationId && !url.endsWith('/permissions/me')) {
+        api.dispatch({ type: 'auth/invalidateOrganizationCapabilities', payload: scope });
+      }
       return {
         error: {
           status: err.response?.status,

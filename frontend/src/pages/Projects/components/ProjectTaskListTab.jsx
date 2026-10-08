@@ -32,7 +32,7 @@ const PRIORITY_OPTIONS = [
 
 const ProjectTaskListTab = ({
   projectId,
-  canManage,
+  canCreateTask = false,
   onSelectTask,
   onCreateTask,
 }) => {
@@ -155,7 +155,7 @@ const ProjectTaskListTab = ({
             {isExporting ? 'Exporting...' : 'Export CSV'}
           </button>
 
-          {canManage && (
+          {canCreateTask && (
             <button
               type="button"
               onClick={onCreateTask}
@@ -180,7 +180,7 @@ const ProjectTaskListTab = ({
           title="No tasks found"
           description="Try adjusting your search criteria or create a new task."
           action={
-            canManage && (
+            canCreateTask && (
               <button
                 type="button"
                 onClick={onCreateTask}

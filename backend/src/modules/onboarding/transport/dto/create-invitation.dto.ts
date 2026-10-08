@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDate, IsEmail, IsIn, IsOptional } from 'class-validator';
+import { IsDate, IsEmail, IsOptional, IsUUID } from 'class-validator';
 
 export class CreatePostgresInvitationDto {
   @ApiProperty({ example: 'member@example.test' })
@@ -12,8 +12,8 @@ export class CreatePostgresInvitationDto {
   @IsDate()
   expiresAt!: Date;
 
-  @ApiPropertyOptional({ enum: ['ADMIN', 'MEMBER'], default: 'MEMBER' })
+  @ApiPropertyOptional({ format: 'uuid', description: 'Organization-scoped non-Owner role; defaults to the Organization MEMBER role.' })
   @IsOptional()
-  @IsIn(['ADMIN', 'MEMBER'])
-  role?: 'ADMIN' | 'MEMBER';
+  @IsUUID('4')
+  roleId?: string;
 }

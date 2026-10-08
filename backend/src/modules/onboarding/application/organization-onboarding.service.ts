@@ -4,10 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
+import { randomUUID } from 'node:crypto';
 import { PostgresTransactionRunner } from '../../../database/transaction-runner';
 import {
   OrganizationMembershipState,
-  OrganizationRole,
+  OrganizationRoleDefinitionEntity,
 } from '../persistence/typeorm/onboarding.entities';
 import {
   PostgresOrganizationMembershipRepository,
@@ -72,17 +73,22 @@ export class PostgresOrganizationOnboardingService {
     }
 
     const now = new Date();
+    const ownerMembershipId = randomUUID();
     const organization = await organizations.save(
       organizations.create({
         name: input.name,
         logoUrl: input.logoUrl ?? null,
+        ownerMembershipId,
       }),
     );
+    const ownerRole = await manager.getRepository(OrganizationRoleDefinitionEntity).findOneBy({ organizationId: organization.id, systemCode: 'OWNER' });
+    if (!ownerRole || !ownerRole.isProtected || ownerRole.archivedAt) throw new NotFoundException('Default protected Owner role was not provisioned');
     const membership = await memberships.save(
       memberships.create({
+        id: ownerMembershipId,
         organizationId: organization.id,
         userId: user.id,
-        role: OrganizationRole.OWNER,
+        roleId: ownerRole.id,
         state: OrganizationMembershipState.ACTIVE,
         joinedAt: now,
         stateChangedAt: now,
@@ -112,7 +118,7 @@ export class PostgresOrganizationOnboardingService {
       actionCode: 'ORGANIZATION_CREATED',
       targetType: 'ORGANIZATION',
       targetId: organization.id,
-      afterData: { name: organization.name, ownerRole: membership.role },
+      afterData: { name: organization.name, ownerRoleId: ownerRole.id },
     });
 
     return {

@@ -1,3 +1,4 @@
+import { testOrganizationRoleId } from '../src/testing/organization-role.fixture';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { Queue, QueueEvents, Worker } from 'bullmq';
@@ -93,7 +94,7 @@ describe('PostgreSQL email queue integration', () => {
   it('retries stable-ID invitation jobs and skips stale assignment recipients', async () => {
     const owner = await workspace('owner');
     const invite = await invitations.createInvitation(owner.userId, owner.organizationId, {
-      email: `invite-${sequence}@example.test`, expiresAt: new Date(Date.now() + 60_000), role: OrganizationRole.MEMBER,
+      email: `invite-${sequence}@example.test`, expiresAt: new Date(Date.now() + 60_000),
     });
     const producer = new PostgresEmailJobProducer(queue, operationalLogger);
     const invitationJob = await producer.enqueue({ kind: 'INVITATION', organizationId: owner.organizationId, invitationId: invite.invitation.id });
@@ -112,7 +113,7 @@ describe('PostgreSQL email queue integration', () => {
     expect(sent.filter((message) => message.to === invite.invitation.email)).toHaveLength(2);
 
     const recipient = await user('recipient');
-    const recipientMembership = await dataSource.getRepository(OrganizationMembershipEntity).save({ organizationId: owner.organizationId, userId: recipient.id, role: OrganizationRole.MEMBER, state: OrganizationMembershipState.ACTIVE, joinedAt: new Date(), stateChangedAt: new Date() });
+    const recipientMembership = await dataSource.getRepository(OrganizationMembershipEntity).save({ organizationId: owner.organizationId, userId: recipient.id, roleId: await testOrganizationRoleId(dataSource, owner.organizationId, OrganizationRole.MEMBER), state: OrganizationMembershipState.ACTIVE as OrganizationMembershipState, joinedAt: new Date(), stateChangedAt: new Date() });
     const project = await projects.create({ organizationId: owner.organizationId, membershipId: owner.membershipId }, { name: 'Queue project' });
     await teams.addMember({ organizationId: owner.organizationId, membershipId: owner.membershipId }, owner.generalTeamId, recipientMembership.id);
     await participants.addMember({ organizationId: owner.organizationId, membershipId: owner.membershipId }, project.id, recipientMembership.id, ProjectRole.CONTRIBUTOR);

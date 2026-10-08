@@ -125,6 +125,14 @@ export const API_PATHS = {
     },
 
     ORGANIZATIONS: {
+        MY_PERMISSIONS: (organizationId) => `/api/organizations/${organizationId}/permissions/me`,
+        PERMISSION_CATALOG: (organizationId) => `/api/organizations/${organizationId}/permissions`,
+        ROLES: (organizationId) => `/api/organizations/${organizationId}/roles`,
+        ROLE: (organizationId, roleId) => `/api/organizations/${organizationId}/roles/${roleId}`,
+        ROLE_PERMISSIONS: (organizationId, roleId) => `/api/organizations/${organizationId}/roles/${roleId}/permissions`,
+        ARCHIVE_ROLE: (organizationId, roleId) => `/api/organizations/${organizationId}/roles/${roleId}/archive`,
+        ASSIGN_MEMBER_ROLE: (organizationId, userId) => `/api/organizations/${organizationId}/members/${userId}/role`,
+        INVITATION_ROLES: (organizationId) => `/api/organizations/${organizationId}/invitation-roles`,
         CREATE_ORG: "/api/organizations",
         GET_BY_ID: (organizationId) => `/api/organizations/${organizationId}`,
         UPDATE: (organizationId) => `/api/organizations/${organizationId}`,

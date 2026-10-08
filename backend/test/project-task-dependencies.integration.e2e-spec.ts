@@ -1,3 +1,5 @@
+import { IsNull } from 'typeorm';
+import { testOrganizationRoleId } from '../src/testing/organization-role.fixture';
 import { ConflictException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
@@ -180,7 +182,7 @@ describe('PostgreSQL Project Task dependency integration', () => {
       .findOneByOrFail({ id: racedProject.id });
     const activeTaskCount = await dataSource.getRepository(TaskEntity).countBy({
       projectId: racedProject.id,
-      archivedAt: null,
+      archivedAt: IsNull(),
     });
     if (racedState.state === 'COMPLETED') {
       expect(activeTaskCount).toBe(0);
@@ -219,7 +221,7 @@ describe('PostgreSQL Project Task dependency integration', () => {
     return dataSource.getRepository(OrganizationMembershipEntity).save({
       organizationId,
       userId: user.id,
-      role: OrganizationRole.MEMBER,
+      roleId: await testOrganizationRoleId(dataSource, organizationId, OrganizationRole.MEMBER),
       state: OrganizationMembershipState.ACTIVE,
       joinedAt: new Date(),
       stateChangedAt: new Date(),

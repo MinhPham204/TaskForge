@@ -5,11 +5,13 @@ import {
 } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { PostgresTransactionRunner } from '../../../database/transaction-runner';
-import { OrganizationRole } from '../../onboarding/persistence/typeorm/onboarding.entities';
+import { PostgresOrganizationPermissionService } from '../../onboarding/application/organization-permission.service';
+import { OrganizationRoleDefinitionEntity } from '../../onboarding/persistence/typeorm/onboarding.entities';
 import { PostgresOrganizationMembershipRepository } from '../../onboarding/persistence/typeorm/onboarding.repositories';
 import {
   ProjectEntity,
   ProjectRole,
+  ProjectState,
 } from '../persistence/typeorm/project.entities';
 import {
   PostgresProjectMembershipRepository,
@@ -27,12 +29,10 @@ export class PostgresProjectReadService {
   list(actor: PostgresProjectActor) {
     return this.transactions.read(async (manager) => {
       const membership = await this.requireActiveMembership(manager, actor);
+      const organizationRoleName = await this.organizationRoleName(manager, actor.organizationId, membership.roleId);
+      const capabilities = await new PostgresOrganizationPermissionService(manager).resolve(membership.userId, actor.organizationId);
       const projects = new PostgresProjectRepository(manager);
-      if (
-        [OrganizationRole.OWNER, OrganizationRole.ADMIN].includes(
-          membership.role,
-        )
-      ) {
+      if (capabilities.permissions.includes('org.projects.read_all')) {
         const result = await projects.listByOrganizationForMembership(
           actor.organizationId,
           actor.membershipId,
@@ -41,7 +41,7 @@ export class PostgresProjectReadService {
           this.projectView(
             project,
             result.raw[index]?.actorProjectRole ?? null,
-            membership.role,
+            organizationRoleName,
           ),
         );
       }
@@ -53,7 +53,7 @@ export class PostgresProjectReadService {
         this.projectView(
           project,
           result.raw[index]?.actorProjectRole ?? null,
-          membership.role,
+          organizationRoleName,
         ),
       );
     });
@@ -174,6 +174,8 @@ export class PostgresProjectReadService {
     if (!project)
       throw new NotFoundException('Project not found in active organization');
     const membership = await this.requireActiveMembership(manager, actor);
+    const organizationRoleName = await this.organizationRoleName(manager, actor.organizationId, membership.roleId);
+    const capabilities = await new PostgresOrganizationPermissionService(manager).resolve(membership.userId, actor.organizationId);
     const projectMembership = await new PostgresProjectMembershipRepository(
       manager,
     ).findActiveByProjectAndOrganizationMembership(
@@ -183,20 +185,20 @@ export class PostgresProjectReadService {
     );
     if (
       !projectMembership &&
-      ![OrganizationRole.OWNER, OrganizationRole.ADMIN].includes(membership.role)
+      !capabilities.permissions.includes('org.projects.read_all')
     )
       throw new ForbiddenException('Focused Project membership is required');
     return {
       project,
       projectRole: projectMembership?.role ?? null,
-      organizationRole: membership.role,
+      organizationRole: organizationRoleName,
     };
   }
 
   private projectView(
     project: ProjectEntity,
     projectRole: ProjectRole | null,
-    organizationRole?: OrganizationRole,
+    organizationRole?: string,
   ) {
     return {
       id: project.id,
@@ -213,7 +215,18 @@ export class PostgresProjectReadService {
         projectRole,
         organizationRole: organizationRole ?? null,
         canManage: projectRole === ProjectRole.PROJECT_MANAGER,
+        canCreateTask:
+          (projectRole === ProjectRole.PROJECT_MANAGER ||
+            projectRole === ProjectRole.CONTRIBUTOR) &&
+          project.state !== ProjectState.COMPLETED &&
+          project.state !== ProjectState.ARCHIVED,
       },
     };
+  }
+
+  private async organizationRoleName(manager: EntityManager, organizationId: string, roleId: string): Promise<string> {
+    const role = await manager.getRepository(OrganizationRoleDefinitionEntity).findOneBy({ id: roleId, organizationId });
+    if (!role || role.archivedAt) throw new ForbiddenException('Active Organization role is required');
+    return role.name;
   }
 }

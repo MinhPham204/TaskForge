@@ -6,10 +6,10 @@ import {
 import { IsNull } from 'typeorm';
 import type { EntityManager } from 'typeorm';
 import { PostgresTransactionRunner } from '../../../database/transaction-runner';
+import { PostgresOrganizationPermissionService } from '../../onboarding/application/organization-permission.service';
 import {
   OrganizationMembershipEntity,
   OrganizationMembershipState,
-  OrganizationRole,
   UserEntity,
 } from '../../onboarding/persistence/typeorm/onboarding.entities';
 import {
@@ -396,10 +396,8 @@ export class PostgresCollaborationService {
         'Active organization membership is required',
       );
 
-    if (
-      membership.role === OrganizationRole.OWNER ||
-      membership.role === OrganizationRole.ADMIN
-    ) {
+    const capabilities = await new PostgresOrganizationPermissionService(manager).resolve(membership.userId, actor.organizationId);
+    if (capabilities.permissions.includes('org.projects.read_all')) {
       return;
     }
 

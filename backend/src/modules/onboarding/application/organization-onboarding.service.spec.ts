@@ -2,6 +2,7 @@ import type { EntityManager } from 'typeorm';
 import {
   OrganizationEntity,
   OrganizationMembershipEntity,
+  OrganizationRoleDefinitionEntity,
   TeamEntity,
   TeamMemberEntity,
   UserEntity,
@@ -24,12 +25,14 @@ describe('PostgresOrganizationOnboardingService', () => {
   const membershipRepository = { create: jest.fn(), save: jest.fn() };
   const teamRepository = { create: jest.fn(), save: jest.fn() };
   const teamMemberRepository = { create: jest.fn(), save: jest.fn() };
+  const roleRepository = { findOneBy: jest.fn() };
   const auditRepository = { create: jest.fn((vals) => vals), save: jest.fn().mockResolvedValue({}) };
   const manager = {
     getRepository: jest.fn((entity) => {
       if (entity === UserEntity) return userRepository;
       if (entity === OrganizationEntity) return organizationRepository;
       if (entity === OrganizationMembershipEntity) return membershipRepository;
+      if (entity === OrganizationRoleDefinitionEntity) return roleRepository;
       if (entity === TeamEntity) return teamRepository;
       if (entity === TeamMemberEntity) return teamMemberRepository;
       if (entity?.name === 'AuditLogEntity') return auditRepository;
@@ -46,6 +49,7 @@ describe('PostgresOrganizationOnboardingService', () => {
       membershipRepository,
       teamRepository,
       teamMemberRepository,
+      roleRepository,
     ]) {
       Object.values(repository).forEach((method) => method.mockReset());
     }
@@ -56,6 +60,7 @@ describe('PostgresOrganizationOnboardingService', () => {
       ...values,
     }));
     organizationRepository.save.mockResolvedValue(organization);
+    roleRepository.findOneBy.mockResolvedValue({ id: 'owner-role-id', isProtected: true, archivedAt: null });
     membershipRepository.create.mockImplementation((values) => ({
       id: membership.id,
       ...values,
@@ -83,15 +88,17 @@ describe('PostgresOrganizationOnboardingService', () => {
     });
 
     expect(run).toHaveBeenCalledTimes(1);
-    expect(organizationRepository.create).toHaveBeenCalledWith({
+    expect(organizationRepository.create).toHaveBeenCalledWith(expect.objectContaining({
       name: 'Workspace',
       logoUrl: null,
-    });
+      ownerMembershipId: expect.any(String),
+    }));
     expect(membershipRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: organization.id,
         userId: user.id,
-        role: 'OWNER',
+        id: expect.any(String),
+        roleId: 'owner-role-id',
         state: 'ACTIVE',
       }),
     );

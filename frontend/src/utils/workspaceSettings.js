@@ -1,18 +1,22 @@
-export const canManageWorkspace = (role) => {
-  return role === 'OWNER' || role === 'ADMIN';
+import { hasOrganizationPermission } from './organizationPermissions.js';
+
+export const canManageWorkspace = (capabilities) => {
+  return hasOrganizationPermission(capabilities, 'org.settings.update');
 };
 
 export const canModifyMember = (targetMember) => {
   if (!targetMember) return false;
-  return targetMember.role !== 'OWNER';
+  return targetMember.isOwner === false;
 };
 
-export const canSuspendMember = (targetMember) => {
+export const canSuspendMember = (targetMember, capabilities) => {
+  if (!hasOrganizationPermission(capabilities, 'org.members.suspend')) return false;
   if (!canModifyMember(targetMember)) return false;
   return targetMember.state === 'ACTIVE';
 };
 
-export const canRevokeMember = (targetMember) => {
+export const canRevokeMember = (targetMember, capabilities) => {
+  if (!hasOrganizationPermission(capabilities, 'org.members.revoke')) return false;
   if (!canModifyMember(targetMember)) return false;
   return targetMember.state !== 'REVOKED';
 };
@@ -37,8 +41,8 @@ export const invitationValidationMessage = (input) => {
   if (!input?.expiresAt || new Date(input.expiresAt).getTime() <= Date.now()) {
     return 'Invitation expiry must be in the future.';
   }
-  if (input?.role && input.role !== 'ADMIN' && input.role !== 'MEMBER') {
-    return 'Invitation role must be ADMIN or MEMBER.';
+  if (input?.roleId && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.roleId)) {
+    return 'Invitation role must be a valid UUID.';
   }
   return null;
 };

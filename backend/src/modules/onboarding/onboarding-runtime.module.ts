@@ -10,6 +10,8 @@ import { PostgresAuthService } from './application/auth.service';
 import { PostgresInvitationMembershipService } from './application/invitation-membership.service';
 import { PostgresOrganizationOnboardingService } from './application/organization-onboarding.service';
 import { PostgresWorkspaceService } from './application/workspace.service';
+import { PostgresOrganizationPermissionService } from './application/organization-permission.service';
+import { PostgresOrganizationRoleService } from './application/organization-role.service';
 import { PostgresTeamService } from '../projects/application/team.service';
 import { PostgresProjectService } from '../projects/application/project.service';
 import { PostgresProjectParticipantService } from '../projects/application/project-participant.service';
@@ -93,6 +95,16 @@ import {
     PostgresSearchController,
   ],
   providers: [
+    {
+      provide: PostgresOrganizationPermissionService,
+      useFactory: (dataSource: DataSource) => new PostgresOrganizationPermissionService(dataSource.manager),
+      inject: [DataSource],
+    },
+    {
+      provide: PostgresOrganizationRoleService,
+      useFactory: (dataSource: DataSource, transactions: PostgresTransactionRunner) => new PostgresOrganizationRoleService(transactions, dataSource.manager),
+      inject: [DataSource, PostgresTransactionRunner],
+    },
     PostgresTransactionRunner,
     PostgresTenantContextService,
     PostgresTenantAccessService,

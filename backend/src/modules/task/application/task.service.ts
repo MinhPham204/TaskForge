@@ -79,7 +79,12 @@ export class PostgresTaskService {
     input: CreatePostgresTaskInput,
   ): Promise<TaskEntity> {
     return this.transactions.run(async (manager) => {
-      await this.requireMutableProjectManager(manager, actor, projectId);
+      await this.requireMutableProject(manager, actor.organizationId, projectId);
+      const actorProjectMembership = await this.requireActiveProjectMembership(
+        manager,
+        actor,
+        projectId,
+      );
       await this.requireActiveOwningTeam(
         manager,
         actor.organizationId,
@@ -91,11 +96,6 @@ export class PostgresTaskService {
         actor.organizationId,
         projectId,
         input.statusId,
-      );
-      const actorProjectMembership = await this.requireActiveProjectMembership(
-        manager,
-        actor,
-        projectId,
       );
       if (input.milestoneId) await this.requireOpenMilestone(manager, actor.organizationId, projectId, input.milestoneId);
       const tasks = new PostgresTaskRepository(manager);

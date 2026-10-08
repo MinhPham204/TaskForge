@@ -1,3 +1,4 @@
+import { testOrganizationRoleId } from '../src/testing/organization-role.fixture';
 import { ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -15,6 +16,8 @@ import { PostgresProjectService } from '../src/modules/projects/application/proj
 import { PostgresProjectParticipantService } from '../src/modules/projects/application/project-participant.service';
 import {
   ProjectRole,
+  ProjectEntity,
+  ProjectState,
   ProjectModuleCode,
   ProjectMembershipEntity,
   ProjectTaskStatusEntity,
@@ -152,6 +155,77 @@ describe('PostgreSQL Task create/update/archive integration', () => {
         expect.objectContaining({ actionCode: 'PROJECT_CREATED', targetId: project.id }),
       ]),
     );
+  });
+
+  it('allows active Contributors to create Tasks while preserving membership and management boundaries', async () => {
+    const workspace = await createWorkspace('contributor-create');
+    const actor = { organizationId: workspace.organizationId, membershipId: workspace.membershipId };
+    const project = await projects.create(actor, { name: 'Contributor task project' });
+    const contributor = await createMember(workspace.organizationId, 'task-contributor');
+    await teams.addMember(actor, workspace.generalTeamId, contributor.id);
+    const projectMembership = await participants.addMember(actor, project.id, contributor.id, ProjectRole.CONTRIBUTOR);
+    const user = await dataSource.getRepository(UserEntity).findOneByOrFail({ id: contributor.userId });
+    const token = await accessToken(user.id, user.email);
+    const status = await dataSource.getRepository(ProjectTaskStatusEntity).findOneByOrFail({
+      projectId: project.id,
+      semanticCategory: TaskStatusSemanticCategory.NOT_STARTED,
+    });
+    const payload = {
+      owningTeamId: workspace.generalTeamId,
+      statusId: status.id,
+      title: 'Contributor task',
+      priorityCode: 'HIGH',
+      dueAt: '2026-10-05T09:00:00.000Z',
+    };
+    const create = (body = payload) => request(app.getHttpServer())
+      .post(`/api/projects/${project.id}/tasks`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-organization-id', workspace.organizationId)
+      .send(body);
+
+    const created = await create().expect(201);
+    expect(created.body.creatorProjectMembershipId).toBe(projectMembership.id);
+    expect(created.body.priorityCode).toBe('HIGH');
+    await request(app.getHttpServer()).get('/api/search').query({ query: 'Contributor' })
+      .set('Authorization', `Bearer ${token}`).set('x-organization-id', workspace.organizationId)
+      .expect(200).expect(({ body }) => expect(body.quickCreate.taskProjectIds).toContain(project.id));
+    await request(app.getHttpServer()).get(`/api/projects/${project.id}`)
+      .set('Authorization', `Bearer ${token}`).set('x-organization-id', workspace.organizationId)
+      .expect(200).expect(({ body }) => {
+        expect(body.viewer.canCreateTask).toBe(true);
+        expect(body.viewer.canManage).toBe(false);
+      });
+    await request(app.getHttpServer()).patch(`/api/projects/${project.id}/tasks/${created.body.id}`)
+      .set('Authorization', `Bearer ${token}`).set('x-organization-id', workspace.organizationId)
+      .send({ title: 'Updated by creator' }).expect(200);
+    await request(app.getHttpServer()).patch(`/api/projects/${project.id}/tasks/${created.body.id}`)
+      .set('Authorization', `Bearer ${token}`).set('x-organization-id', workspace.organizationId)
+      .send({ priorityCode: 'LOW' }).expect(403);
+    await request(app.getHttpServer()).delete(`/api/projects/${project.id}/tasks/${created.body.id}`)
+      .set('Authorization', `Bearer ${token}`).set('x-organization-id', workspace.organizationId).expect(403);
+
+    const unattachedTeam = await teams.create(actor, { name: 'Unattached team' });
+    await create({ ...payload, owningTeamId: unattachedTeam.id }).expect(404);
+    const otherProject = await projects.create(actor, { name: 'Other project' });
+    const otherStatus = await dataSource.getRepository(ProjectTaskStatusEntity).findOneByOrFail({
+      projectId: otherProject.id, semanticCategory: TaskStatusSemanticCategory.NOT_STARTED,
+    });
+    await create({ ...payload, statusId: otherStatus.id }).expect(404);
+    await request(app.getHttpServer()).post(`/api/projects/${otherProject.id}/tasks`)
+      .set('Authorization', `Bearer ${token}`).set('x-organization-id', workspace.organizationId)
+      .send({ ...payload, statusId: otherStatus.id }).expect(403);
+
+    await dataSource.getRepository(ProjectEntity).update(project.id, { state: ProjectState.COMPLETED });
+    await create().expect(409);
+    await request(app.getHttpServer()).get('/api/search').query({ query: 'Contributor' })
+      .set('Authorization', `Bearer ${token}`).set('x-organization-id', workspace.organizationId)
+      .expect(200).expect(({ body }) => expect(body.quickCreate.taskProjectIds).not.toContain(project.id));
+    await request(app.getHttpServer()).get(`/api/projects/${project.id}`)
+      .set('Authorization', `Bearer ${token}`).set('x-organization-id', workspace.organizationId)
+      .expect(200).expect(({ body }) => expect(body.viewer.canCreateTask).toBe(false));
+    await dataSource.getRepository(ProjectEntity).update(project.id, { state: ProjectState.ACTIVE });
+    await dataSource.getRepository(ProjectMembershipEntity).update(projectMembership.id, { removedAt: new Date() });
+    await create().expect(403);
   });
 
   it('enforces Document ownership, Project visibility, archive and cross-tenant access over HTTP', async () => {
@@ -790,7 +864,7 @@ describe('PostgreSQL Task create/update/archive integration', () => {
     return dataSource.getRepository(OrganizationMembershipEntity).save({
       organizationId,
       userId: user.id,
-      role: OrganizationRole.MEMBER,
+      roleId: await testOrganizationRoleId(dataSource, organizationId, OrganizationRole.MEMBER),
       state: OrganizationMembershipState.ACTIVE,
       joinedAt: new Date(),
       stateChangedAt: new Date(),

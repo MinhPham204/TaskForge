@@ -1,3 +1,4 @@
+import { testOrganizationRoleId } from '../src/testing/organization-role.fixture';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { PostgresNotificationService } from '../src/modules/collaboration/application/notification.service';
@@ -107,9 +108,9 @@ describe('PostgreSQL in-app notification integration', () => {
     });
   }
 
-  function addMembership(organizationId: string, userId: string, state: OrganizationMembershipState) {
+  async function addMembership(organizationId: string, userId: string, state: OrganizationMembershipState) {
     return dataSource.getRepository(OrganizationMembershipEntity).save({
-      organizationId, userId, role: OrganizationRole.MEMBER, state,
+      organizationId, userId, roleId: await testOrganizationRoleId(dataSource, organizationId, OrganizationRole.MEMBER), state,
       joinedAt: new Date(), stateChangedAt: new Date(),
     });
   }

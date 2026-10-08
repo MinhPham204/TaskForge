@@ -3,6 +3,10 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, Link } from 'react-router-dom';
 import DashboardLayout from '../../components/layouts/DashboardLayout.jsx';
 import Avatar from '../../components/Avatar.jsx';
+import RoleBadge from '../../components/RoleBadge.jsx';
+import OrganizationRoles, { ChangeMemberRole } from './OrganizationRoles.jsx';
+import useUserAuth from '../../hooks/useUserAuth.jsx';
+import { invitableOrganizationRoles, ORGANIZATION_PERMISSION_LABELS } from '../../utils/organizationPermissions.js';
 import {
   Dialog,
   EmptyState,
@@ -31,6 +35,7 @@ import {
   useSuspendOrganizationMemberMutation,
   useUpdateOrganizationMutation,
   useLeaveOrganizationMutation,
+  useGetInvitationRolesQuery,
 } from '../../services/organizationApi.js';
 import { useGetDashboardQuery } from '../../services/dashboardApi.js';
 import {
@@ -51,9 +56,11 @@ const WorkspaceSettingsPage = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const activeOrganizationId = useSelector(selectActiveOrganizationId);
+  const { capabilities, roleSummary, isOwner, hasPermission, permissionsError, refreshPermissions } = useUserAuth();
 
   // Active tab state
   const [activeTab, setActiveTab] = useState('general');
+  const [roleTarget, setRoleTarget] = useState(null);
 
   // Core organization settings (readable by any active member)
   const {
@@ -66,29 +73,39 @@ const WorkspaceSettingsPage = () => {
     skip: !activeOrganizationId,
   });
 
-  const role = organization?.role;
-  const isPrivileged = canManageWorkspace(role);
+  const isPrivileged = canManageWorkspace(capabilities);
+  const canReadMembers = hasPermission('org.members.read');
+  const canInvite = hasPermission('org.members.invite');
+  const canReadInvitations = hasPermission('org.invitations.read');
+  const canRevokeInvitations = hasPermission('org.invitations.revoke');
+  const canGovernMembers = canReadMembers || canInvite || canReadInvitations;
 
   // Governance queries are strictly skipped for regular members
   const {
-    data: members = [],
+    currentData: memberData,
     isLoading: isMembersLoading,
     isError: isMembersError,
     error: membersError,
     refetch: refetchMembers,
   } = useGetOrganizationMembersQuery(activeOrganizationId, {
-    skip: !activeOrganizationId || !isPrivileged,
+    skip: !activeOrganizationId || !canReadMembers,
   });
 
   const {
-    data: invitations = [],
+    currentData: invitationData,
     isLoading: isInvitationsLoading,
     isError: isInvitationsError,
     error: invitationsError,
     refetch: refetchInvitations,
   } = useGetOrganizationInvitationsQuery(activeOrganizationId, {
-    skip: !activeOrganizationId || !isPrivileged,
+    skip: !activeOrganizationId || !canReadInvitations,
   });
+  const members = canReadMembers ? memberData || [] : [];
+  const invitations = canReadInvitations ? invitationData || [] : [];
+  const { currentData: invitationRoleData, isFetching: isLoadingInvitationRoles, error: invitationRolesError } = useGetInvitationRolesQuery(activeOrganizationId, {
+    skip: !activeOrganizationId || !canInvite,
+  });
+  const invitationRoles = invitableOrganizationRoles(invitationRoleData, capabilities);
 
   // Query dashboard for project metrics
   const { data: dashboardData } = useGetDashboardQuery(undefined, {
@@ -116,7 +133,7 @@ const WorkspaceSettingsPage = () => {
   });
   const [showLogoInput, setShowLogoInput] = useState(false);
   const [copiedSlug, setCopiedSlug] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ email: '', role: 'MEMBER', expiryDays: '7' });
+  const [inviteForm, setInviteForm] = useState({ email: '', roleId: '', expiryDays: '7' });
   const [profileFeedback, setProfileFeedback] = useState(null);
   const [memberFeedback, setMemberFeedback] = useState(null);
   const [inviteFeedback, setInviteFeedback] = useState(null);
@@ -153,14 +170,26 @@ const WorkspaceSettingsPage = () => {
 
   // Clear feedbacks when switching workspace
   useEffect(() => {
+    setRoleTarget(null);
     setProfileFeedback(null);
     setMemberFeedback(null);
     setInviteFeedback(null);
+    setInviteForm({ email: '', roleId: '', expiryDays: '7' });
+    setConfirmDialog((dialog) => ({ ...dialog, open: false, action: null }));
+    setShowLogoInput(false);
   }, [activeOrganizationId]);
+
+  useEffect(() => {
+    setConfirmDialog((dialog) => ({ ...dialog, open: false, action: null }));
+    if (!isOwner) setRoleTarget(null);
+    if (!isPrivileged) setShowLogoInput(false);
+    if (!canInvite) setInviteForm({ email: '', roleId: '', expiryDays: '7' });
+  }, [capabilities, isPrivileged, canInvite, isOwner]);
 
   // Handler: Update Organization Profile
   const handleSubmitProfile = async (event) => {
     event.preventDefault();
+    if (!isPrivileged) return;
     setProfileFeedback(null);
 
     const validation = workspaceProfileValidationMessage(profile);
@@ -200,6 +229,13 @@ const WorkspaceSettingsPage = () => {
   // Handler: Create Invitation
   const handleSubmitInvite = async (event) => {
     event.preventDefault();
+    if (!canInvite) return;
+    const invitedRole = invitationRoles.find((role) => role.id === inviteForm.roleId) ||
+      (!inviteForm.roleId ? invitationRoles.find((role) => role.systemCode === 'MEMBER') : null);
+    if (!invitedRole) {
+      setInviteFeedback({ type: 'error', message: 'Select an available invitation role.' });
+      return;
+    }
     setInviteFeedback(null);
 
     const expiresAt = new Date(
@@ -209,7 +245,7 @@ const WorkspaceSettingsPage = () => {
     const payload = {
       organizationId: activeOrganizationId,
       email: inviteForm.email.trim(),
-      role: inviteForm.role,
+      roleId: invitedRole.id,
       expiresAt,
     };
 
@@ -221,7 +257,7 @@ const WorkspaceSettingsPage = () => {
 
     try {
       await createInvitation(payload).unwrap();
-      setInviteForm({ email: '', role: 'MEMBER', expiryDays: '7' });
+      setInviteForm({ email: '', roleId: '', expiryDays: '7' });
       setInviteFeedback({
         type: 'success',
         message: `Invitation sent to ${payload.email}.`,
@@ -259,7 +295,7 @@ const WorkspaceSettingsPage = () => {
 
   // Handler: Prompt Leave Workspace
   const promptLeaveWorkspace = () => {
-    if (role === 'OWNER') {
+    if (isOwner) {
       setConfirmDialog({
         open: true,
         title: 'Ownership Protection',
@@ -300,6 +336,7 @@ const WorkspaceSettingsPage = () => {
   };
 
   const promptSuspendMember = (targetMember) => {
+    if (!canSuspendMember(targetMember, capabilities)) return;
     setMemberFeedback(null);
     setConfirmDialog({
       open: true,
@@ -328,6 +365,7 @@ const WorkspaceSettingsPage = () => {
   };
 
   const promptRevokeMember = (targetMember) => {
+    if (!canRevokeMember(targetMember, capabilities)) return;
     setMemberFeedback(null);
     setConfirmDialog({
       open: true,
@@ -356,6 +394,7 @@ const WorkspaceSettingsPage = () => {
   };
 
   const promptRevokeInvitation = (invitation) => {
+    if (!canRevokeInvitations) return;
     setInviteFeedback(null);
     setConfirmDialog({
       open: true,
@@ -423,6 +462,9 @@ const WorkspaceSettingsPage = () => {
     <DashboardLayout activeMenu="/settings/workspace">
       <div className="space-y-5 pb-12 select-none">
         {/* Breadcrumb matching other pages */}
+        {permissionsError && <ErrorState title="Unable to load workspace permissions"
+          message={apiErrorMessage(permissionsError, 'Refresh your workspace access to continue.')}
+          onRetry={refreshPermissions} />}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-1 border-b border-border/60">
           <div>
             <div className="flex items-center gap-2 text-xs text-content-muted mb-1">
@@ -438,7 +480,7 @@ const WorkspaceSettingsPage = () => {
               <h1 className="text-2xl font-bold tracking-tight text-content">
                 {organization?.name || 'Workspace Settings'}
               </h1>
-              <RoleBadge role={role} />
+              <RoleBadge roleSummary={roleSummary} isOwner={isOwner} />
             </div>
             <p className="mt-1 text-xs sm:text-sm text-content-muted">
               Manage workspace profile, members, and access control.
@@ -450,14 +492,14 @@ const WorkspaceSettingsPage = () => {
             <button
               type="button"
               onClick={promptLeaveWorkspace}
-              disabled={isLeavingOrg}
+              disabled={isLeavingOrg || !capabilities}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-content hover:bg-surface-muted bg-surface border border-border rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
             >
               <LuLogOut className="w-3.5 h-3.5 text-content-muted" />
               <span>Leave Workspace</span>
             </button>
 
-            {isPrivileged ? (
+            {canGovernMembers ? (
               <button
                 type="button"
                 onClick={() => setActiveTab('members')}
@@ -505,7 +547,7 @@ const WorkspaceSettingsPage = () => {
               }`}
             >
               <span>Members &amp; Access</span>
-              {isPrivileged && members.length > 0 && (
+              {canReadMembers && members.length > 0 && (
                 <span className="text-[11px] px-1.5 py-0.2 bg-surface-muted text-content-muted rounded-full font-medium">
                   {members.length}
                 </span>
@@ -561,7 +603,7 @@ const WorkspaceSettingsPage = () => {
                   <span className="font-semibold text-blue-950 dark:text-blue-100">
                     Read-only Member Access:
                   </span>{' '}
-                  Workspace profile editing, member management, and invitations are restricted to Owners and Admins.
+                  Your role does not grant workspace profile editing. Member and invitation actions depend on your assigned permissions.
                 </div>
                 <button
                   type="button"
@@ -882,15 +924,15 @@ const WorkspaceSettingsPage = () => {
         {/* TAB 2: MEMBERS & ACCESS */}
         {activeTab === 'members' && (
           <div className="space-y-6">
-            {!isPrivileged ? (
+            {!canGovernMembers ? (
               <section className="bg-surface rounded-xl border border-border p-6 text-center">
                 <div className="w-12 h-12 mx-auto rounded-full bg-surface-muted flex items-center justify-center text-content-muted mb-3">
                   <LuUsers className="w-6 h-6" />
                 </div>
                 <h2 className="text-base font-semibold text-content">Member Directory</h2>
                 <p className="text-xs text-content-muted mt-1 max-w-md mx-auto">
-                  Workspace members and invitation governance are managed by Owners and Admins.
-                  Contact an administrator if you need to adjust roles or invite collaborators.
+                  Your role does not grant access to member or invitation management.
+                  Contact the workspace Owner to request access.
                 </p>
               </section>
             ) : (
@@ -910,7 +952,7 @@ const WorkspaceSettingsPage = () => {
                   </div>
 
                   {/* Invite Form */}
-                  <form className="mt-5 space-y-4" onSubmit={handleSubmitInvite}>
+                  {canInvite && <form className="mt-5 space-y-4" onSubmit={handleSubmitInvite}>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       <Field label="Email address" htmlFor="invite-email">
                         <input
@@ -928,16 +970,13 @@ const WorkspaceSettingsPage = () => {
                       </Field>
 
                       <Field label="Role" htmlFor="invite-role">
-                        <select
-                          id="invite-role"
-                          name="role"
-                          value={inviteForm.role}
-                          onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
-                          className={inputClassName}
-                        >
-                          <option value="MEMBER">Member</option>
-                          <option value="ADMIN">Admin</option>
+                        <select id="invite-role" value={inviteForm.roleId || invitationRoles.find((role) => role.systemCode === 'MEMBER')?.id || ''}
+                          onChange={(event) => setInviteForm({ ...inviteForm, roleId: event.target.value })}
+                          disabled={isLoadingInvitationRoles} className={inputClassName}>
+                          <option value="" disabled>Select a role</option>
+                          {invitationRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
                         </select>
+                        {invitationRolesError && <p role="alert" className="text-xs text-danger-content">Unable to load invitation roles.</p>}
                       </Field>
 
                       <Field label="Expires in" htmlFor="invite-expiry">
@@ -962,16 +1001,16 @@ const WorkspaceSettingsPage = () => {
                     <div className="pt-1">
                       <button
                         type="submit"
-                        disabled={isInviting}
+                        disabled={isInviting || isLoadingInvitationRoles || !invitationRoles.length}
                         className={primaryButtonClassName}
                       >
                         {isInviting ? 'Sending…' : 'Send invitation'}
                       </button>
                     </div>
-                  </form>
+                  </form>}
 
                   {/* Pending Invitations List */}
-                  <div className="mt-8 border-t border-border/60 pt-5">
+                  {canReadInvitations && <div className="mt-8 border-t border-border/60 pt-5">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
                       Pending Invitations
                     </h3>
@@ -1025,7 +1064,7 @@ const WorkspaceSettingsPage = () => {
                                     {inv.email}
                                   </td>
                                   <td className="whitespace-nowrap px-4 py-3">
-                                    <RoleBadge role={inv.role} />
+                                    <RoleBadge role={inv.roleName} />
                                   </td>
                                   <td className="whitespace-nowrap px-4 py-3">
                                     <span className="rounded bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
@@ -1042,14 +1081,14 @@ const WorkspaceSettingsPage = () => {
                                       : '—'}
                                   </td>
                                   <td className="whitespace-nowrap px-4 py-3 text-right text-xs">
-                                    <button
+                                    {canRevokeInvitations && <button
                                       type="button"
                                       onClick={() => promptRevokeInvitation(inv)}
                                       disabled={isRevokingInvitation}
                                       className="font-medium text-danger-content hover:underline disabled:opacity-50 cursor-pointer"
                                     >
                                       Revoke
-                                    </button>
+                                    </button>}
                                   </td>
                                 </tr>
                               ))}
@@ -1058,11 +1097,11 @@ const WorkspaceSettingsPage = () => {
                         </div>
                       )}
                     </div>
-                  </div>
+                  </div>}
                 </section>
 
                 {/* Member Directory */}
-                <section
+                {canReadMembers && <section
                   className="rounded-xl border border-border bg-surface p-5 sm:p-6"
                   aria-labelledby="members-heading"
                 >
@@ -1146,7 +1185,7 @@ const WorkspaceSettingsPage = () => {
                                   </div>
                                 </td>
                                 <td className="whitespace-nowrap px-4 py-3">
-                                  <RoleBadge role={member.role} />
+                                  <RoleBadge role={member.roleName || member.role} isOwner={member.isOwner} />
                                 </td>
                                 <td className="whitespace-nowrap px-4 py-3">
                                   <StateBadge state={member.state} />
@@ -1167,7 +1206,8 @@ const WorkspaceSettingsPage = () => {
                                     </span>
                                   ) : (
                                     <div className="flex items-center justify-end gap-3">
-                                      {canSuspendMember(member) && (
+                                      {isOwner && member.state === 'ACTIVE' && <button type="button" className="font-medium text-primary hover:underline" onClick={() => setRoleTarget(member)}>Change Role</button>}
+                                      {canSuspendMember(member, capabilities) && (
                                         <button
                                           type="button"
                                           onClick={() => promptSuspendMember(member)}
@@ -1177,7 +1217,7 @@ const WorkspaceSettingsPage = () => {
                                           Suspend
                                         </button>
                                       )}
-                                      {canRevokeMember(member) && (
+                                      {canRevokeMember(member, capabilities) && (
                                         <button
                                           type="button"
                                           onClick={() => promptRevokeMember(member)}
@@ -1197,75 +1237,38 @@ const WorkspaceSettingsPage = () => {
                       </div>
                     )}
                   </div>
-                </section>
+                </section>}
               </>
             )}
           </div>
         )}
 
         {/* TAB 3: ROLES & PERMISSIONS */}
-        {activeTab === 'roles' && (
+        {activeTab === 'roles' && isOwner && activeOrganizationId && <OrganizationRoles key={activeOrganizationId} organizationId={activeOrganizationId} />}
+        {activeTab === 'roles' && !isOwner && (
           <section className="bg-surface rounded-xl border border-border p-6 space-y-6">
             <div className="border-b border-border/60 pb-3">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-base font-semibold text-content">Roles &amp; Permissions</h2>
                   <p className="text-xs text-content-muted mt-0.5">
-                    Workspace role hierarchy and capabilities matrix.
+                    Your current workspace role and effective permissions.
                   </p>
                 </div>
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-primary/10 text-primary">
-                  Built-in RBAC
+                  Organization RBAC
                 </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 rounded-lg border border-border bg-surface-muted space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-content uppercase tracking-wider">Owner</span>
-                  <RoleBadge role="OWNER" />
-                </div>
-                <p className="text-xs text-content-muted">
-                  Full control over workspace profile, member governance, role assignments, and workspace transfer.
-                </p>
-                <ul className="text-xs space-y-1 text-content-muted list-disc list-inside pt-1">
-                  <li>Transfer workspace ownership</li>
-                  <li>Update workspace branding</li>
-                  <li>Invite and revoke admins</li>
-                </ul>
-              </div>
-
-              <div className="p-4 rounded-lg border border-border bg-surface-muted space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-content uppercase tracking-wider">Admin</span>
-                  <RoleBadge role="ADMIN" />
-                </div>
-                <p className="text-xs text-content-muted">
-                  Can invite new members, suspend or remove active members, and configure team projects.
-                </p>
-                <ul className="text-xs space-y-1 text-content-muted list-disc list-inside pt-1">
-                  <li>Send invitations</li>
-                  <li>Manage member access</li>
-                  <li>Manage projects &amp; teams</li>
-                </ul>
-              </div>
-
-              <div className="p-4 rounded-lg border border-border bg-surface-muted space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-content uppercase tracking-wider">Member</span>
-                  <RoleBadge role="MEMBER" />
-                </div>
-                <p className="text-xs text-content-muted">
-                  Can participate in assigned projects, update tasks, collaborate in discussions, and view workspace info.
-                </p>
-                <ul className="text-xs space-y-1 text-content-muted list-disc list-inside pt-1">
-                  <li>Execute and assign tasks</li>
-                  <li>Join project discussions</li>
-                  <li>Leave workspace when needed</li>
-                </ul>
-              </div>
-            </div>
+            <RoleBadge roleSummary={roleSummary} isOwner={isOwner} />
+            <p className="text-xs text-content-muted">
+              Project actions follow your Project membership. Organization permissions grant workspace governance and visibility.
+            </p>
+            <ul className="text-xs space-y-2 text-content">
+              {(capabilities?.permissions || []).map((code) => <li key={code}>{ORGANIZATION_PERMISSION_LABELS[code] || 'Workspace permission'}</li>)}
+            </ul>
+            {!capabilities?.permissions?.length && <p className="text-xs text-content-muted">No Organization governance permissions granted.</p>}
           </section>
         )}
 
@@ -1349,6 +1352,7 @@ const WorkspaceSettingsPage = () => {
           </section>
         )}
 
+        {isOwner && roleTarget && <ChangeMemberRole key={`${activeOrganizationId}:${roleTarget.userId}`} organizationId={activeOrganizationId} member={roleTarget} onSaved={() => setMemberFeedback({ type: 'success', message: `Role updated for ${roleTarget.name}.` })} onClose={() => setRoleTarget(null)} />}
         {/* Accessible Confirmation Dialog */}
         <Dialog
           open={confirmDialog.open}
@@ -1395,28 +1399,6 @@ const Field = ({ label, htmlFor, children }) => (
     <div className="mt-1.5">{children}</div>
   </div>
 );
-
-const RoleBadge = ({ role }) => {
-  if (role === 'OWNER') {
-    return (
-      <span className="rounded bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
-        Owner
-      </span>
-    );
-  }
-  if (role === 'ADMIN') {
-    return (
-      <span className="rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-800 dark:bg-blue-950 dark:text-blue-300">
-        Admin
-      </span>
-    );
-  }
-  return (
-    <span className="rounded bg-surface-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-content-muted border border-border/60">
-      Member
-    </span>
-  );
-};
 
 const StateBadge = ({ state }) => {
   if (state === 'ACTIVE') {

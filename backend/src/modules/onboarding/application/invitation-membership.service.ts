@@ -7,12 +7,15 @@ import {
 import { createHash, randomBytes } from 'crypto';
 import type { EntityManager } from 'typeorm';
 import { PostgresTransactionRunner } from '../../../database/transaction-runner';
+import {
+  OrganizationRoleDefinitionEntity,
+  OrganizationRolePermissionEntity,
+} from '../persistence/typeorm/onboarding.entities';
 import type {
   InvitationState,
   OrganizationInvitationEntity,
   OrganizationMembershipEntity,
   OrganizationMembershipState,
-  OrganizationRole,
 } from '../persistence/typeorm/onboarding.entities';
 import {
   PostgresOrganizationInvitationRepository,
@@ -23,10 +26,8 @@ import {
 import { writePostgresAudit } from '../../collaboration/application/audit.writer';
 import { writePostgresOutbox } from '../../collaboration/application/outbox.writer';
 import { encryptOutboxInvitationCredential } from '../../collaboration/application/outbox-credential';
+import { PostgresOrganizationPermissionService } from './organization-permission.service';
 
-const OWNER_ROLE = 'OWNER' as OrganizationRole;
-const ADMIN_ROLE = 'ADMIN' as OrganizationRole;
-const MEMBER_ROLE = 'MEMBER' as OrganizationRole;
 const ACTIVE_MEMBERSHIP = 'ACTIVE' as OrganizationMembershipState;
 const SUSPENDED_MEMBERSHIP = 'SUSPENDED' as OrganizationMembershipState;
 const REVOKED_MEMBERSHIP = 'REVOKED' as OrganizationMembershipState;
@@ -40,7 +41,7 @@ const EXPIRED_INVITATION = 'EXPIRED' as InvitationState;
 export interface CreatePostgresInvitationInput {
   email: string;
   expiresAt: Date;
-  role?: OrganizationRole.ADMIN | OrganizationRole.MEMBER;
+  roleId?: string;
 }
 
 export interface CreatedPostgresInvitation {
@@ -53,7 +54,9 @@ export interface InvitationSummary {
   id: string;
   organizationId: string;
   email: string;
-  role: OrganizationRole;
+  roleId: string;
+  roleName: string;
+  systemCode: string | null;
   state: InvitationState;
   expiresAt: Date;
   createdAt: Date;
@@ -65,7 +68,11 @@ export interface OrganizationMemberSummary {
   name: string;
   email: string;
   profileImageUrl: string | null;
-  role: OrganizationRole;
+  role: string;
+  roleId: string;
+  roleName: string;
+  systemCode: string | null;
+  isOwner: boolean;
   state: OrganizationMembershipState;
   joinedAt: Date;
   stateChangedAt: Date;
@@ -91,11 +98,6 @@ export class PostgresInvitationMembershipService {
     if (input.expiresAt.getTime() <= Date.now()) {
       throw new BadRequestException('Invitation expiry must be in the future');
     }
-    const role = input.role ?? MEMBER_ROLE;
-    if (role !== ADMIN_ROLE && role !== MEMBER_ROLE) {
-      throw new BadRequestException('Invitation role must be ADMIN or MEMBER');
-    }
-
     const token = randomBytes(32).toString('base64url');
     const tokenHash = hashInvitationToken(token);
     const invitation = await this.transactions.run(async (manager) => {
@@ -104,7 +106,15 @@ export class PostgresInvitationMembershipService {
         manager,
         actorUserId,
         organizationId,
+        'org.members.invite',
       );
+      const actorCapabilities = await new PostgresOrganizationPermissionService(manager).resolve(actorUserId, organizationId);
+      const requestedRole = input.roleId
+        ? await manager.getRepository(OrganizationRoleDefinitionEntity).createQueryBuilder('role').setLock('pessimistic_write').where('role.organization_id = :organizationId', { organizationId }).andWhere('role.id = :roleId', { roleId: input.roleId }).getOne()
+        : await manager.getRepository(OrganizationRoleDefinitionEntity).findOneBy({ organizationId, systemCode: 'MEMBER' });
+      if (!requestedRole || requestedRole.archivedAt || requestedRole.systemCode === 'OWNER' || requestedRole.isProtected) throw new BadRequestException('Invitation role must be an active non-Owner role in this Organization');
+      const requestedPermissions = await manager.getRepository(OrganizationRolePermissionEntity).find({ where: { organizationId, roleId: requestedRole.id } });
+      if (!actorCapabilities.isOwner && requestedPermissions.some((grant) => !actorCapabilities.permissions.includes(grant.permissionCode))) throw new ForbiddenException('Invited role permissions cannot exceed the inviter effective permissions');
       const users = new PostgresUserRepository(manager);
       const recipient = await users.findByEmail(email);
       if (recipient) {
@@ -142,7 +152,7 @@ export class PostgresInvitationMembershipService {
         invitations.create({
           organizationId,
           email,
-          invitedRole: role,
+          roleId: requestedRole.id,
           invitedByMembershipId: actor.id,
           tokenHash,
           state: PENDING_INVITATION,
@@ -158,7 +168,7 @@ export class PostgresInvitationMembershipService {
         actionCode: 'ORGANIZATION_INVITATION_CREATED',
         targetType: 'ORGANIZATION_INVITATION',
         targetId: created.id,
-        afterData: { email: created.email, role: created.invitedRole, expiresAt: created.expiresAt.toISOString() },
+        afterData: { email: created.email, roleId: created.roleId, roleName: requestedRole.name, expiresAt: created.expiresAt.toISOString() },
       });
       await writePostgresOutbox(manager, {
         organizationId,
@@ -183,13 +193,12 @@ export class PostgresInvitationMembershipService {
       this.manager,
       actorUserId,
       organizationId,
+      'org.invitations.read',
     );
     const invitations = await new PostgresOrganizationInvitationRepository(
       this.manager,
     ).listPendingByOrganization(organizationId);
-    return invitations
-      .filter((invitation) => !isExpired(invitation))
-      .map(toSummary);
+    return Promise.all(invitations.filter((invitation) => !isExpired(invitation)).map((invitation) => this.toInvitationSummary(this.manager, invitation)));
   }
 
   async listOrganizationMembers(
@@ -200,6 +209,7 @@ export class PostgresInvitationMembershipService {
       this.manager,
       actorUserId,
       organizationId,
+      'org.members.read',
     );
     return new PostgresOrganizationMembershipRepository(
       this.manager,
@@ -216,9 +226,7 @@ export class PostgresInvitationMembershipService {
     const invitations = await new PostgresOrganizationInvitationRepository(
       this.manager,
     ).listPendingByEmail(user.email);
-    return invitations
-      .filter((invitation) => !isExpired(invitation))
-      .map(toSummary);
+    return Promise.all(invitations.filter((invitation) => !isExpired(invitation)).map((invitation) => this.toInvitationSummary(this.manager, invitation)));
   }
 
   acceptInvitation(
@@ -251,6 +259,7 @@ export class PostgresInvitationMembershipService {
         manager,
         actorUserId,
         organizationId,
+        'org.invitations.revoke',
       );
       const invitations = new PostgresOrganizationInvitationRepository(manager);
       const invitation = await invitations.findByIdForUpdate(invitationId);
@@ -303,6 +312,8 @@ export class PostgresInvitationMembershipService {
     organizationId: string,
   ): Promise<OrganizationMembershipEntity> {
     return this.transactions.run(async (manager) => {
+      const organization = await new PostgresOrganizationRepository(manager).findByIdForUpdate(organizationId);
+      if (!organization || organization.archivedAt) throw new NotFoundException('Organization not found');
       const memberships = new PostgresOrganizationMembershipRepository(manager);
       const membership = await memberships.findByUserAndOrganizationForUpdate(
         userId,
@@ -311,7 +322,7 @@ export class PostgresInvitationMembershipService {
       if (!membership) {
         throw new NotFoundException('Organization membership not found');
       }
-      this.assertNotActiveOwner(membership);
+      await this.assertNotActiveOwner(manager, membership);
       if (
         membership.state !== ACTIVE_MEMBERSHIP &&
         membership.state !== SUSPENDED_MEMBERSHIP
@@ -345,12 +356,18 @@ export class PostgresInvitationMembershipService {
       throw new BadRequestException('Invitation token is required');
     }
     const result = await this.transactions.run(async (manager) => {
+      const invitations = new PostgresOrganizationInvitationRepository(manager);
+      // Discover the tenant without holding an invitation lock, then follow the
+      // same Organization-first order as revoke/archive/transfer commands.
+      const candidate = await invitations.findByTokenHash(hashInvitationToken(token));
+      if (!candidate) throw new NotFoundException('Invitation not found');
+      const organization = await new PostgresOrganizationRepository(manager).findByIdForUpdate(candidate.organizationId);
+      if (!organization || organization.archivedAt) throw new NotFoundException('Organization not found');
       const users = new PostgresUserRepository(manager);
       const user = await users.findByIdForUpdate(userId);
       if (!user || user.disabledAt) {
         throw new NotFoundException('User not found');
       }
-      const invitations = new PostgresOrganizationInvitationRepository(manager);
       const invitation = await invitations.findByTokenHashForUpdate(
         hashInvitationToken(token),
       );
@@ -397,12 +414,9 @@ export class PostgresInvitationMembershipService {
         return undefined;
       }
 
-      const organization = await new PostgresOrganizationRepository(
-        manager,
-      ).findByIdForUpdate(invitation.organizationId);
-      if (!organization || organization.archivedAt) {
-        throw new NotFoundException('Organization not found');
-      }
+      const invitationRole = await manager.getRepository(OrganizationRoleDefinitionEntity).findOneBy({ id: invitation.roleId, organizationId: invitation.organizationId });
+      if (!invitationRole || invitationRole.archivedAt || invitationRole.systemCode === 'OWNER' || invitationRole.isProtected) throw new ConflictException('Invitation role is no longer active');
+
       const memberships = new PostgresOrganizationMembershipRepository(manager);
       let membership = await memberships.findByUserAndOrganizationForUpdate(
         userId,
@@ -416,14 +430,14 @@ export class PostgresInvitationMembershipService {
         return membership;
       }
       if (membership) {
-        membership.role = invitation.invitedRole;
+        membership.roleId = invitation.roleId;
         membership.state = ACTIVE_MEMBERSHIP;
         membership.stateChangedAt = new Date();
       } else {
         membership = memberships.create({
           organizationId: invitation.organizationId,
           userId,
-          role: invitation.invitedRole,
+          roleId: invitation.roleId,
           state: ACTIVE_MEMBERSHIP,
           joinedAt: new Date(),
           stateChangedAt: new Date(),
@@ -441,7 +455,7 @@ export class PostgresInvitationMembershipService {
         actionCode: 'ORGANIZATION_INVITATION_ACCEPTED',
         targetType: 'ORGANIZATION_MEMBERSHIP',
         targetId: savedMembership.id,
-        afterData: { role: savedMembership.role, state: savedMembership.state },
+        afterData: { roleId: savedMembership.roleId, state: savedMembership.state },
       });
       return savedMembership;
     });
@@ -462,6 +476,7 @@ export class PostgresInvitationMembershipService {
         manager,
         actorUserId,
         organizationId,
+        state === SUSPENDED_MEMBERSHIP ? 'org.members.suspend' : 'org.members.revoke',
       );
       const memberships = new PostgresOrganizationMembershipRepository(manager);
       const target = await memberships.findByUserAndOrganizationForUpdate(
@@ -471,7 +486,7 @@ export class PostgresInvitationMembershipService {
       if (!target) {
         throw new NotFoundException('Organization membership not found');
       }
-      this.assertNotActiveOwner(target);
+      await this.assertNotActiveOwner(manager, target);
       if (
         state === SUSPENDED_MEMBERSHIP &&
         target.state !== ACTIVE_MEMBERSHIP
@@ -500,8 +515,8 @@ export class PostgresInvitationMembershipService {
         actionCode: `ORGANIZATION_MEMBERSHIP_${state}`,
         targetType: 'ORGANIZATION_MEMBERSHIP',
         targetId: saved.id,
-        beforeData: { state: previousState, role: saved.role },
-        afterData: { state: saved.state, role: saved.role },
+        beforeData: { state: previousState, roleId: saved.roleId },
+        afterData: { state: saved.state, roleId: saved.roleId },
       });
       return saved;
     });
@@ -511,6 +526,7 @@ export class PostgresInvitationMembershipService {
     manager: EntityManager,
     actorUserId: string,
     organizationId: string,
+    permissionCode: string,
   ): Promise<OrganizationMembershipEntity> {
     const organization = await new PostgresOrganizationRepository(
       manager,
@@ -523,11 +539,12 @@ export class PostgresInvitationMembershipService {
       actorUserId,
       organizationId,
     );
-    if (!actor || (actor.role !== OWNER_ROLE && actor.role !== ADMIN_ROLE)) {
+    if (!actor) {
       throw new ForbiddenException(
-        'An active organization owner or admin is required',
+        'An active Organization Membership is required',
       );
     }
+    await new PostgresOrganizationPermissionService(manager).requirePermission(actorUserId, organizationId, permissionCode);
     return actor;
   }
 
@@ -535,6 +552,7 @@ export class PostgresInvitationMembershipService {
     manager: EntityManager,
     actorUserId: string,
     organizationId: string,
+    permissionCode: string,
   ): Promise<OrganizationMembershipEntity> {
     const organization = await new PostgresOrganizationRepository(
       manager,
@@ -545,11 +563,12 @@ export class PostgresInvitationMembershipService {
     const actor = await new PostgresOrganizationMembershipRepository(
       manager,
     ).findActiveByUserAndOrganization(actorUserId, organizationId);
-    if (!actor || (actor.role !== OWNER_ROLE && actor.role !== ADMIN_ROLE)) {
+    if (!actor) {
       throw new ForbiddenException(
-        'An active organization owner or admin is required',
+        'An active Organization Membership is required',
       );
     }
+    await new PostgresOrganizationPermissionService(manager).requirePermission(actorUserId, organizationId, permissionCode);
     return actor;
   }
 
@@ -568,15 +587,19 @@ export class PostgresInvitationMembershipService {
     }
   }
 
-  private assertNotActiveOwner(membership: OrganizationMembershipEntity): void {
-    if (
-      membership.role === OWNER_ROLE &&
-      membership.state === ACTIVE_MEMBERSHIP
-    ) {
+  private async assertNotActiveOwner(manager: EntityManager, membership: OrganizationMembershipEntity): Promise<void> {
+    const organization = await new PostgresOrganizationRepository(manager).findByIdForUpdate(membership.organizationId);
+    if (membership.state === ACTIVE_MEMBERSHIP && organization?.ownerMembershipId === membership.id) {
       throw new ConflictException(
         'Transfer ownership before changing the active owner membership',
       );
     }
+  }
+
+  private async toInvitationSummary(manager: EntityManager, invitation: OrganizationInvitationEntity): Promise<InvitationSummary> {
+    const role = await manager.getRepository(OrganizationRoleDefinitionEntity).findOneBy({ id: invitation.roleId, organizationId: invitation.organizationId });
+    if (!role) throw new ConflictException('Invitation role is unavailable');
+    return { id: invitation.id, organizationId: invitation.organizationId, email: invitation.email, roleId: role.id, roleName: role.name, systemCode: role.systemCode, state: invitation.state, expiresAt: invitation.expiresAt, createdAt: invitation.createdAt };
   }
 }
 
@@ -594,18 +617,4 @@ function hashInvitationToken(token: string): string {
 
 function isExpired(invitation: OrganizationInvitationEntity): boolean {
   return invitation.expiresAt.getTime() <= Date.now();
-}
-
-function toSummary(
-  invitation: OrganizationInvitationEntity,
-): InvitationSummary {
-  return {
-    id: invitation.id,
-    organizationId: invitation.organizationId,
-    email: invitation.email,
-    role: invitation.invitedRole,
-    state: invitation.state,
-    expiresAt: invitation.expiresAt,
-    createdAt: invitation.createdAt,
-  };
 }

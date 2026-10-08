@@ -1,11 +1,10 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import type { OrganizationRole } from '../persistence/typeorm/onboarding.entities';
 
 export interface PostgresTenantContext {
   organizationId: string;
   membershipId: string;
-  membershipRole: OrganizationRole;
+  roleId: string;
 }
 
 export const postgresTenantStorage =

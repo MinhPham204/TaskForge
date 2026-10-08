@@ -113,7 +113,7 @@ const Login = () => {
         if (from) {
           navigate(decodeURIComponent(from), { replace: true });
         } else {
-          navigate('/', { replace: true });
+          navigate('/dashboard', { replace: true });
         }
       }
     } catch (err) {

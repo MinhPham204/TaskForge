@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { matchesCapabilityScope } from '../utils/organizationPermissions.js';
 import axiosInstance, { ACTIVE_ORG_KEY } from "../utils/axiosInstance.js";
 import { API_PATHS } from "../utils/apiPaths.js";
 
@@ -58,6 +59,9 @@ const initialState = {
   isOrganizationsLoading: false,
   organizationsInitialized: false,
   organizationsError: null,
+  organizationCapabilities: null,
+  capabilityScope: null,
+  capabilitiesInvalidated: false,
 };
 
 // ─────────────────────────────────────────────
@@ -97,11 +101,45 @@ const authSlice = createSlice({
   name: "auth",
   initialState,
   reducers: {
+    setOrganizationCapabilities(state, action) {
+      const { scope, capabilities } = action.payload;
+      if (!matchesCapabilityScope(state, scope)) return;
+      state.capabilityScope = scope;
+      state.organizationCapabilities = capabilities;
+      state.capabilitiesInvalidated = false;
+      if (capabilities?.role) {
+        const summary = {
+          roleId: capabilities.role.id, roleName: capabilities.role.name,
+          role: capabilities.role.name, roleSummary: capabilities.role,
+          isOwner: capabilities.isOwner,
+        };
+        const organization = state.organizations.find((org) => org.organizationId === scope.organizationId);
+        if (organization) Object.assign(organization, summary);
+        if (state.activeOrganization) Object.assign(state.activeOrganization, summary);
+      }
+    },
+    invalidateOrganizationCapabilities(state, action) {
+      if (action.payload && !matchesCapabilityScope(state, action.payload)) return;
+      state.organizationCapabilities = null;
+      state.capabilityScope = null;
+      state.capabilitiesInvalidated = true;
+    },
     /**
      * setCredentials: gọi sau khi login / set-password thành công.
      */
     setCredentials(state, action) {
+      state.capabilitiesInvalidated = false;
+      state.organizationCapabilities = null;
+      state.capabilityScope = null;
       const { accessToken, refreshToken, user } = action.payload;
+      if (state.user?.id !== user?.id) {
+        state.organizations = [];
+        state.activeOrganizationId = null;
+        state.activeOrganization = null;
+        state.organizationsInitialized = false;
+        state.organizationCapabilities = null;
+        state.capabilityScope = null;
+      }
       state.user         = user;
       state.accessToken  = accessToken;
       state.refreshToken = refreshToken;
@@ -114,6 +152,15 @@ const authSlice = createSlice({
      * setUser: backward-compat nếu chỉ cần cập nhật user object.
      */
     setUser(state, action) {
+      if (state.user?.id !== action.payload?.id) {
+        state.capabilitiesInvalidated = false;
+        state.organizationCapabilities = null;
+        state.capabilityScope = null;
+        state.organizations = [];
+        state.activeOrganizationId = null;
+        state.activeOrganization = null;
+        state.organizationsInitialized = false;
+      }
       state.user    = action.payload;
       state.loading = false;
       state.error   = null;
@@ -137,6 +184,11 @@ const authSlice = createSlice({
      */
     setActiveOrganization(state, action) {
       const orgId = action.payload;
+      if (state.activeOrganizationId !== orgId) {
+        state.capabilitiesInvalidated = false;
+        state.organizationCapabilities = null;
+        state.capabilityScope = null;
+      }
       const found = state.organizations.find((o) => o.organizationId === orgId);
       if (found) {
         state.activeOrganizationId = found.organizationId;
@@ -149,6 +201,9 @@ const authSlice = createSlice({
 
     /** clearUser: logout hoàn toàn — xóa state + localStorage */
     clearUser(state) {
+      state.capabilitiesInvalidated = false;
+      state.organizationCapabilities = null;
+      state.capabilityScope = null;
       state.user                   = null;
       state.accessToken            = null;
       state.refreshToken           = null;
@@ -164,12 +219,15 @@ const authSlice = createSlice({
 
     /** setSessionFromDev: hỗ trợ review/testing nhanh trong dev mode */
     setSessionFromDev(state, action) {
+      state.capabilitiesInvalidated = false;
+      state.organizationCapabilities = null;
+      state.capabilityScope = null;
       const { user, organizations, activeOrganizationId } = action.payload;
       state.user = user;
       state.accessToken = 'dev-mock-token';
       state.organizations = organizations || [];
       state.activeOrganizationId = activeOrganizationId || organizations?.[0]?.organizationId || null;
-      state.activeOrganization = organizations?.[0] || null;
+      state.activeOrganization = state.organizations.find((org) => org.organizationId === state.activeOrganizationId) || null;
       state.organizationsInitialized = true;
       state.isOrganizationsLoading = false;
       state.loading = false;
@@ -185,11 +243,23 @@ const authSlice = createSlice({
         state.error   = null;
       })
       .addCase(fetchProfile.fulfilled, (state, action) => {
+        if (state.user?.id !== action.payload?.id) {
+          state.capabilitiesInvalidated = false;
+          state.organizationCapabilities = null;
+          state.capabilityScope = null;
+          state.organizations = [];
+          state.activeOrganizationId = null;
+          state.activeOrganization = null;
+          state.organizationsInitialized = false;
+        }
         state.user    = action.payload;
         state.loading = false;
         setStoredItem("authUser", JSON.stringify(action.payload));
       })
       .addCase(fetchProfile.rejected, (state, action) => {
+        state.capabilitiesInvalidated = false;
+        state.organizationCapabilities = null;
+        state.capabilityScope = null;
         state.user                   = null;
         state.accessToken            = null;
         state.refreshToken           = null;
@@ -226,15 +296,24 @@ const authSlice = createSlice({
         }
 
         if (selectedOrg) {
+          if (state.activeOrganizationId !== selectedOrg.organizationId) {
+            state.capabilitiesInvalidated = false;
+            state.organizationCapabilities = null;
+            state.capabilityScope = null;
+          }
           state.activeOrganizationId = selectedOrg.organizationId;
           state.activeOrganization   = selectedOrg;
         } else {
+          state.organizationCapabilities = null;
+          state.capabilityScope = null;
           // Danh sách rỗng: activeOrganization & activeOrganizationId là null, KHÔNG fallback legacy user.organization
           state.activeOrganizationId = null;
           state.activeOrganization   = null;
         }
       })
       .addCase(fetchMyOrganizations.rejected, (state, action) => {
+        state.organizationCapabilities = null;
+        state.capabilityScope = null;
         state.isOrganizationsLoading = false;
         state.organizationsInitialized = true;
         state.organizationsError     = action.payload?.message || "Failed to fetch organizations";
@@ -246,6 +325,8 @@ const authSlice = createSlice({
 });
 
 export const {
+  setOrganizationCapabilities,
+  invalidateOrganizationCapabilities,
   setCredentials,
   setUser,
   updateTokens,
@@ -286,11 +367,14 @@ export const selectOrganizations          = (state) => state.auth.organizations;
 export const selectActiveOrganization     = (state) => state.auth.activeOrganization;
 /** Active organization UUID string. */
 export const selectActiveOrganizationId   = (state) => state.auth.activeOrganizationId;
-/** Workspace role từ active Membership ("owner" | "admin" | "member" | null) */
+/** Display label only; authorization consumers use selectOrganizationCapabilities. */
 export const selectRole                   = (state) => {
-  const role = state.auth.activeOrganization?.role;
-  return typeof role === "string" ? role.toLowerCase() : null;
+  return selectOrganizationCapabilities(state)?.role?.name ||
+    state.auth.activeOrganization?.roleName || state.auth.activeOrganization?.role || null;
 };
+export const selectOrganizationCapabilities = (state) =>
+  matchesCapabilityScope(state.auth, state.auth.capabilityScope)
+    ? state.auth.organizationCapabilities : null;
 /** Backward-compatible alias cho selectActiveOrganizationId */
 export const selectOrganizationId         = (state) => state.auth.activeOrganizationId ?? null;
 /** Trạng thái loading workspace discovery */

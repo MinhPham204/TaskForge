@@ -1,3 +1,4 @@
+import { testOrganizationRoleId } from '../src/testing/organization-role.fixture';
 import { ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -122,7 +123,7 @@ describe('PostgreSQL Collaboration & Files Cross-Capability Regression (P5-10)',
     return dataSource.getRepository(OrganizationMembershipEntity).save({
       organizationId,
       userId,
-      role,
+      roleId: await testOrganizationRoleId(dataSource, organizationId, role),
       state: OrganizationMembershipState.ACTIVE,
       joinedAt: new Date(),
       stateChangedAt: new Date(),
@@ -275,7 +276,7 @@ describe('PostgreSQL Collaboration & Files Cross-Capability Regression (P5-10)',
     const invite = await dataSource.getRepository(OrganizationInvitationEntity).save({
       organizationId: workspace.organizationId,
       email: `revoked-invite-${sequence}@example.test`,
-      invitedRole: OrganizationRole.MEMBER,
+      roleId: await testOrganizationRoleId(dataSource, workspace.organizationId, OrganizationRole.MEMBER),
       state: InvitationState.REVOKED,
       tokenHash: 'hash',
       invitedByMembershipId: workspace.membershipId,

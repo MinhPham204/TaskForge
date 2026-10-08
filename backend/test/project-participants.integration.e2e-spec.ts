@@ -1,3 +1,4 @@
+import { testOrganizationRoleId } from '../src/testing/organization-role.fixture';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
@@ -114,7 +115,7 @@ describe('PostgreSQL Project participant integration', () => {
     return dataSource.getRepository(OrganizationMembershipEntity).save({
       organizationId,
       userId: user.id,
-      role: OrganizationRole.MEMBER,
+      roleId: await testOrganizationRoleId(dataSource, organizationId, OrganizationRole.MEMBER),
       state: OrganizationMembershipState.ACTIVE,
       joinedAt: new Date(),
       stateChangedAt: new Date(),

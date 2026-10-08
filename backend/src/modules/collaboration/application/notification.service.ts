@@ -8,8 +8,8 @@ import { PostgresTransactionRunner } from '../../../database/transaction-runner'
 import {
   OrganizationMembershipEntity,
   OrganizationMembershipState,
-  OrganizationRole,
 } from '../../onboarding/persistence/typeorm/onboarding.entities';
+import { PostgresOrganizationPermissionService } from '../../onboarding/application/organization-permission.service';
 import { ProjectMembershipEntity } from '../../projects/persistence/typeorm/project.entities';
 import { NotificationEntity } from '../persistence/typeorm/collaboration.entities';
 import { PostgresNotificationRepository } from '../persistence/typeorm/collaboration.repositories';
@@ -170,7 +170,8 @@ export class PostgresNotificationService {
     if (!membership) return null;
     if (!projectId) return membership;
 
-    if (membership.role === OrganizationRole.OWNER || membership.role === OrganizationRole.ADMIN) {
+    const capabilities = await new PostgresOrganizationPermissionService(manager).resolve(membership.userId, organizationId);
+    if (capabilities.permissions.includes('org.projects.read_all')) {
       return membership;
     }
     const projectMembership = await manager.getRepository(ProjectMembershipEntity).findOneBy({
@@ -237,10 +238,8 @@ export class PostgresNotificationService {
     membership: OrganizationMembershipEntity,
     projectId: string,
   ): Promise<boolean> {
-    if (
-      membership.role === OrganizationRole.OWNER ||
-      membership.role === OrganizationRole.ADMIN
-    ) {
+    const capabilities = await new PostgresOrganizationPermissionService(manager).resolve(membership.userId, membership.organizationId);
+    if (capabilities.permissions.includes('org.projects.read_all')) {
       const project = await manager.query<Array<{ id: string }>>(
         `SELECT id FROM projects
           WHERE organization_id = $1 AND id = $2 AND archived_at IS NULL`,

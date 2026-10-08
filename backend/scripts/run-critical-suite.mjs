@@ -20,6 +20,8 @@ const testFiles = [
   'test/notification.integration.e2e-spec.ts',
   'test/onboarding-contract.e2e-spec.ts',
   'test/onboarding.integration.e2e-spec.ts',
+  'test/organization-rbac-migration.integration.e2e-spec.ts',
+  'test/organization-rbac.integration.e2e-spec.ts',
   'test/optional-modules-cross-capability.integration.e2e-spec.ts',
   'test/outbox.integration.e2e-spec.ts',
   'test/personal-preferences.integration.e2e-spec.ts',
@@ -39,12 +41,16 @@ const testFiles = [
   'test/team.integration.e2e-spec.ts',
 ];
 
+const fromIndex = process.argv.indexOf('--from');
+const firstFile = fromIndex < 0 ? 0 : testFiles.indexOf(process.argv[fromIndex + 1]);
+if (firstFile < 0) throw new Error('--from must name a suite in the critical test list.');
+const selectedFiles = testFiles.slice(firstFile);
 const resultsDirectory = mkdtempSync(join(tmpdir(), 'taskforge-critical-'));
 let suiteCount = 0;
 let testCount = 0;
 
 try {
-  for (const [index, testFile] of testFiles.entries()) {
+  for (const [index, testFile] of selectedFiles.entries()) {
     const resultFile = join(resultsDirectory, `${index}.json`);
     const result = spawnSync(
       process.execPath,

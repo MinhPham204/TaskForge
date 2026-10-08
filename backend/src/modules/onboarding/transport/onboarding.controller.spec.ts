@@ -10,16 +10,20 @@ describe('PostgresOnboardingController', () => {
     listMyPendingInvitations: jest.fn(),
     leaveOrganization: jest.fn(),
   };
+  const permissions = { resolve: jest.fn() };
   const controller = new PostgresOnboardingController(
     organizations as never,
     workspaces as never,
     invitations as never,
+    permissions as never,
+    {} as never,
   );
 
   beforeEach(() => {
     Object.values(organizations).forEach((method) => method.mockReset());
     Object.values(workspaces).forEach((method) => method.mockReset());
     Object.values(invitations).forEach((method) => method.mockReset());
+    permissions.resolve.mockReset();
   });
 
   it('maps the frontend token contract to invitation acceptance for the authenticated subject', async () => {
@@ -45,7 +49,7 @@ describe('PostgresOnboardingController', () => {
         {
           email: 'member@example.test',
           expiresAt: new Date('2026-10-04T00:00:00.000Z'),
-          role: 'MEMBER',
+          roleId: 'member-role-id',
         },
         {
           headers: {},
@@ -53,7 +57,7 @@ describe('PostgresOnboardingController', () => {
             id: 'membership-id',
             userId: 'user-id',
             organizationId: 'verified-organization-id',
-            role: 'ADMIN' as never,
+            roleId: 'admin-role-id',
           },
         },
       ),
@@ -68,7 +72,7 @@ describe('PostgresOnboardingController', () => {
         id: 'invitation-id',
         organizationId: 'organization-id',
         email: 'member@example.test',
-        invitedRole: 'MEMBER',
+        roleId: 'member-role-id',
         state: 'PENDING',
         expiresAt: new Date('2026-10-04T00:00:00.000Z'),
       },
@@ -80,7 +84,7 @@ describe('PostgresOnboardingController', () => {
       {
         email: 'member@example.test',
         expiresAt: new Date('2026-10-04T00:00:00.000Z'),
-        role: 'MEMBER',
+        roleId: 'member-role-id',
       },
       {
         headers: {},
@@ -88,7 +92,7 @@ describe('PostgresOnboardingController', () => {
           id: 'membership-id',
           userId: 'user-id',
           organizationId: 'organization-id',
-          role: 'ADMIN' as never,
+          roleId: 'admin-role-id',
         },
       },
     );
@@ -111,7 +115,7 @@ describe('PostgresOnboardingController', () => {
           id: 'membership-id',
           userId: 'user-id',
           organizationId: 'organization-id',
-          role: 'MEMBER' as never,
+          roleId: 'member-role-id',
         },
       },
     );
@@ -122,5 +126,26 @@ describe('PostgresOnboardingController', () => {
       'organization-id',
     );
   });
-});
 
+  it('resolves capabilities only after verifying the requested tenant', async () => {
+    permissions.resolve.mockResolvedValue({ isOwner: false, role: { id: 'role-id' }, permissions: [] });
+    const response = await controller.getMyOrganizationPermissions('user-id', 'organization-id', {
+      headers: {},
+      postgresTenant: {
+        id: 'membership-id', userId: 'user-id', organizationId: 'organization-id', roleId: 'member-role-id',
+      },
+    });
+    expect(response).toEqual({ isOwner: false, role: { id: 'role-id' }, permissions: [] });
+    expect(permissions.resolve).toHaveBeenCalledWith('user-id', 'organization-id');
+  });
+
+  it('rejects capability lookup when verified tenant does not match route', async () => {
+    expect(() => controller.getMyOrganizationPermissions('user-id', 'other-org', {
+      headers: {},
+      postgresTenant: {
+        id: 'membership-id', userId: 'user-id', organizationId: 'organization-id', roleId: 'member-role-id',
+      },
+    })).toThrow(ForbiddenException);
+    expect(permissions.resolve).not.toHaveBeenCalled();
+  });
+});

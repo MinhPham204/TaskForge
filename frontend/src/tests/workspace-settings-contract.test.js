@@ -110,41 +110,45 @@ const invitationResponse = {
   id: 'inv-1',
   organizationId: 'org-1',
   email: 'invitee@example.test',
-  role: 'MEMBER',
+  roleId: '00000000-0000-4000-8000-000000000003',
+  roleName: 'Member',
   state: 'PENDING',
   expiresAt: '2026-10-01T00:00:00.000Z',
 };
 assert.equal(typeof invitationResponse.id, 'string');
 assert.equal(invitationResponse.email, 'invitee@example.test');
-assert.equal(invitationResponse.role, 'MEMBER');
+assert.equal(invitationResponse.roleName, 'Member');
+assert.equal(invitationResponse.roleId, '00000000-0000-4000-8000-000000000003');
 assert.equal(invitationResponse.state, 'PENDING');
 
 // 5. Permission & Governance rules
 assert.equal(canManageWorkspace('MEMBER'), false, 'Member cannot manage workspace');
-assert.equal(canManageWorkspace('ADMIN'), true, 'Admin can manage workspace');
-assert.equal(canManageWorkspace('OWNER'), true, 'Owner can manage workspace');
+assert.equal(canManageWorkspace('ADMIN'), false, 'A role name cannot grant permission');
+assert.equal(canManageWorkspace('OWNER'), false, 'Ownership must come from capabilities');
+const governance = { permissions: ['org.settings.update', 'org.members.suspend', 'org.members.revoke'] };
+assert.equal(canManageWorkspace(governance), true, 'Granted permission allows profile editing');
 
 // Owner safety protection
-const ownerMember = { userId: 'u-1', role: 'OWNER', state: 'ACTIVE' };
+const ownerMember = { userId: 'u-1', roleName: 'Owner', isOwner: true, state: 'ACTIVE' };
 assert.equal(canModifyMember(ownerMember), false, 'Active owner cannot be modified');
 assert.equal(canSuspendMember(ownerMember), false, 'Active owner cannot be suspended');
 assert.equal(canRevokeMember(ownerMember), false, 'Active owner cannot be revoked');
 
 // Admin / Member can be suspended/revoked
-const activeAdmin = { userId: 'u-2', role: 'ADMIN', state: 'ACTIVE' };
+const activeAdmin = { userId: 'u-2', roleName: 'HR', isOwner: false, state: 'ACTIVE' };
 assert.equal(canModifyMember(activeAdmin), true);
-assert.equal(canSuspendMember(activeAdmin), true);
-assert.equal(canRevokeMember(activeAdmin), true);
+assert.equal(canSuspendMember(activeAdmin, governance), true);
+assert.equal(canRevokeMember(activeAdmin, governance), true);
 
-const suspendedMember = { userId: 'u-3', role: 'MEMBER', state: 'SUSPENDED' };
+const suspendedMember = { userId: 'u-3', roleName: 'Member', isOwner: false, state: 'SUSPENDED' };
 assert.equal(canModifyMember(suspendedMember), true);
-assert.equal(canSuspendMember(suspendedMember), false, 'Already suspended member cannot be suspended again');
-assert.equal(canRevokeMember(suspendedMember), true, 'Suspended member can still be revoked');
+assert.equal(canSuspendMember(suspendedMember, governance), false, 'Already suspended member cannot be suspended again');
+assert.equal(canRevokeMember(suspendedMember, governance), true, 'Granted actor can revoke suspended member');
 
-const revokedMember = { userId: 'u-4', role: 'MEMBER', state: 'REVOKED' };
+const revokedMember = { userId: 'u-4', roleName: 'Member', isOwner: false, state: 'REVOKED' };
 assert.equal(canModifyMember(revokedMember), true);
-assert.equal(canSuspendMember(revokedMember), false);
-assert.equal(canRevokeMember(revokedMember), false, 'Revoked member cannot be revoked again');
+assert.equal(canSuspendMember(revokedMember, governance), false);
+assert.equal(canRevokeMember(revokedMember, governance), false, 'Revoked member cannot be revoked again');
 
 // 6. Validation and Error extraction
 assert.equal(workspaceProfileValidationMessage({ name: '' }), 'Workspace name is required.');
@@ -164,15 +168,15 @@ assert.equal(
   invitationValidationMessage({
     email: 'user@example.test',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
-    role: 'SUPERADMIN',
+    roleId: 'SUPERADMIN',
   }),
-  'Invitation role must be ADMIN or MEMBER.'
+  'Invitation role must be a valid UUID.'
 );
 assert.equal(
   invitationValidationMessage({
     email: 'user@example.test',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
-    role: 'MEMBER',
+    roleId: '00000000-0000-4000-8000-000000000003',
   }),
   null
 );

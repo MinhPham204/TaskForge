@@ -1,3 +1,4 @@
+import { testOrganizationRoleId } from '../src/testing/organization-role.fixture';
 import { ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -110,7 +111,7 @@ describe('PostgreSQL Project HTTP authorization integration', () => {
       .expect(({ body }) => {
         expect(body.viewer).toMatchObject({
           projectRole: ProjectRole.PROJECT_MANAGER,
-          organizationRole: OrganizationRole.OWNER,
+          organizationRole: 'Owner',
           canManage: true,
         });
       });
@@ -127,7 +128,7 @@ describe('PostgreSQL Project HTTP authorization integration', () => {
       .expect(({ body }) => {
         expect(body.viewer).toMatchObject({
           projectRole: null,
-          organizationRole: OrganizationRole.ADMIN,
+          organizationRole: 'Admin',
           canManage: false,
         });
       });
@@ -247,7 +248,7 @@ describe('PostgreSQL Project HTTP authorization integration', () => {
         id: project.id,
         viewer: expect.objectContaining({
           projectRole: ProjectRole.CONTRIBUTOR,
-          organizationRole: OrganizationRole.MEMBER,
+          organizationRole: 'Member',
           canManage: false,
         }),
       }),
@@ -356,7 +357,7 @@ describe('PostgreSQL Project HTTP authorization integration', () => {
     });
   }
 
-  function addActiveMembership(
+  async function addActiveMembership(
     userId: string,
     organizationId: string,
     role: OrganizationRole,
@@ -364,7 +365,7 @@ describe('PostgreSQL Project HTTP authorization integration', () => {
     return dataSource.getRepository(OrganizationMembershipEntity).save({
       userId,
       organizationId,
-      role,
+      roleId: await testOrganizationRoleId(dataSource, organizationId, role),
       state: OrganizationMembershipState.ACTIVE,
       joinedAt: new Date(),
       stateChangedAt: new Date(),

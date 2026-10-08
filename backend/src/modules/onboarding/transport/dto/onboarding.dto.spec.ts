@@ -13,17 +13,17 @@ describe('PostgreSQL onboarding DTOs', () => {
     expect(errors).not.toHaveLength(0);
   });
 
-  it('rejects an invitation without a future date value or supported role', async () => {
+  it('rejects an invitation without a future date value or a UUID roleId', async () => {
     const errors = await validate(
       plainToInstance(CreatePostgresInvitationDto, {
         email: 'not-an-email',
         expiresAt: 'not-a-date',
-        role: 'OWNER',
+        roleId: 'OWNER',
       }),
     );
 
     expect(errors.map((error) => error.property)).toEqual(
-      expect.arrayContaining(['email', 'expiresAt', 'role']),
+      expect.arrayContaining(['email', 'expiresAt', 'roleId']),
     );
   });
 

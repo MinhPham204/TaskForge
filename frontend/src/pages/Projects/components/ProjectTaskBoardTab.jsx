@@ -12,6 +12,7 @@ import BoardColumn from './board/BoardColumn';
 const ProjectTaskBoardTab = ({
   projectId,
   canManage = false,
+  canCreateTask = false,
   onSelectTask,
   onCreateTask,
   onSwitchTab,
@@ -151,7 +152,7 @@ const ProjectTaskBoardTab = ({
           setPriorityCode('');
           setTeamId('');
         }}
-        canManage={canManage}
+        canCreateTask={canCreateTask}
         onCreateTask={onCreateTask}
         onSwitchView={(view) => onSwitchTab && onSwitchTab(view)}
       />

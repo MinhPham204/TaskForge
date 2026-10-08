@@ -1,15 +1,18 @@
 import type { EntityManager } from 'typeorm';
 import {
+  InvitationState,
   OrganizationEntity,
   OrganizationInvitationEntity,
   OrganizationMembershipEntity,
+  OrganizationRoleDefinitionEntity,
+  OrganizationRolePermissionEntity,
   UserEntity,
 } from '../persistence/typeorm/onboarding.entities';
 import type {
   OrganizationMembershipState,
-  OrganizationRole,
 } from '../persistence/typeorm/onboarding.entities';
 import { PostgresInvitationMembershipService } from './invitation-membership.service';
+import { PostgresOrganizationPermissionService } from './organization-permission.service';
 
 describe('PostgresInvitationMembershipService', () => {
   const user = {
@@ -20,12 +23,13 @@ describe('PostgresInvitationMembershipService', () => {
   const organization = {
     id: 'organization-id',
     archivedAt: null,
+    ownerMembershipId: 'owner-membership-id',
   } as OrganizationEntity;
   const invitation = {
     id: 'invitation-id',
     organizationId: organization.id,
     email: user.email,
-    invitedRole: 'MEMBER' as OrganizationRole,
+    roleId: 'member-role-id',
     state: 'PENDING',
     expiresAt: new Date(Date.now() + 60_000),
     respondedAt: null,
@@ -35,14 +39,14 @@ describe('PostgresInvitationMembershipService', () => {
     id: 'owner-membership-id',
     organizationId: organization.id,
     userId: 'owner-user-id',
-    role: 'OWNER' as OrganizationRole,
+    roleId: 'owner-role-id',
     state: 'ACTIVE' as OrganizationMembershipState,
   } as OrganizationMembershipEntity;
   const membership = {
     id: 'membership-id',
     organizationId: organization.id,
     userId: user.id,
-    role: 'MEMBER' as OrganizationRole,
+    roleId: 'member-role-id',
     state: 'ACTIVE' as OrganizationMembershipState,
     stateChangedAt: new Date(),
   } as OrganizationMembershipEntity;
@@ -72,6 +76,8 @@ describe('PostgresInvitationMembershipService', () => {
     findOneBy: jest.fn(),
     save: jest.fn(),
   };
+  const roleRepository = { findOneBy: jest.fn(), createQueryBuilder: jest.fn() };
+  const rolePermissionRepository = { find: jest.fn() };
   const auditRepository = { create: jest.fn((vals) => vals), save: jest.fn().mockResolvedValue({}) };
   const manager = {
     getRepository: jest.fn((entity) => {
@@ -79,6 +85,8 @@ describe('PostgresInvitationMembershipService', () => {
       if (entity === OrganizationEntity) return organizationRepository;
       if (entity === OrganizationInvitationEntity) return invitationRepository;
       if (entity === OrganizationMembershipEntity) return membershipRepository;
+      if (entity === OrganizationRoleDefinitionEntity) return roleRepository;
+      if (entity === OrganizationRolePermissionEntity) return rolePermissionRepository;
       if (entity?.name === 'AuditLogEntity') return auditRepository;
       throw new Error('Unexpected entity');
     }),
@@ -86,29 +94,36 @@ describe('PostgresInvitationMembershipService', () => {
   const run = jest.fn();
 
   beforeEach(() => {
+    jest.spyOn(PostgresOrganizationPermissionService.prototype, 'requirePermission').mockResolvedValue({} as never);
     user.email = invitation.email;
-    invitation.state = 'PENDING';
+    invitation.state = InvitationState.PENDING;
     invitation.acceptedUserId = null;
     invitation.respondedAt = null;
     invitation.expiresAt = new Date(Date.now() + 60_000);
     membership.state = 'ACTIVE' as OrganizationMembershipState;
-    membership.role = 'MEMBER' as OrganizationRole;
+    membership.roleId = 'member-role-id';
     activeOwner.state = 'ACTIVE' as OrganizationMembershipState;
-    activeOwner.role = 'OWNER' as OrganizationRole;
+    activeOwner.roleId = 'owner-role-id';
+    organization.ownerMembershipId = activeOwner.id;
     for (const repository of [
       userRepository,
       invitationRepository,
       organizationRepository,
       membershipRepository,
+      roleRepository,
+      rolePermissionRepository,
     ]) {
       Object.values(repository).forEach((method) => method.mockReset());
     }
     run.mockReset();
     userQueryBuilder.getOne.mockResolvedValue(user);
     invitationQueryBuilder.getOne.mockResolvedValue(invitation);
+    invitationRepository.findOneBy.mockResolvedValue(invitation);
     organizationQueryBuilder.getOne.mockResolvedValue(organization);
     actorQueryBuilder.getOne.mockResolvedValue(null);
     targetQueryBuilder.getOne.mockResolvedValue(null);
+    roleRepository.findOneBy.mockResolvedValue({ id: 'member-role-id', organizationId: organization.id, name: 'Member', systemCode: 'MEMBER', isProtected: false, archivedAt: null });
+    rolePermissionRepository.find.mockResolvedValue([]);
     userRepository.createQueryBuilder.mockReturnValue(userQueryBuilder);
     invitationRepository.createQueryBuilder.mockReturnValue(
       invitationQueryBuilder,
@@ -155,7 +170,7 @@ describe('PostgresInvitationMembershipService', () => {
     );
     expect(membershipRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        role: 'MEMBER',
+        roleId: 'member-role-id',
         state: 'ACTIVE',
       }),
     );
@@ -164,7 +179,7 @@ describe('PostgresInvitationMembershipService', () => {
   });
 
   it('makes repeated acceptance by the same user idempotent without a second Membership', async () => {
-    invitation.state = 'ACCEPTED';
+    invitation.state = InvitationState.ACCEPTED;
     invitation.acceptedUserId = user.id;
     membershipRepository.findOneBy.mockResolvedValue(membership);
     const service = makeService();
@@ -181,7 +196,7 @@ describe('PostgresInvitationMembershipService', () => {
     actorQueryBuilder.getOne.mockResolvedValue({
       ...activeOwner,
       userId: 'admin-user-id',
-      role: 'ADMIN' as OrganizationRole,
+      roleId: 'admin-role-id',
     });
     targetQueryBuilder.getOne.mockResolvedValue(activeOwner);
     const service = makeService();

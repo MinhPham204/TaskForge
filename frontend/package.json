@@ -12,6 +12,8 @@
     "test:theme": "node src/tests/theme-foundation.test.js",
     "test:account": "node src/tests/account-contract.test.js",
     "test:workspace-settings": "node src/tests/workspace-settings-contract.test.js",
+    "test:role-management": "node src/tests/organization-role-management.test.js",
+    "test:rbac": "node src/tests/organization-rbac.test.js",
     "test:productivity-navigation": "node src/tests/productivity-navigation-contract.test.js",
     "test:attention": "node src/tests/task-attention.test.js",
     "test:components": "node src/tests/task-semantic-components.test.js",
@@ -21,7 +23,8 @@
     "test:projects": "node src/tests/stitch-projects.test.js",
     "test:teams": "node src/tests/stitch-teams.test.js",
     "test:project-board": "node src/tests/stitch-project-board.test.js",
-    "test": "node src/tests/workspace-compatibility.test.js && node src/tests/task-workflow.test.js && node src/tests/theme-foundation.test.js && node src/tests/account-contract.test.js && node src/tests/workspace-settings-contract.test.js && node src/tests/productivity-navigation-contract.test.js && node src/tests/task-attention.test.js && node src/tests/task-semantic-components.test.js && node src/tests/stitch-dashboard.test.js && node src/tests/stitch-mytasks.test.js && node src/tests/stitch-inbox.test.js && node src/tests/stitch-projects.test.js && node src/tests/stitch-teams.test.js && node src/tests/stitch-project-board.test.js",
+    "test:workspace-onboarding": "node src/tests/stitch-workspace-onboarding.test.js",
+    "test": "node src/tests/organization-role-management.test.js && node src/tests/organization-rbac.test.js && node src/tests/workspace-compatibility.test.js && node src/tests/task-workflow.test.js && node src/tests/theme-foundation.test.js && node src/tests/account-contract.test.js && node src/tests/workspace-settings-contract.test.js && node src/tests/productivity-navigation-contract.test.js && node src/tests/task-attention.test.js && node src/tests/task-semantic-components.test.js && node src/tests/stitch-dashboard.test.js && node src/tests/stitch-mytasks.test.js && node src/tests/stitch-inbox.test.js && node src/tests/stitch-projects.test.js && node src/tests/stitch-teams.test.js && node src/tests/stitch-project-board.test.js && node src/tests/stitch-workspace-onboarding.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -37,7 +37,7 @@ export class PostgresTenantInterceptor implements NestInterceptor {
         {
           organizationId: tenant.organizationId,
           membershipId: tenant.id,
-          membershipRole: tenant.role,
+          roleId: tenant.roleId,
         },
         () => {
           next.handle().subscribe({

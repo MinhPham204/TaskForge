@@ -33,7 +33,7 @@ describe('PostgresTenantMembershipGuard', () => {
       id: 'membership-id',
       userId: 'user-id',
       organizationId,
-      role: 'MEMBER',
+      roleId: 'member-role-id',
     });
     const guard = new PostgresTenantMembershipGuard(
       reflector as never,
@@ -46,7 +46,7 @@ describe('PostgresTenantMembershipGuard', () => {
     expect(request.postgresTenant).toEqual(
       expect.objectContaining({
         id: 'membership-id',
-        role: 'MEMBER',
+        roleId: 'member-role-id',
       }),
     );
   });
@@ -77,7 +77,7 @@ describe('PostgresTenantMembershipGuard', () => {
       id: 'membership-id',
       userId: 'user-id',
       organizationId,
-      role: 'ADMIN' as never,
+      roleId: 'admin-role-id',
     };
     const interceptor = new PostgresTenantInterceptor(reflector as never);
 
@@ -90,7 +90,7 @@ describe('PostgresTenantMembershipGuard', () => {
     ).resolves.toEqual({
       organizationId,
       membershipId: 'membership-id',
-      membershipRole: 'ADMIN',
+      roleId: 'admin-role-id',
     });
   });
 });

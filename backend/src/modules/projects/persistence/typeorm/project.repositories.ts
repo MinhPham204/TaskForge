@@ -12,10 +12,10 @@ import { TeamMemberEntity } from '../../../onboarding/persistence/typeorm/onboar
 import {
   OrganizationMembershipEntity,
   OrganizationMembershipState,
+  OrganizationRoleDefinitionEntity,
   TeamEntity,
   UserEntity,
 } from '../../../onboarding/persistence/typeorm/onboarding.entities';
-import type { OrganizationRole } from '../../../onboarding/persistence/typeorm/onboarding.entities';
 
 /** Manager-scoped repositories for the P3 project transaction boundary. */
 export class PostgresProjectRepository {
@@ -313,10 +313,11 @@ export class PostgresProjectMembershipRepository {
         'membership.id = projectMembership.organization_membership_id AND membership.organization_id = projectMembership.organization_id',
       )
       .innerJoin(UserEntity, 'user', 'user.id = membership.user_id')
+      .innerJoin(OrganizationRoleDefinitionEntity, 'organizationRoleDefinition', 'organizationRoleDefinition.id = membership.role_id AND organizationRoleDefinition.organization_id = membership.organization_id')
       .select('projectMembership.id', 'projectMembershipId')
       .addSelect('membership.id', 'organizationMembershipId')
       .addSelect('projectMembership.role', 'role')
-      .addSelect('membership.role', 'organizationRole')
+      .addSelect('organizationRoleDefinition.name', 'organizationRole')
       .addSelect('projectMembership.added_at', 'addedAt')
       .addSelect('user.id', 'userId')
       .addSelect('user.name', 'userName')
@@ -335,7 +336,7 @@ export class PostgresProjectMembershipRepository {
         projectMembershipId: string;
         organizationMembershipId: string;
         role: string;
-        organizationRole: OrganizationRole;
+        organizationRole: string;
         addedAt: Date;
         userId: string;
         userName: string;

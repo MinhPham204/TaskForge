@@ -2,10 +2,10 @@ import { ForbiddenException } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { PostgresTransactionRunner } from '../../../database/transaction-runner';
 import {
-  OrganizationRole,
   OrganizationMembershipState,
 } from '../../onboarding/persistence/typeorm/onboarding.entities';
 import type { PostgresProjectActor } from '../../projects/application/project.service';
+import { PostgresOrganizationPermissionService } from '../../onboarding/application/organization-permission.service';
 
 export interface DashboardTaskRow {
   id: string;
@@ -49,14 +49,12 @@ export class PostgresDashboardReadService {
 
   read(actor: PostgresProjectActor) {
     return this.transactions.read(async (manager) => {
-      const role = await this.requireActiveOrganizationMembership(
+      const membership = await this.requireActiveOrganizationMembership(
         manager,
         actor,
       );
-      const isOrganizationAdministrator = [
-        OrganizationRole.OWNER,
-        OrganizationRole.ADMIN,
-      ].includes(role);
+      const capabilities = await new PostgresOrganizationPermissionService(manager).resolve(membership.userId, actor.organizationId);
+      const isOrganizationAdministrator = capabilities.permissions.includes('org.projects.read_all');
       const visibleProjects = await this.visibleProjects(
         manager,
         actor,
@@ -90,11 +88,11 @@ export class PostgresDashboardReadService {
   private async requireActiveOrganizationMembership(
     manager: EntityManager,
     actor: PostgresProjectActor,
-  ): Promise<OrganizationRole> {
+  ): Promise<{ userId: string }> {
     const membership = await manager.query<
-      Array<{ role: OrganizationRole }>
+      Array<{ userId: string }>
     >(
-      `SELECT role
+      `SELECT user_id AS "userId"
          FROM organization_memberships
         WHERE organization_id = $1 AND id = $2 AND state = $3`,
       [
@@ -106,7 +104,7 @@ export class PostgresDashboardReadService {
     if (!membership[0]) {
       throw new ForbiddenException('Active organization membership is required');
     }
-    return membership[0].role;
+    return membership[0];
   }
 
   private visibleProjects(
