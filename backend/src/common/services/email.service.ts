@@ -66,16 +66,36 @@ export class EmailService {
 
   // ─── Gửi OTP reset mật khẩu ──────────────────────────────────────────────────
   async sendPasswordResetEmail(email: string, otp: string): Promise<void> {
-    await this.sendEmail({
-      to: email,
-      subject: 'Your Task Manager Password Reset Code',
-      html: this.buildOtpEmailHtml(
-        otp,
-        'Reset Your Password',
-        'password reset',
-      ),
-      text: `Your password reset OTP is: ${otp}\n\nThis code is only valid for 5 minutes.`,
+    const transport = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: this.config.get<string>('EMAIL_USER'),
+        pass: this.config.get<string>('EMAIL_PASS'),
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
     });
+    try {
+      await transport.sendMail({
+        from: this.fromAddress,
+        to: email,
+        subject: 'Your Task Manager Password Reset Code',
+        html: this.buildOtpEmailHtml(
+          otp,
+          'Reset Your Password',
+          'password reset',
+        ),
+        text: `Your password reset OTP is: ${otp}\n\nThis code is only valid for 5 minutes.`,
+      });
+    } catch {
+      this.logger.warn(
+        'Password reset delivery failed; request may be retried after cooldown.',
+      );
+      throw new Error('Password reset delivery unavailable');
+    } finally {
+      transport.close();
+    }
   }
 
   // ─── Gửi email nhắc nhở Task đến hạn ────────────────────────────────────────
@@ -109,7 +129,9 @@ export class EmailService {
     acceptLink?: string;
   }): Promise<void> {
     const clientUrl = this.config.get<string>('CLIENT_URL');
-    const organizationLink = options.acceptLink || `${clientUrl}/organizations/${options.organizationId}`;
+    const organizationLink =
+      options.acceptLink ||
+      `${clientUrl}/organizations/${options.organizationId}`;
     await this.sendEmail({
       to: options.to,
       subject: `You're invited to join ${options.organizationName} on Task Manager`,

@@ -29,7 +29,7 @@ const VERIFIED_TOKEN_ROUTES = [
  */
 export const isTenantScopedRequest = (url = "") => {
   if (!url) return false;
-  const cleanUrl = url.split("?")[0].toLowerCase();
+  const cleanUrl = requestPath(url).toLowerCase();
 
   if (
     cleanUrl.startsWith("/api/auth") ||
@@ -122,68 +122,48 @@ const axiosInstance = axios.create({
 // ─────────────────────────────────────────────────────────────────────────────
 // Refresh Token Queue — xử lý nhiều request cùng lúc bị 401
 // ─────────────────────────────────────────────────────────────────────────────
-let isRefreshing = false;
-let failedQueue  = [];
-
-/**
- * processQueue: sau khi refresh xong, resolve/reject tất cả request đang chờ.
- * @param {Error|null} error  - null nếu refresh thành công
- * @param {string|null} token - accessToken mới nếu thành công
- */
-const processQueue = (error, token = null) => {
-  failedQueue.forEach(({ resolve, reject }) => {
-    if (error) {
-      reject(error);
-    } else {
-      resolve(token);
-    }
-  });
-  failedQueue = [];
+let refreshPromise = null;
+let lastRefresh = null;
+let onSessionExpired = () => {};
+let onSessionRefreshed = () => {};
+export const setSessionRefreshHandler = handler => { onSessionRefreshed = handler; };
+export const setSessionExpiryHandler = (handler) => { onSessionExpired = handler; };
+const stored = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
+const requestPath = (url = '') => {
+  try { return new URL(url, BASE_URL).pathname; } catch { return url.split('?')[0]; }
 };
-
-/** Xóa sạch auth data khỏi localStorage và chuyển về trang login */
+const requestKind = (url) => {
+  const path = requestPath(url);
+  if (PUBLIC_ROUTES.includes(path)) return 'public';
+  if (VERIFIED_TOKEN_ROUTES.includes(path)) return 'verified';
+  if (path === API_PATHS.AUTH.REFRESH_TOKEN) return 'refresh';
+  return 'protected';
+};
 const forceLogout = () => {
-  try {
-    localStorage.removeItem("token");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("authUser");
-    localStorage.removeItem("verifiedToken");
-    localStorage.removeItem(ACTIVE_ORG_KEY);
-  } catch (_) {
-    // no-op
-  }
-  window.location.href = "/login";
+  onSessionExpired();
+  try { ['token', 'refreshToken', 'authUser', 'verifiedToken', ACTIVE_ORG_KEY].forEach(key => localStorage.removeItem(key)); }
+  catch { /* unavailable storage */ }
+  window.location.href = '/login';
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// REQUEST INTERCEPTOR
-// Đính kèm Bearer Token & x-organization-id phù hợp vào mỗi request
-// ─────────────────────────────────────────────────────────────────────────────
 axiosInstance.interceptors.request.use(
   (config) => {
-    const url = config.url || "";
-
-    // 1. Public routes → không đính kèm token hoặc tenant header
-    if (PUBLIC_ROUTES.some((route) => url.includes(route))) {
-      return applyTenantHeader(config);
+    const kind = requestKind(config.url);
+    config.headers.delete('Authorization');
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) config.headers.set('Content-Type', undefined);
+    if (kind === 'verified') {
+      const token = stored('verifiedToken');
+      if (token) config.headers.set('Authorization', `Bearer ${token}`);
+    } else if (kind === 'protected') {
+      const token = stored('token');
+      if (token) config.headers.set('Authorization', `Bearer ${token}`);
+      config._sessionAccessToken = token;
+      config._sessionRefreshToken = stored('refreshToken');
+    } else if (kind === 'refresh') {
+      const token = stored('refreshToken');
+      if (token) config.headers.set('Authorization', `Bearer ${token}`);
+      config._sessionRefreshToken = token;
     }
-
-    // 2. Set-password → dùng verifiedToken (JWT ngắn hạn từ bước xác minh OTP)
-    if (VERIFIED_TOKEN_ROUTES.some((route) => url.includes(route))) {
-      const verifiedToken = localStorage.getItem("verifiedToken");
-      if (verifiedToken) {
-        config.headers.Authorization = `Bearer ${verifiedToken}`;
-      }
-      return applyTenantHeader(config);
-    }
-
-    // 3. Mọi route còn lại → dùng accessToken
-    const accessToken = localStorage.getItem("token");
-    if (accessToken) {
-      config.headers.Authorization = `Bearer ${accessToken}`;
-    }
-
-    // 4. Header Injection theo tenant boundary
     return applyTenantHeader(config);
   },
   (error) => Promise.reject(error)
@@ -197,94 +177,51 @@ axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-
-    // Chỉ xử lý lỗi 401
-    if (error.response?.status !== 401) {
-      if (error.response?.status === 500) {
-        console.error("Server error. Please try again later.");
-      } else if (error.code === "ECONNABORTED") {
-        console.error("Request timeout. Please try again.");
+    if (!originalRequest || isDevMockActive()) throw error;
+    const kind = requestKind(originalRequest.url);
+    if (kind === 'public' || kind === 'verified') throw error;
+    if (kind === 'refresh' && [401, 403].includes(error.response?.status)) {
+      if (originalRequest._sessionRefreshToken === stored('refreshToken')) forceLogout();
+      throw error;
+    }
+    if (error.response?.status !== 401) throw error;
+    const currentSession = originalRequest._sessionAccessToken === stored('token') && originalRequest._sessionRefreshToken === stored('refreshToken');
+    if (!currentSession) {
+      if (!originalRequest._retry && lastRefresh && originalRequest._sessionAccessToken === lastRefresh.previousAccess &&
+          originalRequest._sessionRefreshToken === lastRefresh.previousRefresh && stored('token') === lastRefresh.access &&
+          stored('refreshToken') === lastRefresh.refresh) {
+        originalRequest._retry = true;
+        return axiosInstance(originalRequest);
       }
-      return Promise.reject(error);
+      throw error; // An old account response cannot replay or erase a newer session.
     }
-
-    // ── Nếu chính endpoint refresh bị 401 → refresh token hết hạn/invalid
-    //    → logout ngay, không retry nữa
-    // The local review helper deliberately uses an in-memory mock token. A
-    // request not covered by the helper may receive a real 401, but it must
-    // not erase the mock session or redirect the reviewer to /login.
-    if (isDevMockActive()) {
-      return Promise.reject(error);
-    }
-
-    if (originalRequest.url?.includes(API_PATHS.AUTH.REFRESH_TOKEN)) {
-      processQueue(error, null);
-      forceLogout();
-      return Promise.reject(error);
-    }
-
-    // ── Nếu đang có refresh đang chạy → xếp request vào hàng chờ
-    if (isRefreshing) {
-      return new Promise((resolve, reject) => {
-        failedQueue.push({ resolve, reject });
-      })
-        .then((newAccessToken) => {
-          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-          return axiosInstance(originalRequest);
-        })
-        .catch((queueError) => Promise.reject(queueError));
-    }
-
-    // ── Đánh dấu request này đã được retry 1 lần (tránh vòng lặp vô hạn)
-    if (originalRequest._retry) {
-      forceLogout();
-      return Promise.reject(error);
-    }
-
+    if (originalRequest._retry) { forceLogout(); throw error; }
     originalRequest._retry = true;
-    isRefreshing           = true;
-
-    const refreshToken = localStorage.getItem("refreshToken");
-
-    if (!refreshToken) {
-      isRefreshing = false;
-      forceLogout();
-      return Promise.reject(error);
-    }
-
-    try {
-      // Dùng axios thuần (KHÔNG dùng axiosInstance) để tránh interceptor loop
-      const { data } = await axios.post(
-        `${BASE_URL}${API_PATHS.AUTH.REFRESH_TOKEN}`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${refreshToken}`,
-            "Content-Type": "application/json",
-          },
+    const refreshToken = stored('refreshToken');
+    if (!refreshToken) { forceLogout(); throw error; }
+    if (!refreshPromise) {
+      const accessToken = stored('token');
+      refreshPromise = axios.post(`${BASE_URL}${API_PATHS.AUTH.REFRESH_TOKEN}`, {}, {
+        timeout: 10000, headers: { Authorization: `Bearer ${refreshToken}`, 'Content-Type': 'application/json' },
+      }).then(({ data }) => {
+        if (stored('refreshToken') !== refreshToken || stored('token') !== accessToken) throw error;
+        if (typeof data?.accessToken !== 'string' || !data.accessToken || typeof data.refreshToken !== 'string' || !data.refreshToken) {
+          const invalid = new Error('Invalid refresh response'); invalid.invalidRefreshResponse = true; throw invalid;
         }
-      );
-
-      // Lưu tokens mới vào localStorage
-      localStorage.setItem("token", data.accessToken);
-      if (data.refreshToken) {
-        localStorage.setItem("refreshToken", data.refreshToken);
-      }
-
-      // Resolve tất cả request đang xếp hàng với token mới
-      processQueue(null, data.accessToken);
-
-      // Retry original request với accessToken mới và active organization hiện tại
-      originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
-      return axiosInstance(originalRequest);
-    } catch (refreshError) {
-      // Refresh thất bại → đẩy lỗi cho tất cả request đang chờ → logout
-      processQueue(refreshError, null);
-      forceLogout();
-      return Promise.reject(refreshError);
-    } finally {
-      isRefreshing = false;
+        localStorage.setItem('token', data.accessToken);
+        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+        lastRefresh = { previousAccess: accessToken, previousRefresh: refreshToken, access: data.accessToken, refresh: stored('refreshToken') };
+        onSessionRefreshed({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+        return data.accessToken;
+      }).catch(refreshError => {
+        if (([401, 403].includes(refreshError.response?.status) || refreshError.invalidRefreshResponse) && stored('refreshToken') === refreshToken && stored('token') === accessToken) forceLogout();
+        throw refreshError;
+      }).finally(() => { refreshPromise = null; });
     }
+    const token = await refreshPromise;
+    if (stored('token') !== token) throw error;
+    return axiosInstance(originalRequest);
+
   }
 );
 

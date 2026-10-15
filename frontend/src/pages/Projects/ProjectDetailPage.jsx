@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LuFolderKanban,
@@ -92,7 +92,7 @@ const ProjectDetailPage = () => {
   const [taskToEdit, setTaskToEdit] = useState(null);
 
   // Queries & Mutations
-  const { data: project, isLoading, isError, error, refetch } = useGetProjectByIdQuery(projectId);
+  const { currentData: project, isLoading, isError, error, refetch } = useGetProjectByIdQuery(projectId);
 
   const { activeOrganizationId } = useUserAuth();
   const canCreateTask = project?.viewer?.canCreateTask ?? (
@@ -100,10 +100,14 @@ const ProjectDetailPage = () => {
     !['COMPLETED', 'ARCHIVED'].includes(project?.state)
   );
   const canManage = project?.viewer?.canManage === true;
+  const previousEditorAccess = useRef({ organizationId: activeOrganizationId, projectId, canManage, canCreateTask });
   useEffect(() => {
-    setIsTaskFormOpen(false);
-    setTaskToEdit(null);
-  }, [activeOrganizationId, canManage, canCreateTask]);
+    const previous = previousEditorAccess.current;
+    const scopeChanged = previous.organizationId !== activeOrganizationId || previous.projectId !== projectId;
+    const lostAccess = (previous.canManage && !canManage) || (previous.canCreateTask && !canCreateTask);
+    if (scopeChanged || lostAccess) { setIsTaskFormOpen(false); setTaskToEdit(null); }
+    previousEditorAccess.current = { organizationId: activeOrganizationId, projectId, canManage, canCreateTask };
+  }, [activeOrganizationId, projectId, canManage, canCreateTask]);
 
   useEffect(() => {
     if (PROJECT_TAB_KEYS.has(requestedTab)) setActiveTab(requestedTab);
@@ -111,18 +115,19 @@ const ProjectDetailPage = () => {
       setActiveTab('tasks');
       setSelectedTaskId(requestedTaskId);
     }
-    if (shouldCreateTask) {
+    if (shouldCreateTask && canCreateTask && project?.id === projectId) {
       if (requestedTab) {
         setActiveTab(requestedTab);
       }
       setTaskToEdit(null);
       setIsTaskFormOpen(true);
     }
-  }, [requestedTab, requestedTaskId, shouldCreateTask]);
+  }, [requestedTab, requestedTaskId, shouldCreateTask, canCreateTask, project?.id, projectId]);
 
   // Keyboard shortcut listener: 'c' or 'C' for new task
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (!canCreateTask || isTaskFormOpen || selectedTaskId) return;
       const activeEl = document.activeElement;
       const isInput =
         activeEl &&
@@ -140,7 +145,7 @@ const ProjectDetailPage = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [canCreateTask, isTaskFormOpen, selectedTaskId]);
 
   const [updateProject, { isLoading: isUpdating }] = useUpdateProjectMutation();
   const [transitionLifecycle, { isLoading: isTransitioning }] =

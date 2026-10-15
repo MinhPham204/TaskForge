@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectEntityManager } from '@nestjs/typeorm';
 import type { EntityManager } from 'typeorm';
+import { withErrorCode } from '../../../common/http/coded-error';
 import { PostgresOrganizationMembershipRepository } from '../persistence/typeorm/onboarding.repositories';
 
 export interface VerifiedPostgresTenantMembership {
@@ -27,8 +28,11 @@ export class PostgresTenantAccessService {
       this.manager,
     ).findVerifiedTenantMembership(userId, organizationId);
     if (!membership) {
-      throw new ForbiddenException(
-        'You do not have an active membership in this organization.',
+      throw withErrorCode(
+        new ForbiddenException(
+          'You do not have an active membership in this organization.',
+        ),
+        'TENANT_MEMBERSHIP_REQUIRED',
       );
     }
 

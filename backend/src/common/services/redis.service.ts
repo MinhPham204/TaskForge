@@ -10,9 +10,7 @@ import { REDIS_CLIENT } from '../../providers/redis.provider';
 export class RedisService {
   private readonly logger = new Logger(RedisService.name);
 
-  constructor(
-    @Inject(REDIS_CLIENT) private readonly redis: Redis,
-  ) {}
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
   // ─── Key/Value ────────────────────────────────────────────────────────────────
 
@@ -62,7 +60,11 @@ export class RedisService {
   }
 
   /** Lưu OTP reset password (prefix: reset-otp:{email}) */
-  async setResetOtp(email: string, otp: string, ttlSeconds = 300): Promise<void> {
+  async setResetOtp(
+    email: string,
+    otp: string,
+    ttlSeconds = 300,
+  ): Promise<void> {
     await this.setEx(`reset-otp:${email}`, ttlSeconds, otp);
   }
 
@@ -74,5 +76,14 @@ export class RedisService {
   /** Xóa OTP reset password */
   async deleteResetOtp(email: string): Promise<void> {
     await this.del(`reset-otp:${email}`);
+  }
+
+  /** Reset-only atomic scripts. Never log keys, arguments or credentials. */
+  async resetScript(
+    script: string,
+    keys: string[],
+    args: string[],
+  ): Promise<unknown> {
+    return this.redis.eval(script, keys.length, ...keys, ...args);
   }
 }

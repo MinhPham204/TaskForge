@@ -77,6 +77,7 @@ export const API_PATHS = {
             COMMENTS: (projectId, taskId) => `/api/projects/${projectId}/tasks/${taskId}/comments`,
             COMMENT: (projectId, taskId, commentId) => `/api/projects/${projectId}/tasks/${taskId}/comments/${commentId}`,
             ASSIGNEES: (projectId, taskId) => `/api/projects/${projectId}/tasks/${taskId}/assignees`,
+            ASSIGNMENT_CANDIDATES: (projectId) => `/api/projects/${projectId}/tasks/assignment-candidates`,
             ASSIGNEE: (projectId, taskId, projectMembershipId) => `/api/projects/${projectId}/tasks/${taskId}/assignees/${projectMembershipId}`,
             APPROVAL: (projectId, taskId) => `/api/projects/${projectId}/tasks/${taskId}/approval`,
             APPROVAL_REQUESTS: (projectId, taskId) => `/api/projects/${projectId}/tasks/${taskId}/approval-requests`,

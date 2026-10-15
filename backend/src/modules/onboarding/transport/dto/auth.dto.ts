@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsBoolean,
@@ -9,9 +10,16 @@ import {
   Length,
   MaxLength,
   MinLength,
+  Matches,
 } from 'class-validator';
 
-const SUPPORTED_TIMEZONES = ['UTC', 'Asia/Ho_Chi_Minh', 'Asia/Tokyo', 'Europe/London', 'America/New_York'];
+const SUPPORTED_TIMEZONES = [
+  'UTC',
+  'Asia/Ho_Chi_Minh',
+  'Asia/Tokyo',
+  'Europe/London',
+  'America/New_York',
+];
 const SUPPORTED_LOCALES = ['en-US', 'vi-VN', 'ja-JP'];
 
 export class PostgresRegisterDto {
@@ -51,6 +59,35 @@ export class PostgresLoginDto extends PostgresRegisterDto {
   @IsString()
   @MinLength(1)
   password!: string;
+}
+
+export class PostgresForgotPasswordDto {
+  @ApiProperty()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  @IsEmail()
+  @MaxLength(254)
+  email!: string;
+}
+
+export class PostgresResetPasswordDto extends PostgresForgotPasswordDto {
+  @ApiProperty()
+  @IsString()
+  @Matches(/^\d{6}$/)
+  otp!: string;
+
+  @ApiProperty({ minLength: 8, maxLength: 128 })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  newPassword!: string;
+
+  @ApiProperty({ minLength: 8, maxLength: 128 })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  confirmPassword!: string;
 }
 
 export class UpdatePostgresProfileDto {

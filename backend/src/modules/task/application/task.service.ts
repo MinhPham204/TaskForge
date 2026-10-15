@@ -5,11 +5,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
+import { withErrorCode } from '../../../common/http/coded-error';
+import { activeTaskIdentity } from '../domain/task-membership';
+import {
+  assertTaskMutable,
+  assertTaskExecutionAccess,
+} from '../domain/task-policy';
 import { PostgresTransactionRunner } from '../../../database/transaction-runner';
 import {
   ProjectRole,
   ProjectModuleCode,
-  ProjectState,
   TaskStatusSemanticCategory,
 } from '../../projects/persistence/typeorm/project.entities';
 import {
@@ -65,9 +70,15 @@ export interface AddPostgresTaskChecklistItemInput {
   text: string;
 }
 
-export interface CreatePostgresCommentInput { body: string }
-export interface UpdatePostgresCommentInput { body: string }
-export interface ConfigurePostgresTaskApprovalInput { approverProjectMembershipId: string | null }
+export interface CreatePostgresCommentInput {
+  body: string;
+}
+export interface UpdatePostgresCommentInput {
+  body: string;
+}
+export interface ConfigurePostgresTaskApprovalInput {
+  approverProjectMembershipId: string | null;
+}
 
 /** P4 Task management commands with explicit Organization and Project scope. */
 export class PostgresTaskService {
@@ -79,7 +90,11 @@ export class PostgresTaskService {
     input: CreatePostgresTaskInput,
   ): Promise<TaskEntity> {
     return this.transactions.run(async (manager) => {
-      await this.requireMutableProject(manager, actor.organizationId, projectId);
+      await this.requireMutableProject(
+        manager,
+        actor.organizationId,
+        projectId,
+      );
       const actorProjectMembership = await this.requireActiveProjectMembership(
         manager,
         actor,
@@ -97,7 +112,13 @@ export class PostgresTaskService {
         projectId,
         input.statusId,
       );
-      if (input.milestoneId) await this.requireOpenMilestone(manager, actor.organizationId, projectId, input.milestoneId);
+      if (input.milestoneId)
+        await this.requireOpenMilestone(
+          manager,
+          actor.organizationId,
+          projectId,
+          input.milestoneId,
+        );
       const tasks = new PostgresTaskRepository(manager);
       const created = await tasks.save(
         tasks.create({
@@ -118,7 +139,14 @@ export class PostgresTaskService {
           archivedAt: null,
         }),
       );
-      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_CREATED', subjectType: 'TASK', subjectId: created.id });
+      await writePostgresActivity(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: 'TASK_CREATED',
+        subjectType: 'TASK',
+        subjectId: created.id,
+      });
       return created;
     });
   }
@@ -130,7 +158,10 @@ export class PostgresTaskService {
     input: UpdatePostgresTaskInput,
   ): Promise<TaskEntity> {
     if (Object.values(input).every((value) => value === undefined)) {
-      throw new BadRequestException('At least one Task field is required');
+      throw withErrorCode(
+        new BadRequestException('At least one Task field is required'),
+        'REQUEST_VALIDATION_FAILED',
+      );
     }
     return this.transactions.run(async (manager) => {
       const task = await this.requireMutableTask(
@@ -152,8 +183,11 @@ export class PostgresTaskService {
         input.dueAt !== undefined ||
         input.milestoneId !== undefined;
       if (changesManagement && !isManager) {
-        throw new ForbiddenException(
-          'An active Project Manager is required to update Task management fields',
+        throw withErrorCode(
+          new ForbiddenException(
+            'An active Project Manager is required to update Task management fields',
+          ),
+          'PROJECT_MANAGER_REQUIRED',
         );
       }
       if (!isManager)
@@ -187,11 +221,24 @@ export class PostgresTaskService {
         task.priorityCode = requiredPriority(input.priorityCode);
       if (input.dueAt !== undefined) task.dueAt = parseDueAt(input.dueAt);
       if (input.milestoneId !== undefined) {
-        if (input.milestoneId) await this.requireOpenMilestone(manager, actor.organizationId, projectId, input.milestoneId);
+        if (input.milestoneId)
+          await this.requireOpenMilestone(
+            manager,
+            actor.organizationId,
+            projectId,
+            input.milestoneId,
+          );
         task.milestoneId = input.milestoneId;
       }
       const saved = await new PostgresTaskRepository(manager).save(task);
-      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_UPDATED', subjectType: 'TASK', subjectId: task.id });
+      await writePostgresActivity(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: 'TASK_UPDATED',
+        subjectType: 'TASK',
+        subjectId: task.id,
+      });
       return saved;
     });
   }
@@ -210,10 +257,20 @@ export class PostgresTaskService {
         taskId,
       );
       if (task.archivedAt)
-        throw new ConflictException('Task is already archived');
+        throw withErrorCode(
+          new ConflictException('Task is already archived'),
+          'TASK_ARCHIVED',
+        );
       task.archivedAt = new Date();
       const saved = await new PostgresTaskRepository(manager).save(task);
-      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_ARCHIVED', subjectType: 'TASK', subjectId: task.id });
+      await writePostgresActivity(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: 'TASK_ARCHIVED',
+        subjectType: 'TASK',
+        subjectId: task.id,
+      });
       return saved;
     });
   }
@@ -232,6 +289,12 @@ export class PostgresTaskService {
         projectId,
         taskId,
       );
+      await this.requireActiveOwningTeam(
+        manager,
+        actor.organizationId,
+        projectId,
+        task.owningTeamId,
+      );
       const assigneeMembership = await this.requireActiveProjectMembershipById(
         manager,
         actor.organizationId,
@@ -245,16 +308,16 @@ export class PostgresTaskService {
         assigneeMembership.organizationMembershipId,
       );
       const assignees = new PostgresTaskAssigneeRepository(manager);
-      const existing =
-        await assignees.findByTaskAndProjectMembershipForUpdate(
-          actor.organizationId,
-          projectId,
-          task.id,
-          projectMembershipId,
-        );
+      const existing = await assignees.findByTaskAndProjectMembershipForUpdate(
+        actor.organizationId,
+        projectId,
+        task.id,
+        projectMembershipId,
+      );
       if (existing?.removedAt === null) {
-        throw new ConflictException(
-          'Project member is already assigned to Task',
+        throw withErrorCode(
+          new ConflictException('Project member is already assigned to Task'),
+          'TASK_ASSIGNEE_ALREADY_ASSIGNED',
         );
       }
       if (existing) {
@@ -307,7 +370,10 @@ export class PostgresTaskService {
         projectMembershipId,
       );
       if (!assignee || assignee.removedAt) {
-        throw new NotFoundException('Active Task assignee not found');
+        throw withErrorCode(
+          new NotFoundException('Active Task assignee not found'),
+          'RESOURCE_NOT_FOUND',
+        );
       }
       assignee.removedAt = new Date();
       return new PostgresTaskAssigneeRepository(manager).save(assignee);
@@ -354,15 +420,21 @@ export class PostgresTaskService {
         ),
       ]);
       if (!current || !target)
-        throw new NotFoundException('Active Project Task Status not found');
+        throw withErrorCode(
+          new NotFoundException('Active Project Task Status not found'),
+          'RESOURCE_NOT_FOUND',
+        );
       if (
         !isAllowedStatusTransition(
           current.semanticCategory,
           target.semanticCategory,
         )
       ) {
-        throw new ConflictException(
-          `Task cannot transition from ${current.semanticCategory} to ${target.semanticCategory}`,
+        throw withErrorCode(
+          new ConflictException(
+            `Task cannot transition from ${current.semanticCategory} to ${target.semanticCategory}`,
+          ),
+          'TASK_TRANSITION_INVALID',
         );
       }
       if (
@@ -371,28 +443,40 @@ export class PostgresTaskService {
           manager,
         ).countIncompleteForTask(actor.organizationId, projectId, task.id)) > 0
       ) {
-        throw new ConflictException(
-          'Task checklist must be completed before completing the Task',
+        throw withErrorCode(
+          new ConflictException(
+            'Task checklist must be completed before completing the Task',
+          ),
+          'TASK_CHECKLIST_INCOMPLETE',
         );
       }
       if (
         target.semanticCategory === TaskStatusSemanticCategory.COMPLETED &&
         task.requiresApproval &&
-        !(await new PostgresApprovalRequestRepository(manager).hasApprovedForTask(
-          actor.organizationId,
-          projectId,
-          task.id,
-        ))
+        !(await new PostgresApprovalRequestRepository(
+          manager,
+        ).hasApprovedForTask(actor.organizationId, projectId, task.id))
       ) {
-        throw new ConflictException(
-          'Task requires an approved approval request before completion',
+        throw withErrorCode(
+          new ConflictException(
+            'Task requires an approved approval request before completion',
+          ),
+          'TASK_APPROVAL_REQUIRED',
         );
       }
       task.statusId = target.id;
       if (target.semanticCategory === TaskStatusSemanticCategory.COMPLETED)
         task.manualProgress = 100;
       const saved = await new PostgresTaskRepository(manager).save(task);
-      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_STATUS_CHANGED', subjectType: 'TASK', subjectId: task.id, safeMetadata: { statusId: saved.statusId } });
+      await writePostgresActivity(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: 'TASK_STATUS_CHANGED',
+        subjectType: 'TASK',
+        subjectId: task.id,
+        safeMetadata: { statusId: saved.statusId },
+      });
       return saved;
     });
   }
@@ -436,8 +520,11 @@ export class PostgresTaskService {
           task.id,
         )
       ) {
-        throw new ConflictException(
-          'Checklist-derived progress cannot be changed manually',
+        throw withErrorCode(
+          new ConflictException(
+            'Checklist-derived progress cannot be changed manually',
+          ),
+          'TASK_PROGRESS_CHECKLIST_DERIVED',
         );
       }
       task.manualProgress = manualProgress;
@@ -495,7 +582,15 @@ export class PostgresTaskService {
           removedAt: null,
         }),
       );
-      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_CHECKLIST_ITEM_ADDED', subjectType: 'TASK_CHECKLIST_ITEM', subjectId: created.id, safeMetadata: { taskId: task.id } });
+      await writePostgresActivity(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: 'TASK_CHECKLIST_ITEM_ADDED',
+        subjectType: 'TASK_CHECKLIST_ITEM',
+        subjectId: created.id,
+        safeMetadata: { taskId: task.id },
+      });
       return created;
     });
   }
@@ -536,11 +631,29 @@ export class PostgresTaskService {
       const item = await new PostgresTaskChecklistRepository(
         manager,
       ).findByIdForUpdate(actor.organizationId, projectId, task.id, itemId);
-      if (!item) throw new NotFoundException('Active Task checklist item not found');
+      if (!item)
+        throw withErrorCode(
+          new NotFoundException('Active Task checklist item not found'),
+          'RESOURCE_NOT_FOUND',
+        );
       item.completedAt = completed ? new Date() : null;
-      item.completedByProjectMembershipId = completed ? actorMembership.id : null;
-      const saved = await new PostgresTaskChecklistRepository(manager).save(item);
-      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: completed ? 'TASK_CHECKLIST_ITEM_COMPLETED' : 'TASK_CHECKLIST_ITEM_REOPENED', subjectType: 'TASK_CHECKLIST_ITEM', subjectId: item.id, safeMetadata: { taskId: task.id } });
+      item.completedByProjectMembershipId = completed
+        ? actorMembership.id
+        : null;
+      const saved = await new PostgresTaskChecklistRepository(manager).save(
+        item,
+      );
+      await writePostgresActivity(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: completed
+          ? 'TASK_CHECKLIST_ITEM_COMPLETED'
+          : 'TASK_CHECKLIST_ITEM_REOPENED',
+        subjectType: 'TASK_CHECKLIST_ITEM',
+        subjectId: item.id,
+        safeMetadata: { taskId: task.id },
+      });
       return saved;
     });
   }
@@ -553,89 +666,302 @@ export class PostgresTaskService {
   ): Promise<CommentEntity> {
     return this.transactions.run(async (manager) => {
       await this.requireMutableTask(manager, actor, projectId, taskId);
-      const author = await this.requireActiveProjectMembership(manager, actor, projectId);
+      const author = await this.requireActiveProjectMembership(
+        manager,
+        actor,
+        projectId,
+      );
       const comments = new PostgresCommentRepository(manager);
-      const created = await comments.save(comments.create({
-        organizationId: actor.organizationId, projectId, taskId,
-        authorProjectMembershipId: author.id, body: requiredCommentBody(input.body),
-        editedAt: null, deletedAt: null, deletedByMembershipId: null,
-      }));
-      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_COMMENT_CREATED', subjectType: 'COMMENT', subjectId: created.id, safeMetadata: { taskId } });
+      const created = await comments.save(
+        comments.create({
+          organizationId: actor.organizationId,
+          projectId,
+          taskId,
+          authorProjectMembershipId: author.id,
+          body: requiredCommentBody(input.body),
+          editedAt: null,
+          deletedAt: null,
+          deletedByMembershipId: null,
+        }),
+      );
+      await writePostgresActivity(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: 'TASK_COMMENT_CREATED',
+        subjectType: 'COMMENT',
+        subjectId: created.id,
+        safeMetadata: { taskId },
+      });
       return created;
     });
   }
 
-  editComment(actor: PostgresProjectActor, projectId: string, taskId: string, commentId: string, input: UpdatePostgresCommentInput): Promise<CommentEntity> {
+  editComment(
+    actor: PostgresProjectActor,
+    projectId: string,
+    taskId: string,
+    commentId: string,
+    input: UpdatePostgresCommentInput,
+  ): Promise<CommentEntity> {
     return this.transactions.run(async (manager) => {
       await this.requireMutableTask(manager, actor, projectId, taskId);
-      const membership = await this.requireActiveProjectMembership(manager, actor, projectId);
-      const comment = await new PostgresCommentRepository(manager).findByIdForUpdate(actor.organizationId, projectId, taskId, commentId);
-      if (!comment || comment.deletedAt) throw new NotFoundException('Active Task comment not found');
+      const membership = await this.requireActiveProjectMembership(
+        manager,
+        actor,
+        projectId,
+      );
+      const comment = await new PostgresCommentRepository(
+        manager,
+      ).findByIdForUpdate(actor.organizationId, projectId, taskId, commentId);
+      if (!comment || comment.deletedAt)
+        throw withErrorCode(
+          new NotFoundException('Active Task comment not found'),
+          'RESOURCE_NOT_FOUND',
+        );
       this.requireCommentModeration(comment, membership.id, membership.role);
-      comment.body = requiredCommentBody(input.body); comment.editedAt = new Date();
+      comment.body = requiredCommentBody(input.body);
+      comment.editedAt = new Date();
       const saved = await new PostgresCommentRepository(manager).save(comment);
-      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_COMMENT_UPDATED', subjectType: 'COMMENT', subjectId: comment.id, safeMetadata: { taskId } });
+      await writePostgresActivity(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: 'TASK_COMMENT_UPDATED',
+        subjectType: 'COMMENT',
+        subjectId: comment.id,
+        safeMetadata: { taskId },
+      });
       return saved;
     });
   }
 
-  deleteComment(actor: PostgresProjectActor, projectId: string, taskId: string, commentId: string): Promise<CommentEntity> {
+  deleteComment(
+    actor: PostgresProjectActor,
+    projectId: string,
+    taskId: string,
+    commentId: string,
+  ): Promise<CommentEntity> {
     return this.transactions.run(async (manager) => {
       await this.requireMutableTask(manager, actor, projectId, taskId);
-      const membership = await this.requireActiveProjectMembership(manager, actor, projectId);
-      const comment = await new PostgresCommentRepository(manager).findByIdForUpdate(actor.organizationId, projectId, taskId, commentId);
-      if (!comment || comment.deletedAt) throw new NotFoundException('Active Task comment not found');
+      const membership = await this.requireActiveProjectMembership(
+        manager,
+        actor,
+        projectId,
+      );
+      const comment = await new PostgresCommentRepository(
+        manager,
+      ).findByIdForUpdate(actor.organizationId, projectId, taskId, commentId);
+      if (!comment || comment.deletedAt)
+        throw withErrorCode(
+          new NotFoundException('Active Task comment not found'),
+          'RESOURCE_NOT_FOUND',
+        );
       this.requireCommentModeration(comment, membership.id, membership.role);
-      comment.deletedAt = new Date(); comment.deletedByMembershipId = actor.membershipId;
+      comment.deletedAt = new Date();
+      comment.deletedByMembershipId = actor.membershipId;
       const saved = await new PostgresCommentRepository(manager).save(comment);
-      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_COMMENT_DELETED', subjectType: 'COMMENT', subjectId: comment.id, safeMetadata: { taskId } });
+      await writePostgresActivity(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: 'TASK_COMMENT_DELETED',
+        subjectType: 'COMMENT',
+        subjectId: comment.id,
+        safeMetadata: { taskId },
+      });
       return saved;
     });
   }
 
-  listComments(actor: PostgresProjectActor, projectId: string, taskId: string): Promise<CommentEntity[]> {
+  listComments(
+    actor: PostgresProjectActor,
+    projectId: string,
+    taskId: string,
+  ): Promise<CommentEntity[]> {
     return this.transactions.run(async (manager) => {
-      const member = await this.requireActiveProjectMembership(manager, actor, projectId);
-      if (!member) throw new ForbiddenException('Active Project membership is required');
-      const task = await new PostgresTaskRepository(manager).findById(actor.organizationId, projectId, taskId);
-      if (!task) throw new NotFoundException('Task not found');
-      return new PostgresCommentRepository(manager).listActiveForTask(actor.organizationId, projectId, taskId);
+      const member = await this.requireActiveProjectMembership(
+        manager,
+        actor,
+        projectId,
+      );
+      if (!member)
+        throw withErrorCode(
+          new ForbiddenException('Active Project membership is required'),
+          'PROJECT_MEMBERSHIP_REQUIRED',
+        );
+      const task = await new PostgresTaskRepository(manager).findById(
+        actor.organizationId,
+        projectId,
+        taskId,
+      );
+      if (!task)
+        throw withErrorCode(
+          new NotFoundException('Task not found'),
+          'RESOURCE_NOT_FOUND',
+        );
+      return new PostgresCommentRepository(manager).listActiveForTask(
+        actor.organizationId,
+        projectId,
+        taskId,
+      );
     });
   }
 
-  configureApproval(actor: PostgresProjectActor, projectId: string, taskId: string, input: ConfigurePostgresTaskApprovalInput): Promise<TaskEntity> {
+  configureApproval(
+    actor: PostgresProjectActor,
+    projectId: string,
+    taskId: string,
+    input: ConfigurePostgresTaskApprovalInput,
+  ): Promise<TaskEntity> {
     return this.transactions.run(async (manager) => {
       await this.requireMutableProjectManager(manager, actor, projectId);
-      const task = await this.requireMutableTask(manager, actor, projectId, taskId);
-      const pending = await new PostgresApprovalRequestRepository(manager).findPendingForTaskForUpdate(actor.organizationId, projectId, task.id);
-      if (pending) throw new ConflictException('Pending approval must be cancelled before changing approval configuration');
+      const task = await this.requireMutableTask(
+        manager,
+        actor,
+        projectId,
+        taskId,
+      );
+      const pending = await new PostgresApprovalRequestRepository(
+        manager,
+      ).findPendingForTaskForUpdate(actor.organizationId, projectId, task.id);
+      if (pending)
+        throw withErrorCode(
+          new ConflictException(
+            'Pending approval must be cancelled before changing approval configuration',
+          ),
+          'TASK_APPROVAL_PENDING',
+        );
       if (!input.approverProjectMembershipId) {
         task.requiresApproval = false;
         task.approverProjectMembershipId = null;
         const saved = await new PostgresTaskRepository(manager).save(task);
-        await writePostgresAudit(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_APPROVAL_CONFIGURATION_CHANGED', targetType: 'TASK', targetId: task.id, afterData: { requiresApproval: false } });
+        await writePostgresAudit(manager, {
+          organizationId: actor.organizationId,
+          projectId,
+          actorMembershipId: actor.membershipId,
+          actionCode: 'TASK_APPROVAL_CONFIGURATION_CHANGED',
+          targetType: 'TASK',
+          targetId: task.id,
+          afterData: { requiresApproval: false },
+        });
         return saved;
       }
-      await this.requireEligibleApprover(manager, actor.organizationId, projectId, task, input.approverProjectMembershipId);
-      task.requiresApproval = true; task.approverProjectMembershipId = input.approverProjectMembershipId;
+      await this.requireEligibleApprover(
+        manager,
+        actor.organizationId,
+        projectId,
+        task,
+        input.approverProjectMembershipId,
+      );
+      task.requiresApproval = true;
+      task.approverProjectMembershipId = input.approverProjectMembershipId;
       const saved = await new PostgresTaskRepository(manager).save(task);
-      await writePostgresAudit(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_APPROVAL_CONFIGURATION_CHANGED', targetType: 'TASK', targetId: task.id, afterData: { requiresApproval: true, approverProjectMembershipId: saved.approverProjectMembershipId } });
+      await writePostgresAudit(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: 'TASK_APPROVAL_CONFIGURATION_CHANGED',
+        targetType: 'TASK',
+        targetId: task.id,
+        afterData: {
+          requiresApproval: true,
+          approverProjectMembershipId: saved.approverProjectMembershipId,
+        },
+      });
       return saved;
     });
   }
 
-  requestApproval(actor: PostgresProjectActor, projectId: string, taskId: string, reason?: string): Promise<ApprovalRequestEntity> {
+  requestApproval(
+    actor: PostgresProjectActor,
+    projectId: string,
+    taskId: string,
+    reason?: string,
+  ): Promise<ApprovalRequestEntity> {
     return this.transactions.run(async (manager) => {
-      const task = await this.requireMutableTask(manager, actor, projectId, taskId);
-      const requester = await this.requireActiveProjectMembership(manager, actor, projectId);
-      await this.requireTaskExecutionAccess(manager, actor.organizationId, projectId, task, requester.id, requester.role === ProjectRole.PROJECT_MANAGER);
-      if (!task.requiresApproval || !task.approverProjectMembershipId) throw new ConflictException('Task approval is not configured');
-      await this.requireEligibleApprover(manager, actor.organizationId, projectId, task, task.approverProjectMembershipId);
+      const task = await this.requireMutableTask(
+        manager,
+        actor,
+        projectId,
+        taskId,
+      );
+      const requester = await this.requireActiveProjectMembership(
+        manager,
+        actor,
+        projectId,
+      );
+      await this.requireTaskExecutionAccess(
+        manager,
+        actor.organizationId,
+        projectId,
+        task,
+        requester.id,
+        requester.role === ProjectRole.PROJECT_MANAGER,
+      );
+      if (!task.requiresApproval || !task.approverProjectMembershipId)
+        throw withErrorCode(
+          new ConflictException('Task approval is not configured'),
+          'TASK_APPROVAL_NOT_CONFIGURED',
+        );
+      await this.requireEligibleApprover(
+        manager,
+        actor.organizationId,
+        projectId,
+        task,
+        task.approverProjectMembershipId,
+      );
       const approvals = new PostgresApprovalRequestRepository(manager);
-      if (await approvals.findPendingForTaskForUpdate(actor.organizationId, projectId, task.id)) throw new ConflictException('Task already has a pending approval');
-      const request = await approvals.save(approvals.create({ organizationId: actor.organizationId, projectId, taskId: task.id, requestNumber: await approvals.nextRequestNumber(actor.organizationId, projectId, task.id), requestedByMembershipId: actor.membershipId, approverProjectMembershipId: task.approverProjectMembershipId, state: ApprovalRequestState.PENDING, requestReason: reason?.trim() || null, resolutionReason: null, resolvedByMembershipId: null, requestedAt: new Date(), resolvedAt: null, idempotencyKey: null }));
-      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_APPROVAL_REQUESTED', subjectType: 'TASK_APPROVAL_REQUEST', subjectId: request.id, safeMetadata: { taskId: task.id } });
-      await writePostgresAudit(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: 'TASK_APPROVAL_REQUESTED', targetType: 'TASK_APPROVAL_REQUEST', targetId: request.id, afterData: { taskId: task.id, state: request.state } });
+      if (
+        await approvals.findPendingForTaskForUpdate(
+          actor.organizationId,
+          projectId,
+          task.id,
+        )
+      )
+        throw withErrorCode(
+          new ConflictException('Task already has a pending approval'),
+          'TASK_APPROVAL_PENDING',
+        );
+      const request = await approvals.save(
+        approvals.create({
+          organizationId: actor.organizationId,
+          projectId,
+          taskId: task.id,
+          requestNumber: await approvals.nextRequestNumber(
+            actor.organizationId,
+            projectId,
+            task.id,
+          ),
+          requestedByMembershipId: actor.membershipId,
+          approverProjectMembershipId: task.approverProjectMembershipId,
+          state: ApprovalRequestState.PENDING,
+          requestReason: reason?.trim() || null,
+          resolutionReason: null,
+          resolvedByMembershipId: null,
+          requestedAt: new Date(),
+          resolvedAt: null,
+          idempotencyKey: null,
+        }),
+      );
+      await writePostgresActivity(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: 'TASK_APPROVAL_REQUESTED',
+        subjectType: 'TASK_APPROVAL_REQUEST',
+        subjectId: request.id,
+        safeMetadata: { taskId: task.id },
+      });
+      await writePostgresAudit(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: 'TASK_APPROVAL_REQUESTED',
+        targetType: 'TASK_APPROVAL_REQUEST',
+        targetId: request.id,
+        afterData: { taskId: task.id, state: request.state },
+      });
       await writePostgresOutbox(manager, {
         organizationId: actor.organizationId,
         eventType: 'TASK_APPROVAL_REQUESTED',
@@ -646,31 +972,101 @@ export class PostgresTaskService {
     });
   }
 
-  resolveApproval(actor: PostgresProjectActor, projectId: string, taskId: string, action: 'approve' | 'reject' | 'cancel', reason?: string): Promise<ApprovalRequestEntity> {
+  resolveApproval(
+    actor: PostgresProjectActor,
+    projectId: string,
+    taskId: string,
+    action: 'approve' | 'reject' | 'cancel',
+    reason?: string,
+  ): Promise<ApprovalRequestEntity> {
     return this.transactions.run(async (manager) => {
-      const task = await this.requireMutableTask(manager, actor, projectId, taskId);
-      const member = await this.requireActiveProjectMembership(manager, actor, projectId);
-      const request = await new PostgresApprovalRequestRepository(manager).findPendingForTaskForUpdate(actor.organizationId, projectId, task.id);
-      if (!request) throw new ConflictException('No pending approval request');
+      const task = await this.requireMutableTask(
+        manager,
+        actor,
+        projectId,
+        taskId,
+      );
+      const member = await this.requireActiveProjectMembership(
+        manager,
+        actor,
+        projectId,
+      );
+      const request = await new PostgresApprovalRequestRepository(
+        manager,
+      ).findPendingForTaskForUpdate(actor.organizationId, projectId, task.id);
+      if (!request)
+        throw withErrorCode(
+          new ConflictException('No pending approval request'),
+          'TASK_APPROVAL_NOT_PENDING',
+        );
       if (action === 'cancel') {
-        if (request.requestedByMembershipId !== actor.membershipId && member.role !== ProjectRole.PROJECT_MANAGER) throw new ForbiddenException('Only the requester or an active Project Manager may cancel approval');
-        if (!reason?.trim()) throw new BadRequestException('Approval cancellation reason is required');
+        if (
+          request.requestedByMembershipId !== actor.membershipId &&
+          member.role !== ProjectRole.PROJECT_MANAGER
+        )
+          throw withErrorCode(
+            new ForbiddenException(
+              'Only the requester or an active Project Manager may cancel approval',
+            ),
+            'TASK_APPROVAL_CANCEL_ACCESS_REQUIRED',
+          );
+        if (!reason?.trim())
+          throw withErrorCode(
+            new BadRequestException('Approval cancellation reason is required'),
+            'REQUEST_VALIDATION_FAILED',
+          );
         request.state = ApprovalRequestState.CANCELLED;
       } else {
-        if (request.approverProjectMembershipId !== member.id) throw new ForbiddenException('Only the designated approver may resolve approval');
-        await this.requireEligibleApprover(manager, actor.organizationId, projectId, task, member.id);
-        request.state = action === 'approve' ? ApprovalRequestState.APPROVED : ApprovalRequestState.REJECTED;
+        if (request.approverProjectMembershipId !== member.id)
+          throw withErrorCode(
+            new ForbiddenException(
+              'Only the designated approver may resolve approval',
+            ),
+            'TASK_APPROVER_REQUIRED',
+          );
+        await this.requireEligibleApprover(
+          manager,
+          actor.organizationId,
+          projectId,
+          task,
+          member.id,
+        );
+        request.state =
+          action === 'approve'
+            ? ApprovalRequestState.APPROVED
+            : ApprovalRequestState.REJECTED;
       }
-      request.resolutionReason = reason?.trim() || null; request.resolvedByMembershipId = actor.membershipId; request.resolvedAt = new Date();
-      const saved = await new PostgresApprovalRequestRepository(manager).save(request);
+      request.resolutionReason = reason?.trim() || null;
+      request.resolvedByMembershipId = actor.membershipId;
+      request.resolvedAt = new Date();
+      const saved = await new PostgresApprovalRequestRepository(manager).save(
+        request,
+      );
       const activityAction =
         action === 'approve'
           ? 'TASK_APPROVAL_APPROVED'
           : action === 'reject'
             ? 'TASK_APPROVAL_REJECTED'
             : 'TASK_APPROVAL_CANCELLED';
-      await writePostgresActivity(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: activityAction, subjectType: 'TASK_APPROVAL_REQUEST', subjectId: request.id, safeMetadata: { taskId: task.id } });
-      await writePostgresAudit(manager, { organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, actionCode: `TASK_APPROVAL_${action.toUpperCase()}`, targetType: 'TASK_APPROVAL_REQUEST', targetId: request.id, beforeData: { state: ApprovalRequestState.PENDING }, afterData: { taskId: task.id, state: saved.state } });
+      await writePostgresActivity(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: activityAction,
+        subjectType: 'TASK_APPROVAL_REQUEST',
+        subjectId: request.id,
+        safeMetadata: { taskId: task.id },
+      });
+      await writePostgresAudit(manager, {
+        organizationId: actor.organizationId,
+        projectId,
+        actorMembershipId: actor.membershipId,
+        actionCode: `TASK_APPROVAL_${action.toUpperCase()}`,
+        targetType: 'TASK_APPROVAL_REQUEST',
+        targetId: request.id,
+        beforeData: { state: ApprovalRequestState.PENDING },
+        afterData: { taskId: task.id, state: saved.state },
+      });
       return saved;
     });
   }
@@ -687,9 +1083,12 @@ export class PostgresTaskService {
       projectId,
       taskId,
     );
-    if (!task) throw new NotFoundException('Task not found');
-    if (task.archivedAt)
-      throw new ConflictException('Archived tasks are read-only');
+    if (!task)
+      throw withErrorCode(
+        new NotFoundException('Task not found'),
+        'RESOURCE_NOT_FOUND',
+      );
+    assertTaskMutable('ACTIVE', task.archivedAt);
     return task;
   }
 
@@ -701,8 +1100,18 @@ export class PostgresTaskService {
     actorProjectMembershipId: string,
     isProjectManager = false,
   ): Promise<void> {
-    if (isProjectManager) return;
-    if (task.creatorProjectMembershipId === actorProjectMembershipId) return;
+    if (
+      isProjectManager ||
+      task.creatorProjectMembershipId === actorProjectMembershipId
+    ) {
+      assertTaskExecutionAccess(
+        actorProjectMembershipId,
+        isProjectManager ? 'PROJECT_MANAGER' : null,
+        task.creatorProjectMembershipId,
+        [],
+      );
+      return;
+    }
     const assignment = await new PostgresTaskAssigneeRepository(
       manager,
     ).findByTaskAndProjectMembershipForUpdate(
@@ -711,23 +1120,63 @@ export class PostgresTaskService {
       task.id,
       actorProjectMembershipId,
     );
-    if (!assignment || assignment.removedAt) {
-      throw new ForbiddenException(
-        'Only the Task creator, an active assignee or an active Project Manager may execute this Task',
+    assertTaskExecutionAccess(
+      actorProjectMembershipId,
+      null,
+      task.creatorProjectMembershipId,
+      assignment && !assignment.removedAt ? [actorProjectMembershipId] : [],
+    );
+  }
+
+  private requireCommentModeration(
+    comment: CommentEntity,
+    membershipId: string,
+    role: ProjectRole,
+  ): void {
+    if (
+      comment.authorProjectMembershipId === membershipId ||
+      role === ProjectRole.PROJECT_MANAGER
+    )
+      return;
+    throw withErrorCode(
+      new ForbiddenException(
+        'Only the Comment author or an active Project Manager may moderate this Comment',
+      ),
+      'TASK_COMMENT_MODERATION_REQUIRED',
+    );
+  }
+
+  private async requireEligibleApprover(
+    manager: EntityManager,
+    organizationId: string,
+    projectId: string,
+    task: TaskEntity,
+    projectMembershipId: string,
+  ): Promise<void> {
+    const member = await this.requireActiveProjectMembershipById(
+      manager,
+      organizationId,
+      projectId,
+      projectMembershipId,
+    );
+    if (member.id === task.creatorProjectMembershipId)
+      throw withErrorCode(
+        new ConflictException('Task creator cannot approve this Task'),
+        'TASK_APPROVER_SELF_APPROVAL',
       );
-    }
-  }
-
-  private requireCommentModeration(comment: CommentEntity, membershipId: string, role: ProjectRole): void {
-    if (comment.authorProjectMembershipId === membershipId || role === ProjectRole.PROJECT_MANAGER) return;
-    throw new ForbiddenException('Only the Comment author or an active Project Manager may moderate this Comment');
-  }
-
-  private async requireEligibleApprover(manager: EntityManager, organizationId: string, projectId: string, task: TaskEntity, projectMembershipId: string): Promise<void> {
-    const member = await this.requireActiveProjectMembershipById(manager, organizationId, projectId, projectMembershipId);
-    if (member.id === task.creatorProjectMembershipId) throw new ConflictException('Task creator cannot approve this Task');
-    const assignment = await new PostgresTaskAssigneeRepository(manager).findByTaskAndProjectMembershipForUpdate(organizationId, projectId, task.id, member.id);
-    if (assignment && !assignment.removedAt) throw new ConflictException('Active Task assignee cannot approve this Task');
+    const assignment = await new PostgresTaskAssigneeRepository(
+      manager,
+    ).findByTaskAndProjectMembershipForUpdate(
+      organizationId,
+      projectId,
+      task.id,
+      member.id,
+    );
+    if (assignment && !assignment.removedAt)
+      throw withErrorCode(
+        new ConflictException('Active Task assignee cannot approve this Task'),
+        'TASK_APPROVER_SELF_APPROVAL',
+      );
   }
 
   private async requireTaskNotCompleted(
@@ -740,8 +1189,9 @@ export class PostgresTaskService {
       manager,
     ).findActiveByIdForUpdate(organizationId, projectId, task.statusId);
     if (status?.semanticCategory === TaskStatusSemanticCategory.COMPLETED) {
-      throw new ConflictException(
-        'Reopen the Task before changing its checklist',
+      throw withErrorCode(
+        new ConflictException('Reopen the Task before changing its checklist'),
+        'TASK_COMPLETED',
       );
     }
   }
@@ -758,16 +1208,47 @@ export class PostgresTaskService {
       projectId,
     );
     if (membership.role !== ProjectRole.PROJECT_MANAGER) {
-      throw new ForbiddenException('An active Project Manager is required');
+      throw withErrorCode(
+        new ForbiddenException('An active Project Manager is required'),
+        'PROJECT_MANAGER_REQUIRED',
+      );
     }
   }
 
-  private async requireOpenMilestone(manager: EntityManager, organizationId: string, projectId: string, milestoneId: string): Promise<void> {
-    const setting = await new PostgresProjectModuleSettingRepository(manager).findByProjectAndCodeForUpdate(organizationId, projectId, ProjectModuleCode.MILESTONES);
-    if (!setting?.enabled) throw new ConflictException('Project module is disabled');
-    const milestone = await new PostgresMilestoneRepository(manager).findByIdForUpdate(organizationId, projectId, milestoneId);
-    if (!milestone) throw new NotFoundException('Milestone not found');
-    if (milestone.archivedAt || milestone.statusCode !== MilestoneStatusCode.OPEN) throw new ConflictException('Only an open Milestone may receive Tasks');
+  private async requireOpenMilestone(
+    manager: EntityManager,
+    organizationId: string,
+    projectId: string,
+    milestoneId: string,
+  ): Promise<void> {
+    const setting = await new PostgresProjectModuleSettingRepository(
+      manager,
+    ).findByProjectAndCodeForUpdate(
+      organizationId,
+      projectId,
+      ProjectModuleCode.MILESTONES,
+    );
+    if (!setting?.enabled)
+      throw withErrorCode(
+        new ConflictException('Project module is disabled'),
+        'PROJECT_MODULE_DISABLED',
+      );
+    const milestone = await new PostgresMilestoneRepository(
+      manager,
+    ).findByIdForUpdate(organizationId, projectId, milestoneId);
+    if (!milestone)
+      throw withErrorCode(
+        new NotFoundException('Milestone not found'),
+        'RESOURCE_NOT_FOUND',
+      );
+    if (
+      milestone.archivedAt ||
+      milestone.statusCode !== MilestoneStatusCode.OPEN
+    )
+      throw withErrorCode(
+        new ConflictException('Only an open Milestone may receive Tasks'),
+        'TASK_MILESTONE_NOT_OPEN',
+      );
   }
 
   private async requireMutableProject(
@@ -778,22 +1259,33 @@ export class PostgresTaskService {
     const project = await new PostgresProjectRepository(
       manager,
     ).findByIdForUpdate(organizationId, projectId);
-    if (!project) throw new NotFoundException('Project not found');
-    if (
-      project.state === ProjectState.COMPLETED ||
-      project.state === ProjectState.ARCHIVED
-    ) {
-      throw new ConflictException(
-        'Completed and archived projects are read-only',
+    if (!project)
+      throw withErrorCode(
+        new NotFoundException('Project not found'),
+        'RESOURCE_NOT_FOUND',
       );
-    }
+    assertTaskMutable(project.state, null);
   }
 
-  private requireActiveProjectMembership(
+  private async requireActiveProjectMembership(
     manager: EntityManager,
     actor: PostgresProjectActor,
     projectId: string,
   ) {
+    if (
+      !(await activeTaskIdentity(
+        manager,
+        actor.organizationId,
+        actor.membershipId,
+        true,
+      ))
+    )
+      throw withErrorCode(
+        new ForbiddenException(
+          'Active Organization membership and an enabled account are required',
+        ),
+        'TENANT_MEMBERSHIP_REQUIRED',
+      );
     return new PostgresProjectMembershipRepository(manager)
       .findActiveByProjectAndOrganizationMembershipForUpdate(
         actor.organizationId,
@@ -802,7 +1294,10 @@ export class PostgresTaskService {
       )
       .then((membership) => {
         if (!membership)
-          throw new ForbiddenException('Active Project membership is required');
+          throw withErrorCode(
+            new ForbiddenException('Active Project membership is required'),
+            'PROJECT_MEMBERSHIP_REQUIRED',
+          );
         return membership;
       });
   }
@@ -817,8 +1312,20 @@ export class PostgresTaskService {
       manager,
     ).findByProjectAndTeamForUpdate(organizationId, projectId, teamId);
     if (!relation || relation.removedAt) {
-      throw new NotFoundException('Active Participating Team not found');
+      throw withErrorCode(
+        new NotFoundException('Active Participating Team not found'),
+        'RESOURCE_NOT_FOUND',
+      );
     }
+    const teams = await manager.query<Array<{ id: string }>>(
+      'SELECT id FROM teams WHERE organization_id = $1 AND id = $2 AND archived_at IS NULL FOR SHARE',
+      [organizationId, teamId],
+    );
+    if (!teams.length)
+      throw withErrorCode(
+        new NotFoundException('Active owning Team not found'),
+        'RESOURCE_NOT_FOUND',
+      );
   }
 
   private async requireActiveProjectMembershipById(
@@ -831,8 +1338,25 @@ export class PostgresTaskService {
       manager,
     ).findActiveByIdForUpdate(organizationId, projectId, projectMembershipId);
     if (!membership) {
-      throw new NotFoundException('Active Project member not found');
+      throw withErrorCode(
+        new NotFoundException('Active Project member not found'),
+        'RESOURCE_NOT_FOUND',
+      );
     }
+    if (
+      !(await activeTaskIdentity(
+        manager,
+        organizationId,
+        membership.organizationMembershipId,
+        true,
+      ))
+    )
+      throw withErrorCode(
+        new ConflictException(
+          'Project member must have active Organization membership and an enabled account',
+        ),
+        'TASK_MEMBER_INELIGIBLE',
+      );
     return membership;
   }
 
@@ -850,8 +1374,11 @@ export class PostgresTaskService {
       organizationMembershipId,
     );
     if (!membership) {
-      throw new ConflictException(
-        'Project member must belong to the Task owning Team',
+      throw withErrorCode(
+        new ConflictException(
+          'Project member must belong to the Task owning Team',
+        ),
+        'TASK_ASSIGNEE_TEAM_REQUIRED',
       );
     }
   }
@@ -892,31 +1419,50 @@ export class PostgresTaskService {
       manager,
     ).findActiveByIdForUpdate(organizationId, projectId, statusId);
     if (!status)
-      throw new NotFoundException('Active Project Task Status not found');
+      throw withErrorCode(
+        new NotFoundException('Active Project Task Status not found'),
+        'RESOURCE_NOT_FOUND',
+      );
   }
 }
 
 function requiredTitle(value: string): string {
   const title = value.trim();
-  if (!title) throw new BadRequestException('Task title is required');
+  if (!title)
+    throw withErrorCode(
+      new BadRequestException('Task title is required'),
+      'REQUEST_VALIDATION_FAILED',
+    );
   return title;
 }
 
 function requiredPriority(value: string): string {
   const priority = value.trim();
-  if (!priority) throw new BadRequestException('Task priority is required');
+  if (!priority)
+    throw withErrorCode(
+      new BadRequestException('Task priority is required'),
+      'REQUEST_VALIDATION_FAILED',
+    );
   return priority;
 }
 
 function requiredChecklistText(value: string): string {
   const text = value.trim();
-  if (!text) throw new BadRequestException('Checklist item text is required');
+  if (!text)
+    throw withErrorCode(
+      new BadRequestException('Checklist item text is required'),
+      'REQUEST_VALIDATION_FAILED',
+    );
   return text;
 }
 
 function requiredCommentBody(value: string): string {
   const body = value.trim();
-  if (!body) throw new BadRequestException('Comment body is required');
+  if (!body)
+    throw withErrorCode(
+      new BadRequestException('Comment body is required'),
+      'REQUEST_VALIDATION_FAILED',
+    );
   return body;
 }
 
@@ -951,6 +1497,9 @@ function parseDueAt(value: string | null | undefined): Date | null {
   if (value === undefined || value === null) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime()))
-    throw new BadRequestException('Task due date must be a valid ISO date');
+    throw withErrorCode(
+      new BadRequestException('Task due date must be a valid ISO date'),
+      'REQUEST_VALIDATION_FAILED',
+    );
   return date;
 }

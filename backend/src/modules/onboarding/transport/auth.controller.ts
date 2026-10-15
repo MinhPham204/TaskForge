@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Patch,
   Post,
   Req,
@@ -25,6 +26,8 @@ import {
   ChangePostgresPasswordDto,
   PostgresLoginDto,
   PostgresRegisterDto,
+  PostgresResetPasswordDto,
+  PostgresForgotPasswordDto,
   PostgresVerifyOtpDto,
   UpdatePostgresProfileDto,
   UpdatePostgresPersonalPreferencesDto,
@@ -58,7 +61,10 @@ export class PostgresAuthController {
   @ApiOperation({
     summary: 'Create a global user after email verification (no workspace)',
   })
-  completeSignup(@Req() request: { headers: Record<string, string | undefined> }, @Body() dto: PostgresCompleteSignupDto) {
+  completeSignup(
+    @Req() request: { headers: Record<string, string | undefined> },
+    @Body() dto: PostgresCompleteSignupDto,
+  ) {
     return this.auth.completeSignup(readBearerToken(request), dto);
   }
 
@@ -68,15 +74,38 @@ export class PostgresAuthController {
     return this.auth.login(dto);
   }
 
+  @Post('forgot-password')
+  @HttpCode(202)
+  forgotPassword(
+    @Body() dto: PostgresForgotPasswordDto,
+    @Req() request: { ip?: string },
+  ) {
+    return this.auth.forgotPassword(dto.email, request.ip ?? 'unknown');
+  }
+
+  @Post('reset-password')
+  @HttpCode(200)
+  resetPassword(
+    @Body() dto: PostgresResetPasswordDto,
+    @Req() request: { ip?: string },
+  ) {
+    return this.auth.resetPassword(dto, request.ip ?? 'unknown');
+  }
+
   @Post('refresh')
   @ApiBearerAuth('accessToken')
   @ApiOperation({ summary: 'Rotate an authenticated refresh token' })
-  async refresh(@Req() request: { headers: Record<string, string | undefined> }) {
+  async refresh(
+    @Req() request: { headers: Record<string, string | undefined> },
+  ) {
     const refreshToken = readBearerToken(request);
     try {
-      const payload = await this.jwt.verifyAsync<{ sub: string }>(refreshToken, {
-        secret: requiredConfig(this.config, 'JWT_REFRESH_SECRET'),
-      });
+      const payload = await this.jwt.verifyAsync<{ sub: string }>(
+        refreshToken,
+        {
+          secret: requiredConfig(this.config, 'JWT_REFRESH_SECRET'),
+        },
+      );
       return this.auth.refreshTokens(payload.sub, refreshToken);
     } catch (error) {
       if (error instanceof UnauthorizedException) {
@@ -131,7 +160,9 @@ export class PostgresAuthController {
   @UseGuards(PostgresJwtAuthGuard)
   @ApiBearerAuth('accessToken')
   @Patch('change-password')
-  @ApiOkResponse({ description: 'Password changed and refresh credential revoked' })
+  @ApiOkResponse({
+    description: 'Password changed and refresh credential revoked',
+  })
   changePassword(
     @PostgresCurrentUserId() userId: string,
     @Body() dto: ChangePostgresPasswordDto,

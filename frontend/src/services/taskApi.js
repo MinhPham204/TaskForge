@@ -14,9 +14,17 @@ export const taskApi = createApi({
     'ProjectTaskReport',
     'MyTasks',
     'ApprovalQueue',
+    'AssignmentCandidates',
   ],
   endpoints: (builder) => ({
     // ─── PostgreSQL Project Tasks Queries ─────────────────────────────────────
+    getTaskAssignmentCandidates: builder.query({
+      query: ({ projectId, teamId }) => ({ url: API_PATHS.PROJECTS.TASKS.ASSIGNMENT_CANDIDATES(projectId), method: 'get', params: { teamId } }),
+      providesTags: (result, error, { projectId, teamId }) => [
+        { type: 'AssignmentCandidates', id: `PROJECT:${projectId}` },
+        { type: 'AssignmentCandidates', id: `TEAM:${teamId}` },
+      ],
+    }),
     getProjectTasks: builder.query({
       query: ({ projectId, ...params }) => ({
         url: API_PATHS.PROJECTS.TASKS.LIST(projectId),
@@ -88,19 +96,14 @@ export const taskApi = createApi({
     }),
 
     // ─── PostgreSQL Task Mutations ───────────────────────────────────────────
+    // Scoped read reconciliation (including cross-slice projections) is owned
+    // by store/taskCacheListener.js and registered in the application store.
     createProjectTask: builder.mutation({
       query: ({ projectId, ...data }) => ({
         url: API_PATHS.PROJECTS.TASKS.CREATE(projectId),
         method: 'post',
         data,
       }),
-      invalidatesTags: (result, error, { projectId }) => [
-        { type: 'ProjectTaskList', id: projectId },
-        { type: 'ProjectTaskBoard', id: projectId },
-        { type: 'ProjectTaskOverview', id: projectId },
-        { type: 'ProjectTaskReport', id: projectId },
-        'MyTasks',
-      ],
     }),
 
     updateProjectTask: builder.mutation({
@@ -109,14 +112,6 @@ export const taskApi = createApi({
         method: 'patch',
         data,
       }),
-      invalidatesTags: (result, error, { projectId, taskId }) => [
-        { type: 'Task', id: taskId },
-        { type: 'ProjectTaskList', id: projectId },
-        { type: 'ProjectTaskBoard', id: projectId },
-        { type: 'ProjectTaskOverview', id: projectId },
-        { type: 'ProjectTaskReport', id: projectId },
-        'MyTasks',
-      ],
     }),
 
     archiveProjectTask: builder.mutation({
@@ -124,15 +119,6 @@ export const taskApi = createApi({
         url: API_PATHS.PROJECTS.TASKS.ARCHIVE(projectId, taskId),
         method: 'delete',
       }),
-      invalidatesTags: (result, error, { projectId, taskId }) => [
-        { type: 'Task', id: taskId },
-        { type: 'ProjectTaskList', id: projectId },
-        { type: 'ProjectTaskBoard', id: projectId },
-        { type: 'ProjectTaskOverview', id: projectId },
-        { type: 'ProjectTaskReport', id: projectId },
-        'MyTasks',
-        'ApprovalQueue',
-      ],
     }),
 
     transitionTaskStatus: builder.mutation({
@@ -141,12 +127,6 @@ export const taskApi = createApi({
         method: 'patch',
         data: { statusId },
       }),
-      invalidatesTags: (result, error, { projectId }) => [
-        { type: 'ProjectTaskList', id: projectId },
-        { type: 'ProjectTaskOverview', id: projectId },
-        { type: 'ProjectTaskReport', id: projectId },
-        'MyTasks',
-      ],
     }),
 
     setTaskManualProgress: builder.mutation({
@@ -155,14 +135,6 @@ export const taskApi = createApi({
         method: 'patch',
         data: { manualProgress },
       }),
-      invalidatesTags: (result, error, { projectId, taskId }) => [
-        { type: 'Task', id: taskId },
-        { type: 'ProjectTaskList', id: projectId },
-        { type: 'ProjectTaskBoard', id: projectId },
-        { type: 'ProjectTaskOverview', id: projectId },
-        { type: 'ProjectTaskReport', id: projectId },
-        'MyTasks',
-      ],
     }),
 
     addChecklistItem: builder.mutation({
@@ -171,14 +143,6 @@ export const taskApi = createApi({
         method: 'post',
         data: { text },
       }),
-      invalidatesTags: (result, error, { projectId, taskId }) => [
-        { type: 'Task', id: taskId },
-        { type: 'ProjectTaskList', id: projectId },
-        { type: 'ProjectTaskBoard', id: projectId },
-        { type: 'ProjectTaskOverview', id: projectId },
-        { type: 'ProjectTaskReport', id: projectId },
-        'MyTasks',
-      ],
     }),
 
     setChecklistItemCompletion: builder.mutation({
@@ -187,27 +151,6 @@ export const taskApi = createApi({
         method: 'patch',
         data: { completed },
       }),
-      async onQueryStarted({ projectId, taskId, itemId, completed }, { dispatch, queryFulfilled }) {
-        const patch = dispatch(
-          taskApi.util.updateQueryData(
-            'getProjectTaskDetail',
-            { projectId, taskId },
-            (draft) => {
-              const item = draft?.checklist?.find((entry) => entry.id === itemId);
-              if (item) item.completedAt = completed ? new Date().toISOString() : null;
-            },
-          ),
-        );
-        try {
-          await queryFulfilled;
-        } catch {
-          patch.undo();
-        }
-      },
-      invalidatesTags: (result, error, { projectId }) => [
-        { type: 'ProjectTaskOverview', id: projectId },
-        { type: 'ProjectTaskReport', id: projectId },
-      ],
     }),
 
     createComment: builder.mutation({
@@ -216,7 +159,6 @@ export const taskApi = createApi({
         method: 'post',
         data: { body },
       }),
-      invalidatesTags: (result, error, { taskId }) => [{ type: 'Task', id: taskId }],
     }),
 
     editComment: builder.mutation({
@@ -225,7 +167,6 @@ export const taskApi = createApi({
         method: 'patch',
         data: { body },
       }),
-      invalidatesTags: (result, error, { taskId }) => [{ type: 'Task', id: taskId }],
     }),
 
     deleteComment: builder.mutation({
@@ -233,7 +174,6 @@ export const taskApi = createApi({
         url: API_PATHS.PROJECTS.TASKS.COMMENT(projectId, taskId, commentId),
         method: 'delete',
       }),
-      invalidatesTags: (result, error, { taskId }) => [{ type: 'Task', id: taskId }],
     }),
 
     assignTask: builder.mutation({
@@ -242,13 +182,6 @@ export const taskApi = createApi({
         method: 'post',
         data: { projectMembershipId },
       }),
-      invalidatesTags: (result, error, { projectId, taskId }) => [
-        { type: 'Task', id: taskId },
-        { type: 'ProjectTaskList', id: projectId },
-        { type: 'ProjectTaskBoard', id: projectId },
-        { type: 'ProjectTaskReport', id: projectId },
-        'MyTasks',
-      ],
     }),
 
     unassignTask: builder.mutation({
@@ -256,13 +189,6 @@ export const taskApi = createApi({
         url: API_PATHS.PROJECTS.TASKS.ASSIGNEE(projectId, taskId, projectMembershipId),
         method: 'delete',
       }),
-      invalidatesTags: (result, error, { projectId, taskId }) => [
-        { type: 'Task', id: taskId },
-        { type: 'ProjectTaskList', id: projectId },
-        { type: 'ProjectTaskBoard', id: projectId },
-        { type: 'ProjectTaskReport', id: projectId },
-        'MyTasks',
-      ],
     }),
 
     configureApproval: builder.mutation({
@@ -271,12 +197,6 @@ export const taskApi = createApi({
         method: 'patch',
         data: { approverProjectMembershipId: approverProjectMembershipId ?? null },
       }),
-      invalidatesTags: (result, error, { projectId, taskId }) => [
-        { type: 'Task', id: taskId },
-        { type: 'ProjectTaskList', id: projectId },
-        { type: 'ProjectTaskBoard', id: projectId },
-        'ApprovalQueue',
-      ],
     }),
 
     requestApproval: builder.mutation({
@@ -285,12 +205,6 @@ export const taskApi = createApi({
         method: 'post',
         data: { reason },
       }),
-      invalidatesTags: (result, error, { projectId, taskId }) => [
-        { type: 'Task', id: taskId },
-        { type: 'ProjectTaskList', id: projectId },
-        { type: 'ProjectTaskBoard', id: projectId },
-        'ApprovalQueue',
-      ],
     }),
 
     resolveApproval: builder.mutation({
@@ -299,13 +213,6 @@ export const taskApi = createApi({
         method: 'post',
         data: { reason },
       }),
-      invalidatesTags: (result, error, { projectId, taskId }) => [
-        { type: 'Task', id: taskId },
-        { type: 'ProjectTaskList', id: projectId },
-        { type: 'ProjectTaskBoard', id: projectId },
-        'ApprovalQueue',
-        'MyTasks',
-      ],
     }),
 
   }),
@@ -328,6 +235,7 @@ export const exportProjectTasksCsv = async (projectId, params = {}) => {
 };
 
 export const {
+  useGetTaskAssignmentCandidatesQuery,
   // PostgreSQL Hooks
   useGetProjectTasksQuery,
   useGetProjectTaskBoardQuery,

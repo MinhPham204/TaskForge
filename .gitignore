@@ -19,6 +19,8 @@ node_modules/
 # ===============================
 dist/
 dist-ssr/
+/output/landing/
+/output/task-performance/
 *.local
 
 # ===============================

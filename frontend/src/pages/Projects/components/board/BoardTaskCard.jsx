@@ -6,9 +6,10 @@ import {
   LuArrowUp,
   LuMinus,
   LuArrowDown,
-  LuCheck,
 } from 'react-icons/lu';
 import { isTaskOverdue } from '../../../../utils/taskAttention';
+import { getTaskCapability } from '../../../../utils/taskCapabilities';
+import { boardTransitionMessage } from '../../../../utils/boardTransitions';
 
 const MODULE_COLORS = {
   Security: 'text-slate-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-300',
@@ -33,35 +34,37 @@ function getMonogram(name = '') {
   return name.slice(0, 2).toUpperCase() || 'TK';
 }
 
-const BoardTaskCard = ({
+export const BoardTaskCard = ({
   task,
+  members = [],
+  dragBlocked = false,
   isCompletedColumn,
   onSelectTask,
   onDragStart,
   onDragEnd,
 }) => {
-  const isCompleted = isCompletedColumn || task.isCompleted || task.semanticCategory === 'COMPLETED';
-  const overdue = isTaskOverdue(task);
+  const capability = getTaskCapability(task, 'transition');
+  const access = capability.allowed && dragBlocked
+    ? { allowed: false, reason: 'BOARD_REFRESH_REQUIRED' } : capability;
+  const dragAllowed = access.allowed && typeof onDragStart === 'function';
+  const dragReason = access.reason === 'BOARD_REFRESH_REQUIRED' ? 'Wait for the current move or refresh the Board before moving another Task.' : boardTransitionMessage(access);
+  const isCompleted = isCompletedColumn || task.semanticCategory === 'COMPLETED';
+  const overdue = isTaskOverdue(task.dueAt, isCompleted ? 'COMPLETED' : task.semanticCategory);
 
   // Derive task code (e.g. TK-94)
   const taskCode = task.code || task.customId || `TK-${String(task.id).slice(-3)}`;
 
   // Derive category/module label
-  const moduleLabel = task.moduleName || task.module?.name || task.teamName || task.category || 'General';
+  const moduleLabel = task.owningTeamName || 'General';
 
   // Calculate progress %
-  let progress = 0;
-  if (isCompleted) {
-    progress = 100;
-  } else if (task.checklistTotal > 0) {
-    progress = Math.round((task.checklistCompleted / task.checklistTotal) * 100);
-  } else if (task.progress !== undefined) {
-    progress = task.progress;
-  }
+  const progress = isCompleted ? 100 : (task.effectiveProgress ?? 0);
 
   // Assignee initials
-  const assigneeName = task.assigneeName || task.assignee?.name || task.assignee?.user?.name || '';
-  const assigneeInitials = assigneeName ? getMonogram(assigneeName) : null;
+  const assignees = (task.assigneeProjectMembershipIds || []).map(id => {
+    const member = members.find(entry => (entry.projectMembershipId || entry.id) === id);
+    return { id, name: member?.user?.name || 'Unknown member' };
+  });
 
   // Format Due Date
   const formatDueDate = (dateStr) => {
@@ -106,11 +109,11 @@ const BoardTaskCard = ({
 
   return (
     <article
-      draggable
-      onDragStart={(e) => onDragStart(e, task.id)}
+      draggable={dragAllowed}
+      onDragStart={(e) => { if (dragAllowed) onDragStart(e, task.id); else e.preventDefault(); }}
       onDragEnd={onDragEnd}
       onClick={() => onSelectTask && onSelectTask(task.id)}
-      className={`bg-surface rounded-lg p-3.5 border border-border hover:border-primary/40 hover:shadow-xs transition cursor-grab active:cursor-grabbing group select-none ${
+      className={`bg-surface rounded-lg p-3.5 border border-border hover:border-primary/40 hover:shadow-xs transition ${dragAllowed ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} group select-none ${
         isCompleted ? 'opacity-90' : ''
       }`}
     >
@@ -119,7 +122,7 @@ const BoardTaskCard = ({
         <div className="flex items-center space-x-1.5">
           <LuGripVertical
             className="w-3.5 h-3.5 text-content-muted/40 group-hover:text-content-muted transition-colors mr-0.5 shrink-0"
-            title="Drag to reorder or move status"
+            title={dragAllowed ? 'Drag to change status' : dragReason}
           />
           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border border-border/40 truncate max-w-[130px] ${getModuleStyle(moduleLabel)}`}>
             {moduleLabel}
@@ -138,6 +141,7 @@ const BoardTaskCard = ({
       >
         {task.title}
       </h4>
+      {!dragAllowed && <p className="text-[10px] text-content-muted mt-1">{dragReason}</p>}
 
       {/* Description */}
       {task.description && (
@@ -171,7 +175,7 @@ const BoardTaskCard = ({
 
         {/* Due Date & Assignee Avatar */}
         <div className="flex items-center space-x-2">
-          {task.dueDate && (
+          {task.dueAt && (
             <span
               className={`text-[10px] font-medium flex items-center ${
                 overdue
@@ -180,27 +184,24 @@ const BoardTaskCard = ({
               }`}
             >
               <LuCalendar className="w-3 h-3 mr-0.5" />
-              {formatDueDate(task.dueDate)}
+              {formatDueDate(task.dueAt)}
             </span>
           )}
 
-          {assigneeInitials ? (
+          {assignees.map(assignee => (
             <div
+              key={assignee.id}
               className="w-5 h-5 rounded-full bg-zinc-800 text-white text-[9px] font-bold flex items-center justify-center ring-1 ring-border shrink-0"
-              title={assigneeName}
+              title={assignee.name}
+              aria-label={assignee.name}
             >
-              {assigneeInitials}
+              {getMonogram(assignee.name)}
             </div>
-          ) : task.checklistTotal > 0 ? (
-            <div className="flex items-center text-[10px] text-content-muted">
-              <LuCheck className="w-3 h-3 mr-0.5" />
-              <span>{task.checklistCompleted}/{task.checklistTotal}</span>
-            </div>
-          ) : null}
+          ))}
         </div>
       </div>
     </article>
   );
 };
 
-export default BoardTaskCard;
+export default React.memo(BoardTaskCard);

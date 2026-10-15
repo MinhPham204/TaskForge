@@ -10,6 +10,7 @@ import {
   Post,
   Query,
   Req,
+  UseFilters,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -26,6 +27,7 @@ import {
   PostgresTenantMembershipGuard,
   type PostgresTenantRequest,
 } from '../../onboarding/tenant/tenant-membership.guard';
+import { CodedErrorFilter } from '../../../common/http/coded-error.filter';
 import { PostgresTaskService } from '../application/task.service';
 import { PostgresTaskReadService } from '../application/task-read.service';
 import {
@@ -46,6 +48,7 @@ import {
 @ApiTags('PostgreSQL tasks')
 @ApiBearerAuth('accessToken')
 @Controller('projects/:projectId/tasks')
+@UseFilters(CodedErrorFilter)
 @UseGuards(PostgresJwtAuthGuard, PostgresTenantMembershipGuard)
 @UseInterceptors(PostgresTenantInterceptor)
 export class PostgresTaskController {
@@ -55,7 +58,9 @@ export class PostgresTaskController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'List visible Tasks with scoped filters and search' })
+  @ApiOperation({
+    summary: 'List visible Tasks with scoped filters and search',
+  })
   list(
     @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
     @Query() query: PostgresTaskQueryDto,
@@ -104,6 +109,19 @@ export class PostgresTaskController {
     @Req() request: PostgresTenantRequest,
   ) {
     return this.reads.exportCsv(actor(request), projectId, query);
+  }
+
+  @Get('assignment-candidates')
+  @ApiOperation({
+    summary:
+      'List active Project members in the owning Team eligible for assignment',
+  })
+  assignmentCandidates(
+    @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
+    @Query('teamId', new ParseUUIDPipe({ version: '4' })) teamId: string,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    return this.reads.assignmentCandidates(actor(request), projectId, teamId);
   }
 
   @Get(':taskId')
@@ -161,7 +179,9 @@ export class PostgresTaskController {
   }
 
   @Patch(':taskId/manual-progress')
-  @ApiOperation({ summary: 'Set manual progress when the Task has no checklist' })
+  @ApiOperation({
+    summary: 'Set manual progress when the Task has no checklist',
+  })
   @ApiOkResponse({ description: 'Task manual progress updated' })
   setManualProgress(
     @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
@@ -216,20 +236,52 @@ export class PostgresTaskController {
     @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
     @Param('taskId', new ParseUUIDPipe({ version: '4' })) taskId: string,
     @Req() request: PostgresTenantRequest,
-  ) { return this.tasks.listComments(actor(request), projectId, taskId); }
+  ) {
+    return this.tasks.listComments(actor(request), projectId, taskId);
+  }
 
   @Patch(':taskId/approval')
-  configureApproval(@Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string, @Param('taskId', new ParseUUIDPipe({ version: '4' })) taskId: string, @Body() dto: ConfigurePostgresTaskApprovalDto, @Req() request: PostgresTenantRequest) {
-    return this.tasks.configureApproval(actor(request), projectId, taskId, { approverProjectMembershipId: dto.approverProjectMembershipId ?? null });
+  configureApproval(
+    @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
+    @Param('taskId', new ParseUUIDPipe({ version: '4' })) taskId: string,
+    @Body() dto: ConfigurePostgresTaskApprovalDto,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    return this.tasks.configureApproval(actor(request), projectId, taskId, {
+      approverProjectMembershipId: dto.approverProjectMembershipId ?? null,
+    });
   }
   @Post(':taskId/approval-requests')
-  requestApproval(@Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string, @Param('taskId', new ParseUUIDPipe({ version: '4' })) taskId: string, @Body() dto: ResolvePostgresTaskApprovalDto, @Req() request: PostgresTenantRequest) {
-    return this.tasks.requestApproval(actor(request), projectId, taskId, dto.reason);
+  requestApproval(
+    @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
+    @Param('taskId', new ParseUUIDPipe({ version: '4' })) taskId: string,
+    @Body() dto: ResolvePostgresTaskApprovalDto,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    return this.tasks.requestApproval(
+      actor(request),
+      projectId,
+      taskId,
+      dto.reason,
+    );
   }
   @Post(':taskId/approval-requests/:action')
-  resolveApproval(@Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string, @Param('taskId', new ParseUUIDPipe({ version: '4' })) taskId: string, @Param('action') action: 'approve' | 'reject' | 'cancel', @Body() dto: ResolvePostgresTaskApprovalDto, @Req() request: PostgresTenantRequest) {
-    if (!['approve', 'reject', 'cancel'].includes(action)) throw new Error('Invalid approval action');
-    return this.tasks.resolveApproval(actor(request), projectId, taskId, action, dto.reason);
+  resolveApproval(
+    @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
+    @Param('taskId', new ParseUUIDPipe({ version: '4' })) taskId: string,
+    @Param('action') action: 'approve' | 'reject' | 'cancel',
+    @Body() dto: ResolvePostgresTaskApprovalDto,
+    @Req() request: PostgresTenantRequest,
+  ) {
+    if (!['approve', 'reject', 'cancel'].includes(action))
+      throw new Error('Invalid approval action');
+    return this.tasks.resolveApproval(
+      actor(request),
+      projectId,
+      taskId,
+      action,
+      dto.reason,
+    );
   }
 
   @Post(':taskId/comments')
@@ -239,7 +291,9 @@ export class PostgresTaskController {
     @Param('taskId', new ParseUUIDPipe({ version: '4' })) taskId: string,
     @Body() dto: CreatePostgresCommentDto,
     @Req() request: PostgresTenantRequest,
-  ) { return this.tasks.createComment(actor(request), projectId, taskId, dto); }
+  ) {
+    return this.tasks.createComment(actor(request), projectId, taskId, dto);
+  }
 
   @Patch(':taskId/comments/:commentId')
   @ApiOkResponse({ description: 'Comment updated' })
@@ -249,7 +303,15 @@ export class PostgresTaskController {
     @Param('commentId', new ParseUUIDPipe({ version: '4' })) commentId: string,
     @Body() dto: UpdatePostgresCommentDto,
     @Req() request: PostgresTenantRequest,
-  ) { return this.tasks.editComment(actor(request), projectId, taskId, commentId, dto); }
+  ) {
+    return this.tasks.editComment(
+      actor(request),
+      projectId,
+      taskId,
+      commentId,
+      dto,
+    );
+  }
 
   @Delete(':taskId/comments/:commentId')
   @ApiOkResponse({ description: 'Comment soft-deleted' })
@@ -258,7 +320,14 @@ export class PostgresTaskController {
     @Param('taskId', new ParseUUIDPipe({ version: '4' })) taskId: string,
     @Param('commentId', new ParseUUIDPipe({ version: '4' })) commentId: string,
     @Req() request: PostgresTenantRequest,
-  ) { return this.tasks.deleteComment(actor(request), projectId, taskId, commentId); }
+  ) {
+    return this.tasks.deleteComment(
+      actor(request),
+      projectId,
+      taskId,
+      commentId,
+    );
+  }
 
   @Post(':taskId/assignees')
   @ApiOperation({ summary: 'Assign an active owning-Team Project Member' })
@@ -310,13 +379,16 @@ export class PostgresTaskController {
 @ApiTags('PostgreSQL tasks')
 @ApiBearerAuth('accessToken')
 @Controller('tasks')
+@UseFilters(CodedErrorFilter)
 @UseGuards(PostgresJwtAuthGuard, PostgresTenantMembershipGuard)
 @UseInterceptors(PostgresTenantInterceptor)
 export class PostgresWorkspaceTaskReadController {
   constructor(private readonly reads: PostgresTaskReadService) {}
 
   @Get('my')
-  @ApiOperation({ summary: 'List Tasks assigned to the actor across visible Projects' })
+  @ApiOperation({
+    summary: 'List Tasks assigned to the actor across visible Projects',
+  })
   myTasks(
     @Query() query: PostgresTaskQueryDto,
     @Req() request: PostgresTenantRequest,
@@ -325,7 +397,9 @@ export class PostgresWorkspaceTaskReadController {
   }
 
   @Get('approval-queue')
-  @ApiOperation({ summary: 'List pending approval requests assigned to the actor' })
+  @ApiOperation({
+    summary: 'List pending approval requests assigned to the actor',
+  })
   approvalQueue(@Req() request: PostgresTenantRequest) {
     return this.reads.approvalQueue(actor(request));
   }

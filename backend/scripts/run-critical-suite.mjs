@@ -24,6 +24,15 @@ const testFiles = [
   'test/organization-rbac.integration.e2e-spec.ts',
   'test/optional-modules-cross-capability.integration.e2e-spec.ts',
   'test/outbox.integration.e2e-spec.ts',
+  'test/p12-task-contract.integration.e2e-spec.ts',
+  'test/p12-http-boundary.integration.e2e-spec.ts',
+  'test/p12-task-cache.integration.e2e-spec.ts',
+  'test/p12-task-editor.integration.e2e-spec.ts',
+  'test/p12-task-assignment.integration.e2e-spec.ts',
+  'test/p12-board-transitions.integration.e2e-spec.ts',
+  'test/p12-attachments.integration.e2e-spec.ts',
+  'test/p12-reset-session.integration.e2e-spec.ts',
+  'test/p12-browser.integration.e2e-spec.ts',
   'test/personal-preferences.integration.e2e-spec.ts',
   'test/project-authorization.integration.e2e-spec.ts',
   'test/project-lifecycle.integration.e2e-spec.ts',
@@ -41,6 +50,8 @@ const testFiles = [
   'test/team.integration.e2e-spec.ts',
 ];
 
+const scopeArgs = process.argv.includes('--exclude-signup')
+  ? ['--testNamePattern=^(?!.*creates only a global User during PostgreSQL signup).*$'] : [];
 const fromIndex = process.argv.indexOf('--from');
 const firstFile = fromIndex < 0 ? 0 : testFiles.indexOf(process.argv[fromIndex + 1]);
 if (firstFile < 0) throw new Error('--from must name a suite in the critical test list.');
@@ -48,6 +59,7 @@ const selectedFiles = testFiles.slice(firstFile);
 const resultsDirectory = mkdtempSync(join(tmpdir(), 'taskforge-critical-'));
 let suiteCount = 0;
 let testCount = 0;
+let skippedCount = 0;
 
 try {
   for (const [index, testFile] of selectedFiles.entries()) {
@@ -60,13 +72,14 @@ try {
         '--config',
         'test/jest-e2e.json',
         '--runInBand',
+        ...scopeArgs,
         '--json',
         '--outputFile',
         resultFile,
       ],
       {
         cwd: process.cwd(),
-        env: postgresTestEnvironment(),
+        env: { ...postgresTestEnvironment(), P12_BROWSER_SCOPE: 'full' },
         stdio: 'inherit',
       },
     );
@@ -74,7 +87,8 @@ try {
 
     const report = JSON.parse(readFileSync(resultFile, 'utf8'));
     suiteCount += report.numTotalTestSuites;
-    testCount += report.numTotalTests;
+    testCount += report.numPassedTests;
+    skippedCount += report.numPendingTests;
 
     if (result.status !== 0 || !report.success) {
       process.exit(result.status ?? 1);
@@ -82,7 +96,7 @@ try {
   }
 
   console.log(
-    `Critical PostgreSQL regression passed: ${suiteCount} suites, ${testCount} tests.`,
+    `Critical PostgreSQL regression passed: ${suiteCount} suites, ${testCount} passed tests, ${skippedCount} skipped.`,
   );
 } finally {
   rmSync(resultsDirectory, { recursive: true, force: true });

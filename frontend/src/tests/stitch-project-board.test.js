@@ -15,9 +15,9 @@ assert(boardTabLines <= 220, `ProjectTaskBoardTab.jsx must remain a thin orchest
 assert(boardTabSrc.includes('BoardFilterBar'), 'Must integrate BoardFilterBar');
 assert(boardTabSrc.includes('BoardColumn'), 'Must integrate BoardColumn');
 assert(boardTabSrc.includes('useTransitionTaskStatusMutation'), 'Must support task status drag transitions');
-assert(boardTabSrc.includes('optimisticColumns'), 'Must implement optimistic drag reordering');
+assert(boardTabSrc.includes('useBoardTransitions'), 'Must use scoped transition reconciliation');
 
-console.log('✓ 1. ProjectTaskBoardTab.jsx is a clean, thin controller (< 220 lines) with optimistic updates');
+console.log('✓ 1. ProjectTaskBoardTab.jsx is a clean, thin controller (< 220 lines) with server reconciliation');
 
 // 2. Verify BoardColumn.jsx
 const columnSrc = readFileSync(join(__dirname, '../pages/Projects/components/board/BoardColumn.jsx'), 'utf-8');

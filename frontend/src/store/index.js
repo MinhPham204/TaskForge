@@ -1,6 +1,7 @@
 import { configureStore, createListenerMiddleware, isAnyOf } from "@reduxjs/toolkit";
 import authReducer, {
   clearUser,
+  updateTokens,
   fetchMyOrganizations,
   fetchProfile,
   setActiveOrganization,
@@ -20,9 +21,11 @@ import { projectApi } from "../services/projectApi.js";
 import { collaborationApi } from "../services/collaborationApi.js";
 import { dashboardApi } from "../services/dashboardApi.js";
 import { searchApi } from "../services/searchApi.js";
-import { ACTIVE_ORG_KEY } from "../utils/axiosInstance.js";
+import { ACTIVE_ORG_KEY, setSessionExpiryHandler, setSessionRefreshHandler } from "../utils/axiosInstance.js";
+import { registerTaskCacheListener } from './taskCacheListener.js';
 
 const workspaceListener = createListenerMiddleware();
+registerTaskCacheListener(workspaceListener);
 
 const removeAuthStorage = () => {
   try {
@@ -74,9 +77,16 @@ workspaceListener.startListening({
     const previousUserId = listenerApi.getOriginalState().auth.user?.id;
     const activeOrganizationId = listenerApi.getState().auth.activeOrganizationId;
 
-    persistActiveOrganization(activeOrganizationId);
+    const previousAuth = listenerApi.getOriginalState().auth;
+    if (fetchProfile.fulfilled.match(action) && previousAuth.profileRequestId !== action.meta?.requestId) return;
+    if ((fetchMyOrganizations.fulfilled.match(action) || fetchMyOrganizations.rejected.match(action)) && previousAuth.organizationsRequestId !== action.meta?.requestId) return;
+    // An aborted/temporary bootstrap cannot erase a selection awaiting discovery.
+    const pendingDiscovery = fetchProfile.fulfilled.match(action) && !listenerApi.getState().auth.organizationsInitialized && previousUserId === listenerApi.getState().auth.user?.id;
+    const transientDiscoveryFailure = fetchMyOrganizations.rejected.match(action) && ![401, 403].includes(action.payload?.status);
+    if (!pendingDiscovery && !transientDiscoveryFailure) persistActiveOrganization(activeOrganizationId);
     if (setCredentials.match(action) || setSessionFromDev.match(action) || previousOrganizationId !== activeOrganizationId || previousUserId !== listenerApi.getState().auth.user?.id) {
       resetTenantBoundState(listenerApi);
+      if (setCredentials.match(action) || setSessionFromDev.match(action) || previousUserId !== listenerApi.getState().auth.user?.id) listenerApi.dispatch(authApi.util.resetApiState());
     }
   },
 });
@@ -128,7 +138,8 @@ workspaceListener.startListening({
 
 workspaceListener.startListening({
   matcher: isAnyOf(clearUser, fetchProfile.rejected),
-  effect: (_, listenerApi) => {
+  effect: (action, listenerApi) => {
+    if (fetchProfile.rejected.match(action) && (![401, 403].includes(action.payload?.status) || listenerApi.getOriginalState().auth.profileRequestId !== action.meta.requestId)) return;
     removeAuthStorage();
     resetTenantBoundState(listenerApi);
     listenerApi.dispatch(authApi.util.resetApiState());
@@ -162,4 +173,6 @@ export const store = configureStore({
       ),
 });
 
+setSessionExpiryHandler(() => store.dispatch(clearUser()));
+setSessionRefreshHandler(tokens => store.dispatch(updateTokens(tokens)));
 setupListeners(store.dispatch);

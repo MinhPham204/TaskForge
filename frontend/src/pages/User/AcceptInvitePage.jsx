@@ -11,6 +11,7 @@ const AcceptInvitePage = () => {
   const dispatch = useDispatch();
   const token = searchParams.get('token');
   const [message, setMessage] = useState('');
+  const [acceptError, setAcceptError] = useState(false);
   const [acceptInvitation, result] = useAcceptInvitationByTokenMutation();
 
   useEffect(() => {
@@ -18,35 +19,28 @@ const AcceptInvitePage = () => {
       setMessage('This invitation link is missing its secure token.');
       return;
     }
-
     if (!localStorage.getItem('token')) {
-      const currentUrl = `${location.pathname}${location.search}`;
-      navigate(`/login?from=${encodeURIComponent(currentUrl)}`, { replace: true });
+      const currentUrl = location.pathname + location.search;
+      navigate('/login?from=' + encodeURIComponent(currentUrl), { replace: true });
       return;
     }
-
+    let active = true;
+    setAcceptError(false);
     const accept = async () => {
       try {
         await acceptInvitation(token).unwrap();
-        await dispatch(fetchMyOrganizations());
-      } catch {
-        // The mutation state renders a safe error below.
+        if (!active) return;
+        await dispatch(fetchMyOrganizations()).unwrap();
+        if (active) navigate('/', { replace: true });
+      } catch (error) {
+        if (!active) return;
+        setMessage(error?.data?.message || error?.message || 'Unable to accept this invitation.');
+        setAcceptError(true);
       }
     };
     accept();
+    return () => { active = false; };
   }, [acceptInvitation, dispatch, location.pathname, location.search, navigate, token]);
-
-  useEffect(() => {
-    if (result.isSuccess) {
-      setMessage('Invitation accepted. Redirecting to your workspace…');
-      const timeout = window.setTimeout(() => navigate('/', { replace: true }), 1200);
-      return () => window.clearTimeout(timeout);
-    }
-    if (result.isError) {
-      setMessage(result.error?.data?.message || 'Unable to accept this invitation.');
-    }
-    return undefined;
-  }, [navigate, result.error, result.isError, result.isSuccess]);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -55,7 +49,7 @@ const AcceptInvitePage = () => {
         <p className="mt-4 text-content-muted">
           {result.isLoading ? 'Processing your invitation…' : message}
         </p>
-        {(result.isError || !token) && (
+        {(acceptError || result.isError || !token) && (
           <button type="button" onClick={() => navigate('/workspace/onboarding')} className="btn-primary mt-5">
             Return to workspace setup
           </button>

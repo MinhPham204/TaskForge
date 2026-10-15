@@ -1,17 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   useGetProjectTaskBoardQuery,
   useTransitionTaskStatusMutation,
 } from '../../../services/taskApi';
-import { useGetProjectTeamsQuery } from '../../../services/projectApi';
+import { useGetProjectTeamsQuery, useGetProjectMembersQuery } from '../../../services/projectApi';
 import { LoadingState, ErrorState, EmptyState } from '../../../components/common/PageState';
 import { LuKanban } from 'react-icons/lu';
 import BoardFilterBar from './board/BoardFilterBar';
 import BoardColumn from './board/BoardColumn';
+import useBoardTransitions from './board/useBoardTransitions';
 
 const ProjectTaskBoardTab = ({
   projectId,
-  canManage = false,
   canCreateTask = false,
   onSelectTask,
   onCreateTask,
@@ -20,10 +20,6 @@ const ProjectTaskBoardTab = ({
   const [search, setSearch] = useState('');
   const [priorityCode, setPriorityCode] = useState('');
   const [teamId, setTeamId] = useState('');
-  const [optimisticColumns, setOptimisticColumns] = useState(null);
-  const [draggedTaskId, setDraggedTaskId] = useState(null);
-  const [dragOverColumnId, setDragOverColumnId] = useState(null);
-  const [actionError, setActionError] = useState('');
 
   const queryParams = {
     projectId,
@@ -33,21 +29,23 @@ const ProjectTaskBoardTab = ({
   };
 
   const {
-    data: columns = [],
+    currentData: columns = [],
     isLoading,
+    isFetching,
     isError,
     error,
     refetch,
-  } = useGetProjectTaskBoardQuery(queryParams);
+  } = useGetProjectTaskBoardQuery(queryParams, { refetchOnMountOrArgChange: true });
 
-  const { data: teams = [] } = useGetProjectTeamsQuery(projectId);
+  const { currentData: teams = [] } = useGetProjectTeamsQuery(projectId);
+  const { currentData: members = [] } = useGetProjectMembersQuery(projectId);
   const [transitionTaskStatus] = useTransitionTaskStatusMutation();
 
-  useEffect(() => {
-    setOptimisticColumns(null);
-  }, [columns]);
+  const { board, dragOverColumnId, busy, blocked, message: actionError } = useBoardTransitions({
+    queryParams, columns, transition: transitionTaskStatus, refetch, isFetching,
+  });
 
-  if (isLoading) {
+  if (isLoading || (isFetching && columns.length === 0)) {
     return <LoadingState message="Loading task board..." />;
   }
 
@@ -61,80 +59,6 @@ const ProjectTaskBoardTab = ({
     );
   }
 
-  const displayColumns = optimisticColumns || columns;
-
-  const handleDragStart = (e, taskId) => {
-    setDraggedTaskId(taskId);
-    e.dataTransfer.setData('text/plain', taskId);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragEnd = () => {
-    setDraggedTaskId(null);
-    setDragOverColumnId(null);
-  };
-
-  const handleDragOver = (e, columnId) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragOverColumnId !== columnId) {
-      setDragOverColumnId(columnId);
-    }
-  };
-
-  const handleDragEnter = (e, columnId) => {
-    e.preventDefault();
-    setDragOverColumnId(columnId);
-  };
-
-  const handleDragLeave = (e, columnId) => {
-    if (e.currentTarget.contains(e.relatedTarget)) return;
-    if (dragOverColumnId === columnId) {
-      setDragOverColumnId(null);
-    }
-  };
-
-  const handleDrop = async (e, targetStatusId) => {
-    e.preventDefault();
-    setDragOverColumnId(null);
-    if (!draggedTaskId) return;
-
-    const sourceColumn = displayColumns.find((col) =>
-      col.tasks?.some((t) => t.id === draggedTaskId)
-    );
-    if (!sourceColumn || sourceColumn.id === targetStatusId) {
-      setDraggedTaskId(null);
-      return;
-    }
-
-    const previousColumns = displayColumns;
-    const targetTaskId = draggedTaskId;
-    const movedTask = sourceColumn.tasks.find((t) => t.id === targetTaskId);
-
-    setActionError('');
-    setOptimisticColumns(
-      displayColumns.map((col) => {
-        if (col.id === sourceColumn.id) {
-          return { ...col, tasks: col.tasks.filter((t) => t.id !== targetTaskId) };
-        }
-        if (col.id === targetStatusId) {
-          return { ...col, tasks: [...(col.tasks || []), { ...movedTask, statusId: targetStatusId }] };
-        }
-        return col;
-      })
-    );
-
-    setDraggedTaskId(null);
-
-    try {
-      await transitionTaskStatus({ projectId, taskId: targetTaskId, statusId: targetStatusId }).unwrap();
-    } catch (requestError) {
-      setOptimisticColumns(previousColumns);
-      setActionError(
-        requestError?.data?.message || 'Task could not move to this status. Check its checklist and approval requirements.'
-      );
-    }
-  };
 
   return (
     <div className="space-y-4">
@@ -165,7 +89,10 @@ const ProjectTaskBoardTab = ({
       )}
 
       {/* Kanban Board Canvas */}
-      {displayColumns.length === 0 ? (
+      {busy && <p role="status" className="text-xs text-content-muted">Saving move and refreshing Board…</p>}
+      {blocked && !busy && <p role="status" className="text-xs text-content-muted">Refresh the Board before moving another Task.</p>}
+      <button type="button" onClick={() => board.refresh()} disabled={busy || isFetching} className="text-xs text-primary">Refresh Board</button>
+      {columns.length === 0 ? (
         <EmptyState
           icon={LuKanban}
           title="No status columns found"
@@ -173,18 +100,20 @@ const ProjectTaskBoardTab = ({
         />
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-6 items-start min-h-[550px] custom-scrollbar scroll-smooth">
-          {displayColumns.map((column) => (
+          {columns.map((column) => (
             <BoardColumn
               key={column.id}
               column={column}
-              dragOverColumnId={dragOverColumnId}
-              onDragOver={handleDragOver}
-              onDragEnter={handleDragEnter}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
+              members={members}
+              isDragOver={dragOverColumnId === column.id}
+              dragBlocked={busy || blocked || isFetching}
+              onDragOver={board.over}
+              onDragEnter={board.over}
+              onDragLeave={board.leave}
+              onDrop={board.drop}
               onSelectTask={onSelectTask}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
+              onDragStart={board.start}
+              onDragEnd={board.end}
             />
           ))}
         </div>

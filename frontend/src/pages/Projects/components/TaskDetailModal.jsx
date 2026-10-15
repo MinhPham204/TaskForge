@@ -1,3 +1,8 @@
+import { useSelector } from 'react-redux';
+import { editorReason } from '../../../utils/taskEditor.js';
+import TaskEditButton from '../../../components/task/TaskEditButton.jsx';
+import { getTaskCapability } from '../../../utils/taskCapabilities.js';
+import { useGetTaskAssignmentCandidatesQuery } from '../../../services/taskApi.js';
 import React, { useState } from 'react';
 import Modal from '../../../components/common/Modal';
 import Select from 'react-select';
@@ -21,12 +26,7 @@ import {
   useGetProjectStatusesQuery,
   useGetProjectMembersQuery,
 } from '../../../services/projectApi';
-import {
-  useGetTaskAttachmentsQuery,
-  useUploadTaskAttachmentMutation,
-  useUnlinkTaskAttachmentMutation,
-  downloadTaskAttachment,
-} from '../../../services/collaborationApi';
+import TaskAttachments from '../../../components/task/TaskAttachments.jsx';
 import { ApprovalStateBadge } from './TaskStatusBadge';
 import {
   StatusText,
@@ -48,10 +48,6 @@ import {
   LuCheck,
   LuX,
   LuSend,
-  LuPaperclip,
-  LuDownload,
-  LuFileText,
-  LuUpload,
 } from 'react-icons/lu';
 
 const TaskDetailModal = ({
@@ -59,11 +55,10 @@ const TaskDetailModal = ({
   onClose,
   projectId,
   taskId,
-  canManage = false,
   onEditTask,
 }) => {
   const {
-    data: task,
+    currentData: task,
     isLoading,
     isError,
     error,
@@ -74,8 +69,28 @@ const TaskDetailModal = ({
   );
 
   const { data: statuses = [] } = useGetProjectStatusesQuery(projectId, { skip: !isOpen });
-  const { data: members = [] } = useGetProjectMembersQuery(projectId, { skip: !isOpen });
+  const { currentData: members = [] } = useGetProjectMembersQuery(projectId, { skip: !isOpen });
 
+  const viewerUserId = useSelector(state => state.auth.user?.id);
+  const activeOrgId = useSelector(state => state.auth.activeOrganizationId);
+  const actionScope = React.useRef({ key: '', generation: 0 });
+  const actionScopeKey = JSON.stringify([viewerUserId, activeOrgId, projectId, taskId, isOpen]);
+  if (actionScope.current.key !== actionScopeKey) actionScope.current = { key: actionScopeKey, generation: actionScope.current.generation + 1 };
+  const isCurrentAction = owner => actionScope.current.generation === owner;
+  React.useEffect(() => () => { actionScope.current.generation++; }, []);
+  const viewerOrgMembershipId = members.find(member => member.user?.id === viewerUserId)?.organizationMembershipId;
+  const viewerMembershipId = members.find(member => member.user?.id === viewerUserId)?.projectMembershipId || members.find(member => member.user?.id === viewerUserId)?.id;
+  const transitionAccess = getTaskCapability(task, 'transition');
+  const progressAccess = getTaskCapability(task, 'editProgress');
+  const checklistAccess = getTaskCapability(task, 'editChecklist');
+  const commentAccess = getTaskCapability(task, 'comment');
+  const assignAccess = getTaskCapability(task, 'assign');
+  const canManage = getTaskCapability(task, 'editManagement').allowed;
+  const unassignAccess = getTaskCapability(task, 'unassign');
+  const { currentData: candidates = [], isFetching: candidatesLoading, isError: candidatesError, refetch: refetchCandidates } = useGetTaskAssignmentCandidatesQuery(
+    { projectId, teamId: task?.owningTeamId },
+    { skip: !isOpen || !task?.owningTeamId || !assignAccess.allowed, refetchOnMountOrArgChange: true },
+  );
   // Mutations
   const [transitionStatus, { isLoading: isTransitioning }] = useTransitionTaskStatusMutation();
   const [setManualProgress, { isLoading: isUpdatingProgress }] = useSetTaskManualProgressMutation();
@@ -103,48 +118,38 @@ const TaskDetailModal = ({
   const [actionError, setActionError] = useState('');
   const [confirmArchive, setConfirmArchive] = useState(false);
 
-  // Task Attachments
-  const {
-    data: attachments = [],
-    isLoading: isLoadingAttachments,
-  } = useGetTaskAttachmentsQuery(
-    { projectId, taskId },
-    { skip: !isOpen || !taskId }
-  );
-  const [uploadAttachment, { isLoading: isUploadingAttachment }] = useUploadTaskAttachmentMutation();
-  const [unlinkAttachment, { isLoading: isUnlinkingAttachment }] = useUnlinkTaskAttachmentMutation();
-
-  const [attachmentFile, setAttachmentFile] = useState(null);
-  const [attachmentError, setAttachmentError] = useState('');
-  const [attachmentToUnlink, setAttachmentToUnlink] = useState(null);
-  const [unlinkError, setUnlinkError] = useState('');
-  const [downloadingAttachmentId, setDownloadingAttachmentId] = useState(null);
 
   // Sync selected status and progress when task loads
   React.useEffect(() => {
     if (task) {
       setSelectedStatusId(task.statusId);
       setProgressInput(task.manualProgress || 0);
-      setActionError('');
-      setAttachmentError('');
-      setAttachmentFile(null);
     }
   }, [task]);
+  React.useEffect(() => {
+    setActionError(''); setApprovalActionModal(null); setApprovalReason(''); setConfirmArchive(false);
+    setEditingCommentId(null); setNewCommentBody(''); setNewChecklistText(''); setSelectedAssigneeId('');
+  }, [projectId, taskId, isOpen, viewerUserId, activeOrgId]);
 
   if (!isOpen) return null;
 
   const handleStatusTransition = async () => {
-    if (!selectedStatusId || selectedStatusId === task?.statusId) return;
+    const owner = actionScope.current.generation;
+    if (!transitionAccess.allowed || !selectedStatusId || selectedStatusId === task?.statusId) return;
     setActionError('');
     try {
       await transitionStatus({ projectId, taskId, statusId: selectedStatusId }).unwrap();
+      if (!isCurrentAction(owner)) return;
     } catch (err) {
+      if (!isCurrentAction(owner)) return;
       setActionError(err.data?.message || err.message || 'Status transition failed');
       setSelectedStatusId(task?.statusId);
     }
   };
 
   const handleProgressSave = async () => {
+    const owner = actionScope.current.generation;
+    if (!progressAccess.allowed) return;
     setActionError('');
     try {
       await setManualProgress({
@@ -152,24 +157,31 @@ const TaskDetailModal = ({
         taskId,
         manualProgress: Number(progressInput),
       }).unwrap();
+      if (!isCurrentAction(owner)) return;
     } catch (err) {
+      if (!isCurrentAction(owner)) return;
       setActionError(err.data?.message || err.message || 'Failed to update progress');
     }
   };
 
   const handleAddChecklist = async (e) => {
+    const owner = actionScope.current.generation;
     e.preventDefault();
-    if (!newChecklistText.trim()) return;
+    if (!checklistAccess.allowed || !newChecklistText.trim()) return;
     setActionError('');
     try {
       await addChecklistItem({ projectId, taskId, text: newChecklistText.trim() }).unwrap();
+      if (!isCurrentAction(owner)) return;
       setNewChecklistText('');
     } catch (err) {
+      if (!isCurrentAction(owner)) return;
       setActionError(err.data?.message || err.message || 'Failed to add checklist item');
     }
   };
 
   const handleToggleChecklist = async (itemId, currentCompleted) => {
+    const owner = actionScope.current.generation;
+    if (!checklistAccess.allowed) return;
     setActionError('');
     try {
       await setChecklistItemCompletion({
@@ -178,65 +190,84 @@ const TaskDetailModal = ({
         itemId,
         completed: !currentCompleted,
       }).unwrap();
+      if (!isCurrentAction(owner)) return;
     } catch (err) {
+      if (!isCurrentAction(owner)) return;
       setActionError(err.data?.message || err.message || 'Failed to update checklist item');
     }
   };
 
   const handlePostComment = async (e) => {
+    const owner = actionScope.current.generation;
     e.preventDefault();
-    if (!newCommentBody.trim()) return;
+    if (!commentAccess.allowed || !newCommentBody.trim()) return;
     setActionError('');
     try {
       await createComment({ projectId, taskId, body: newCommentBody.trim() }).unwrap();
+      if (!isCurrentAction(owner)) return;
       setNewCommentBody('');
     } catch (err) {
+      if (!isCurrentAction(owner)) return;
       setActionError(err.data?.message || err.message || 'Failed to post comment');
     }
   };
 
   const handleEditCommentSubmit = async (commentId) => {
+    const owner = actionScope.current.generation;
     if (!editCommentBody.trim()) return;
     setActionError('');
     try {
       await editComment({ projectId, taskId, commentId, body: editCommentBody.trim() }).unwrap();
+      if (!isCurrentAction(owner)) return;
       setEditingCommentId(null);
       setEditCommentBody('');
     } catch (err) {
+      if (!isCurrentAction(owner)) return;
       setActionError(err.data?.message || err.message || 'Failed to update comment');
     }
   };
 
   const handleDeleteComment = async (commentId) => {
+    const owner = actionScope.current.generation;
     setActionError('');
     try {
       await deleteComment({ projectId, taskId, commentId }).unwrap();
+      if (!isCurrentAction(owner)) return;
     } catch (err) {
+      if (!isCurrentAction(owner)) return;
       setActionError(err.data?.message || err.message || 'Failed to delete comment');
     }
   };
 
   const handleAssign = async () => {
+    const owner = actionScope.current.generation;
     if (!selectedAssigneeId) return;
     setActionError('');
     try {
       await assignTask({ projectId, taskId, projectMembershipId: selectedAssigneeId }).unwrap();
+      if (!isCurrentAction(owner)) return;
       setSelectedAssigneeId('');
     } catch (err) {
+      if (!isCurrentAction(owner)) return;
       setActionError(err.data?.message || err.message || 'Failed to assign member');
     }
   };
 
   const handleUnassign = async (membershipId) => {
+    const owner = actionScope.current.generation;
     setActionError('');
     try {
       await unassignTask({ projectId, taskId, projectMembershipId: membershipId }).unwrap();
+      if (!isCurrentAction(owner)) return;
     } catch (err) {
+      if (!isCurrentAction(owner)) return;
       setActionError(err.data?.message || err.message || 'Failed to remove assignee');
     }
   };
 
   const handleApprovalAction = async () => {
+    const owner = actionScope.current.generation;
+    if ((approvalActionModal === 'request' && !transitionAccess.allowed) || (['approve', 'reject'].includes(approvalActionModal) && !canResolveApproval) || (approvalActionModal === 'cancel' && !canCancelApproval)) return;
     setActionError('');
     try {
       if (approvalActionModal === 'request') {
@@ -245,6 +276,7 @@ const TaskDetailModal = ({
           taskId,
           reason: approvalReason.trim() || undefined,
         }).unwrap();
+      if (!isCurrentAction(owner)) return;
       } else if (['approve', 'reject', 'cancel'].includes(approvalActionModal)) {
         await resolveApproval({
           projectId,
@@ -252,88 +284,33 @@ const TaskDetailModal = ({
           action: approvalActionModal,
           reason: approvalReason.trim() || undefined,
         }).unwrap();
+      if (!isCurrentAction(owner)) return;
       }
       setApprovalActionModal(null);
       setApprovalReason('');
     } catch (err) {
+      if (!isCurrentAction(owner)) return;
       setActionError(err.data?.message || err.message || 'Approval action failed');
     }
   };
 
   const handleArchive = async () => {
+    const owner = actionScope.current.generation;
     setActionError('');
     try {
       await archiveTask({ projectId, taskId }).unwrap();
+      if (!isCurrentAction(owner)) return;
       onClose();
     } catch (err) {
+      if (!isCurrentAction(owner)) return;
       setActionError(err.data?.message || err.message || 'Failed to archive task');
     }
   };
 
-  const handleAttachmentFileChange = (e) => {
-    const file = e.target.files?.[0];
-    setAttachmentError('');
-    if (!file) {
-      setAttachmentFile(null);
-      return;
-    }
-    const ALLOWED = ['application/pdf', 'image/jpeg', 'image/png', 'text/plain'];
-    if (!ALLOWED.includes(file.type)) {
-      setAttachmentError('Only PDF, JPEG, PNG, or plain text files are allowed.');
-      setAttachmentFile(null);
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setAttachmentError('Attachment exceeds 10 MiB limit.');
-      setAttachmentFile(null);
-      return;
-    }
-    setAttachmentFile(file);
-  };
-
-  const handleUploadAttachment = async (e) => {
-    e.preventDefault();
-    if (!attachmentFile) return;
-    setAttachmentError('');
-    const formData = new FormData();
-    formData.append('file', attachmentFile);
-    try {
-      await uploadAttachment({ projectId, taskId, formData }).unwrap();
-      setAttachmentFile(null);
-      const input = document.getElementById('task-attachment-file-input');
-      if (input) input.value = '';
-    } catch (err) {
-      setAttachmentError(err.data?.message || err.message || 'Failed to upload attachment');
-    }
-  };
-
-  const handleDownloadAttachment = async (att) => {
-    try {
-      setDownloadingAttachmentId(att.id);
-      await downloadTaskAttachment(projectId, taskId, att.id, att.originalName);
-    } catch (err) {
-      console.error('Attachment download failed', err);
-    } finally {
-      setDownloadingAttachmentId(null);
-    }
-  };
-
-  const handleConfirmUnlinkAttachment = async () => {
-    if (!attachmentToUnlink) return;
-    setUnlinkError('');
-    try {
-      await unlinkAttachment({
-        projectId,
-        taskId,
-        attachmentId: attachmentToUnlink.id,
-      }).unwrap();
-      setAttachmentToUnlink(null);
-    } catch (err) {
-      setUnlinkError(err.data?.message || err.message || 'Failed to remove attachment');
-    }
-  };
 
   const pendingApproval = task?.approvals?.find((a) => a.state === 'PENDING');
+  const canResolveApproval = commentAccess.allowed && Boolean(viewerMembershipId) && viewerMembershipId === pendingApproval?.approverProjectMembershipId && viewerMembershipId !== task?.creatorProjectMembershipId && !task?.assigneeProjectMembershipIds?.includes(viewerMembershipId);
+  const canCancelApproval = commentAccess.allowed && (canManage || (Boolean(viewerOrgMembershipId) && viewerOrgMembershipId === pendingApproval?.requestedByMembershipId));
   const isCompleted = task?.semanticCategory === 'COMPLETED';
   const hasChecklist = task?.checklist?.length > 0;
   const isOverdue = isTaskOverdue(task);
@@ -377,7 +354,8 @@ const TaskDetailModal = ({
                 id="transition-status"
                 value={selectedStatusId}
                 onChange={(e) => setSelectedStatusId(e.target.value)}
-                disabled={isTransitioning}
+                disabled={isTransitioning || !transitionAccess.allowed}
+                title={transitionAccess.allowed ? undefined : editorReason(transitionAccess.reason)}
                 className="text-xs border border-border rounded-md px-2 py-1 bg-surface text-content focus:ring-1 focus:ring-primary"
               >
                 {statuses.map((s) => (
@@ -390,7 +368,8 @@ const TaskDetailModal = ({
                 <button
                   type="button"
                   onClick={handleStatusTransition}
-                  disabled={isTransitioning}
+                  disabled={isTransitioning || !transitionAccess.allowed}
+                title={transitionAccess.allowed ? undefined : editorReason(transitionAccess.reason)}
                   className="px-2.5 py-1 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
                 >
                   {isTransitioning ? 'Moving...' : 'Move'}
@@ -402,14 +381,7 @@ const TaskDetailModal = ({
               <PriorityText priority={task.priorityCode} />
               <AttentionFlag task={task} includeOverdue={false} />
 
-              <button
-                type="button"
-                onClick={() => onEditTask?.(task)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-content-muted bg-surface border border-border rounded-md hover:text-content hover:bg-surface-muted cursor-pointer"
-              >
-                <LuPencil className="w-3.5 h-3.5" />
-                Edit
-              </button>
+              <TaskEditButton task={task} onEditTask={onEditTask} />
 
               {canManage && (
                 <button
@@ -478,7 +450,8 @@ const TaskDetailModal = ({
                 <button
                   type="button"
                   onClick={handleProgressSave}
-                  disabled={isUpdatingProgress || Number(progressInput) === task.manualProgress}
+                  disabled={!progressAccess.allowed || isUpdatingProgress || Number(progressInput) === task.manualProgress}
+                  title={progressAccess.allowed ? undefined : editorReason(progressAccess.reason)}
                   className="px-2.5 py-1 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
                 >
                   {isUpdatingProgress ? 'Saving...' : 'Update Progress'}
@@ -486,6 +459,9 @@ const TaskDetailModal = ({
               </div>
               <input
                 type="range"
+                aria-label="Manual progress"
+                disabled={!progressAccess.allowed || isUpdatingProgress}
+                title={progressAccess.allowed ? undefined : editorReason(progressAccess.reason)}
                 min="0"
                 max="100"
                 value={progressInput}
@@ -518,7 +494,8 @@ const TaskDetailModal = ({
                       <input
                         type="checkbox"
                         checked={isItemDone}
-                        disabled={isCompleted}
+                        disabled={isCompleted || !checklistAccess.allowed}
+                        title={checklistAccess.allowed ? undefined : editorReason(checklistAccess.reason)}
                         onChange={() => handleToggleChecklist(item.id, isItemDone)}
                         className="rounded border-border text-primary focus:ring-primary disabled:opacity-50"
                       />
@@ -552,11 +529,14 @@ const TaskDetailModal = ({
                   value={newChecklistText}
                   onChange={(e) => setNewChecklistText(e.target.value)}
                   placeholder="Add a checklist item..."
+                  aria-label="New checklist item"
+                  disabled={!checklistAccess.allowed || isAddingChecklist}
+                  title={checklistAccess.allowed ? undefined : editorReason(checklistAccess.reason)}
                   className="flex-1 px-3 py-1.5 text-xs border border-border bg-surface text-content placeholder:text-content-muted rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                 />
                 <button
                   type="submit"
-                  disabled={isAddingChecklist || !newChecklistText.trim()}
+                  disabled={!checklistAccess.allowed || isAddingChecklist || !newChecklistText.trim()}
                   className="px-3 py-1.5 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 cursor-pointer inline-flex items-center gap-1"
                 >
                   <LuPlus className="w-3.5 h-3.5" />
@@ -575,18 +555,18 @@ const TaskDetailModal = ({
 
             <div className="flex flex-wrap gap-1.5">
               {task.assigneeProjectMembershipIds?.map((id) => {
-                const member = members.find((m) => (m.id || m.organizationMembershipId) === id);
+                const member = members.find((m) => (m.projectMembershipId || m.id) === id);
                 return (
                   <span
                     key={id}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-surface-muted text-content border border-border/70 rounded-md"
                   >
                     <span>{member?.user?.name || member?.user?.email || id}</span>
-                    {canManage && !isCompleted && (
+                    {unassignAccess.allowed && (
                       <button
                         type="button"
                         onClick={() => handleUnassign(id)}
-                        disabled={isUnassigning}
+                        disabled={isUnassigning || isAssigning}
                         className="text-content-muted hover:text-red-500 cursor-pointer"
                         title="Remove assignee"
                       >
@@ -603,33 +583,21 @@ const TaskDetailModal = ({
               )}
             </div>
 
-            {canManage && !isCompleted && (
+            {assignAccess.allowed && (
               <div className="flex flex-col sm:flex-row gap-2 pt-1">
-                <Select
-                  className="flex-1 text-xs"
-                  classNamePrefix="taskforge-select"
-                  value={
-                    members
-                      .filter((member) => (member.id || member.projectMembershipId) === selectedAssigneeId)
-                      .map((member) => ({
-                        value: member.id || member.projectMembershipId,
-                        label: `${member.user?.name || member.user?.email} — ${member.user?.email || ''}`,
-                      }))[0] || null
-                  }
-                  onChange={(option) => setSelectedAssigneeId(option?.value || '')}
-                  placeholder="Search project members by name or email..."
-                  noOptionsMessage={() => 'No eligible project members'}
-                  options={members
-                    .filter((member) => !task.assigneeProjectMembershipIds?.includes(member.id || member.projectMembershipId))
-                    .map((member) => ({
-                      value: member.id || member.projectMembershipId,
-                      label: `${member.user?.name || member.user?.email} — ${member.user?.email || ''}`,
-                    }))}
-                />
+                {candidatesError ? <p role="alert">Could not load eligible assignees. <button type="button" onClick={refetchCandidates}>Retry</button></p> : <Select
+                  className="flex-1 text-xs" classNamePrefix="taskforge-select"
+                  isLoading={candidatesLoading} isDisabled={isAssigning || isUnassigning || candidatesLoading}
+                  value={candidates.filter(member => member.projectMembershipId === selectedAssigneeId).map(member => ({ value: member.projectMembershipId, label: member.name }))[0] || null}
+                  onChange={option => setSelectedAssigneeId(option?.value || '')}
+                  placeholder="Choose an active owning-Team member…"
+                  noOptionsMessage={() => 'No eligible owning-Team members'}
+                  options={candidates.filter(member => !task.assigneeProjectMembershipIds?.includes(member.projectMembershipId)).map(member => ({ value: member.projectMembershipId, label: member.name }))}
+                />}
                 <button
                   type="button"
                   onClick={handleAssign}
-                  disabled={isAssigning || !selectedAssigneeId}
+                  disabled={isAssigning || isUnassigning || candidatesLoading || candidatesError || !candidates.some(member => member.projectMembershipId === selectedAssigneeId)}
                   className="px-3 py-1.5 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
                 >
                   Assign
@@ -651,6 +619,8 @@ const TaskDetailModal = ({
                     <button
                       type="button"
                       onClick={() => setApprovalActionModal('request')}
+                        disabled={!transitionAccess.allowed || isRequestingApproval}
+                        title={transitionAccess.allowed ? undefined : editorReason(transitionAccess.reason)}
                       className="px-3 py-1 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 cursor-pointer"
                     >
                       Request Approval
@@ -662,6 +632,8 @@ const TaskDetailModal = ({
                       <button
                         type="button"
                         onClick={() => setApprovalActionModal('approve')}
+                        disabled={!canResolveApproval}
+                        title={canResolveApproval ? undefined : 'This approval action requires the designated actor and a mutable Project.'}
                         className="px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 cursor-pointer"
                       >
                         Approve
@@ -669,6 +641,8 @@ const TaskDetailModal = ({
                       <button
                         type="button"
                         onClick={() => setApprovalActionModal('reject')}
+                        disabled={!canResolveApproval}
+                        title={canResolveApproval ? undefined : 'This approval action requires the designated actor and a mutable Project.'}
                         className="px-2.5 py-1 text-xs font-medium text-white bg-rose-600 rounded-md hover:bg-rose-700 cursor-pointer"
                       >
                         Reject
@@ -676,6 +650,8 @@ const TaskDetailModal = ({
                       <button
                         type="button"
                         onClick={() => setApprovalActionModal('cancel')}
+                        disabled={!canCancelApproval}
+                        title={canCancelApproval ? undefined : 'This approval action requires the designated actor and a mutable Project.'}
                         className="px-2.5 py-1 text-xs font-medium text-content bg-surface-muted border border-border rounded-md hover:bg-surface cursor-pointer"
                       >
                         Cancel
@@ -740,113 +716,7 @@ const TaskDetailModal = ({
             </div>
           )}
 
-          {/* Attachments Section */}
-          <div className="pt-4 border-t border-border/60 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-content flex items-center gap-2">
-                <span>Attachments</span>
-                <CountText count={attachments.length} />
-              </h4>
-            </div>
-
-            {attachmentError && (
-              <div
-                role="alert"
-                className="p-2.5 text-xs text-red-700 bg-red-50 dark:bg-red-950/30 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-lg"
-              >
-                {attachmentError}
-              </div>
-            )}
-
-            {/* List of Attachments */}
-            <div className="space-y-1.5">
-              {isLoadingAttachments ? (
-                <p className="text-xs text-content-muted py-1">Loading attachments...</p>
-              ) : attachments.length === 0 ? (
-                <p className="text-xs text-content-muted">No attachments attached to this task.</p>
-              ) : (
-                attachments.map((att) => (
-                  <div
-                    key={att.id}
-                    className="flex items-center justify-between p-2 rounded-lg bg-surface-muted/50 border border-border/60 hover:bg-surface-muted transition-colors text-xs"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <LuFileText className="w-4 h-4 text-primary shrink-0" />
-                      <div className="min-w-0">
-                        <p className="font-medium text-content truncate max-w-xs sm:max-w-md">
-                          {att.originalName}
-                        </p>
-                        <p className="text-[10px] text-content-muted">
-                          {att.mediaType} &bull;{' '}
-                          {att.sizeBytes > 1024 * 1024
-                            ? `${(att.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-                            : `${Math.round(att.sizeBytes / 1024)} KB`}{' '}
-                          &bull; {new Date(att.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleDownloadAttachment(att)}
-                        disabled={downloadingAttachmentId === att.id}
-                        title="Download attachment"
-                        aria-label={`Download ${att.originalName}`}
-                        className="p-1.5 text-content-muted hover:text-primary rounded-md hover:bg-surface cursor-pointer disabled:opacity-50"
-                      >
-                        <LuDownload className="w-3.5 h-3.5" />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUnlinkError('');
-                          setAttachmentToUnlink(att);
-                        }}
-                        title="Remove attachment"
-                        aria-label={`Remove ${att.originalName}`}
-                        className="p-1.5 text-content-muted hover:text-red-500 rounded-md hover:bg-surface cursor-pointer"
-                      >
-                        <LuTrash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Upload Attachment Form */}
-            {!isCompleted && (
-              <form onSubmit={handleUploadAttachment} className="flex flex-col sm:flex-row gap-2 pt-1">
-                <input
-                  id="task-attachment-file-input"
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg,.txt"
-                  onChange={handleAttachmentFileChange}
-                  disabled={isUploadingAttachment}
-                  className="flex-1 text-xs text-content-muted file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 file:cursor-pointer border border-border rounded-md p-1"
-                />
-                <button
-                  type="submit"
-                  disabled={isUploadingAttachment || !attachmentFile}
-                  className="px-3 py-1.5 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 cursor-pointer inline-flex items-center justify-center gap-1"
-                >
-                  {isUploadingAttachment ? (
-                    <>
-                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Attaching...</span>
-                    </>
-                  ) : (
-                    <>
-                      <LuUpload className="w-3.5 h-3.5" />
-                      <span>Attach File</span>
-                    </>
-                  )}
-                </button>
-              </form>
-            )}
-          </div>
+          <TaskAttachments projectId={projectId} task={task} />
 
           {/* Comments Section */}
           <div className="pt-4 border-t border-border/60 space-y-3">
@@ -859,7 +729,7 @@ const TaskDetailModal = ({
               {task.comments?.map((comment) => {
                 const authorMember = members.find(
                   (m) =>
-                    (m.id || m.organizationMembershipId) === comment.authorProjectMembershipId
+                    (m.projectMembershipId || m.id) === comment.authorProjectMembershipId
                 );
                 const isEditingThis = editingCommentId === comment.id;
 
@@ -876,7 +746,7 @@ const TaskDetailModal = ({
                         {comment.editedAt && (
                           <span className="text-content-muted text-[10px]">(edited)</span>
                         )}
-                        {!isEditingThis && (
+                        {!isEditingThis && commentAccess.allowed && (canManage || viewerMembershipId === comment.authorProjectMembershipId) && (
                           <button
                             type="button"
                             onClick={() => {
@@ -890,7 +760,8 @@ const TaskDetailModal = ({
                         )}
                         <button
                           type="button"
-                          onClick={() => handleDeleteComment(comment.id)}
+                          disabled={!commentAccess.allowed || (!canManage && viewerMembershipId !== comment.authorProjectMembershipId)}
+                          onClick={() => { if (commentAccess.allowed && (canManage || viewerMembershipId === comment.authorProjectMembershipId)) handleDeleteComment(comment.id); }}
                           className="text-content-muted hover:text-red-500 cursor-pointer"
                         >
                           <LuTrash2 className="w-3.5 h-3.5" />
@@ -942,11 +813,14 @@ const TaskDetailModal = ({
                 value={newCommentBody}
                 onChange={(e) => setNewCommentBody(e.target.value)}
                 placeholder="Write a comment..."
+                aria-label="New comment"
+                disabled={!commentAccess.allowed || isPostingComment}
+                title={commentAccess.allowed ? undefined : editorReason(commentAccess.reason)}
                 className="flex-1 px-3 py-2 text-xs border border-border bg-surface text-content placeholder:text-content-muted rounded-lg focus:outline-none focus:ring-1 focus:ring-primary"
               />
               <button
                 type="submit"
-                disabled={isPostingComment || !newCommentBody.trim()}
+                disabled={!commentAccess.allowed || isPostingComment || !newCommentBody.trim()}
                 className="px-4 py-2 text-xs font-medium text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5"
               >
                 <LuSend className="w-3.5 h-3.5" />
@@ -964,6 +838,7 @@ const TaskDetailModal = ({
         title={`Confirm Approval ${approvalActionModal?.toUpperCase()}`}
       >
         <div className="space-y-4">
+          {actionError && <p role="alert" className="text-rose-600">{actionError}</p>}
           <p className="text-xs text-content-muted">
             {approvalActionModal === 'request' && 'Provide an optional reason for requesting approval:'}
             {approvalActionModal === 'approve' && 'Provide an optional reason for approving this task:'}
@@ -997,6 +872,9 @@ const TaskDetailModal = ({
               disabled={
                 isResolvingApproval ||
                 isRequestingApproval ||
+                (approvalActionModal === 'request' && !transitionAccess.allowed) ||
+                (['approve', 'reject'].includes(approvalActionModal) && !canResolveApproval) ||
+                (approvalActionModal === 'cancel' && !canCancelApproval) ||
                 (approvalActionModal === 'cancel' && !approvalReason.trim())
               }
               className={`px-4 py-2 text-xs font-medium text-white rounded-lg cursor-pointer disabled:opacity-50 ${
@@ -1041,44 +919,6 @@ const TaskDetailModal = ({
         </div>
       </Modal>
 
-      {/* Confirm Unlink Attachment Sub-Modal */}
-      <Modal
-        isOpen={Boolean(attachmentToUnlink)}
-        onClose={() => !isUnlinkingAttachment && setAttachmentToUnlink(null)}
-        title="Remove Task Attachment"
-      >
-        <div className="space-y-4">
-          {unlinkError && (
-            <div
-              role="alert"
-              className="p-3 text-xs text-red-700 bg-red-50 dark:bg-red-950/30 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-lg"
-            >
-              {unlinkError}
-            </div>
-          )}
-          <p className="text-xs text-content-muted">
-            Are you sure you want to remove <strong>{attachmentToUnlink?.originalName}</strong> from this task? The attachment relation will be soft-removed.
-          </p>
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
-            <button
-              type="button"
-              onClick={() => setAttachmentToUnlink(null)}
-              disabled={isUnlinkingAttachment}
-              className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted cursor-pointer disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleConfirmUnlinkAttachment}
-              disabled={isUnlinkingAttachment}
-              className="px-4 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
-            >
-              {isUnlinkingAttachment ? 'Removing...' : 'Confirm Remove'}
-            </button>
-          </div>
-        </div>
-      </Modal>
     </Modal>
   );
 };

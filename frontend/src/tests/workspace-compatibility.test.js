@@ -118,18 +118,12 @@ const organizations = [
 ];
 
 localStorage.setItem(ACTIVE_ORG_KEY, 'org-2');
-let state = authReducer(undefined, {
-  type: fetchMyOrganizations.fulfilled.type,
-  payload: organizations,
-});
+let state = authReducer(authReducer(undefined, fetchMyOrganizations.pending('discovery-test')), fetchMyOrganizations.fulfilled(organizations, 'discovery-test'));
 assert.equal(state.activeOrganizationId, 'org-2');
 assert.equal(state.activeOrganization.role, 'member');
 
 localStorage.setItem(ACTIVE_ORG_KEY, 'missing-org');
-state = authReducer(undefined, {
-  type: fetchMyOrganizations.fulfilled.type,
-  payload: organizations,
-});
+state = authReducer(authReducer(undefined, fetchMyOrganizations.pending('discovery-test')), fetchMyOrganizations.fulfilled(organizations, 'discovery-test'));
 assert.equal(state.activeOrganizationId, 'org-1');
 assert.equal(localStorage.getItem(ACTIVE_ORG_KEY), 'missing-org', 'reducers must stay pure');
 
@@ -139,8 +133,9 @@ state = authReducer(
     organizations: [],
     activeOrganizationId: null,
     activeOrganization: null,
+    organizationsRequestId: 'empty-discovery-test',
   },
-  { type: fetchMyOrganizations.fulfilled.type, payload: [] },
+  fetchMyOrganizations.fulfilled([], 'empty-discovery-test'),
 );
 assert.equal(state.activeOrganizationId, null);
 assert.equal(state.activeOrganization, null);
@@ -158,10 +153,8 @@ assert.equal(selectActiveOrganizationId(selectorState), 'org-1');
 assert.equal(selectOrganizationId(selectorState), 'org-1');
 assert.equal(selectRole(selectorState), 'admin');
 
-store.dispatch({
-  type: fetchMyOrganizations.fulfilled.type,
-  payload: organizations,
-});
+store.dispatch(fetchMyOrganizations.pending('store-discovery-test'));
+store.dispatch(fetchMyOrganizations.fulfilled(organizations, 'store-discovery-test'));
 await Promise.all([
   store.dispatch(taskApi.util.upsertQueryData('getMyTasks', undefined, [{ id: 'task-1' }])),
   store.dispatch(teamApi.util.upsertQueryData('getTeams', undefined, [{ id: 'team-1' }])),

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import TaskEditButton from '../../../components/task/TaskEditButton.jsx';
 import toast from 'react-hot-toast';
 import {
   LuCopy,
@@ -18,7 +19,7 @@ import {
 } from '../../../services/taskApi.js';
 import PriorityBars, { LinearStatusIcon } from '../../../components/task/PriorityBars.jsx';
 
-const MyTaskInspector = ({ task, onOpenFullModal }) => {
+const MyTaskInspector = ({ task, onOpenFullModal, onEditTask }) => {
   const [fastNote, setFastNote] = useState('');
   const [newChecklistText, setNewChecklistText] = useState('');
   const [isAddingChecklist, setIsAddingChecklist] = useState(false);
@@ -27,7 +28,7 @@ const MyTaskInspector = ({ task, onOpenFullModal }) => {
   const taskId = task?.id;
 
   // Fetch full task detail for live checklist and comments
-  const { data: taskDetail } = useGetProjectTaskDetailQuery(
+  const { currentData: taskDetail, isError: detailError } = useGetProjectTaskDetailQuery(
     { projectId, taskId },
     { skip: !projectId || !taskId }
   );
@@ -138,6 +139,7 @@ const MyTaskInspector = ({ task, onOpenFullModal }) => {
         </div>
 
         <div className="flex items-center gap-1">
+          <TaskEditButton task={detailError ? null : taskDetail} onEditTask={onEditTask} />
           <button
             type="button"
             onClick={handleCopyLink}

@@ -1,166 +1,83 @@
-// src/pages/Auth/ForgotPassword.jsx
-
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import axiosInstance from '../../utils/axiosInstance';
 import { API_PATHS } from '../../utils/apiPaths';
-import { LuMail, LuKey, LuShieldCheck } from 'react-icons/lu';
 
-const ForgotPassword = () => {
-    // State để quản lý 3 bước
-    const [step, setStep] = useState(1); // 1: Email, 2: OTP, 3: Mật khẩu mới
+export default function ForgotPassword() {
+    const [step, setStep] = useState('email');
     const [email, setEmail] = useState('');
     const [otp, setOtp] = useState('');
     const [newPassword, setNewPassword] = useState('');
-    
-    // State cho UI feedback
-    const [isLoading, setIsLoading] = useState(false);
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [pending, setPending] = useState(false);
     const [error, setError] = useState('');
     const [message, setMessage] = useState('');
-    
-    const navigate = useNavigate();
+    const [remaining, setRemaining] = useState(0);
+    const lock = useRef(false);
+    const alive = useRef(true);
+    useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+    useEffect(() => {
+        if (!remaining) return;
+        const timer = setTimeout(() => setRemaining(value => Math.max(0, value - 1)), 1000);
+        return () => clearTimeout(timer);
+    }, [remaining]);
 
-    // Bước 1: Gửi yêu cầu OTP
-    const handleRequestOtp = async (e) => {
-        e.preventDefault();
-        setIsLoading(true);
-        setError('');
-        setMessage('');
-        try {
-            const response = await axiosInstance.post(API_PATHS.AUTH.REQUEST_PASSWORD_RESET, { email });
-            setMessage(response.data.message);
-            setStep(2); // Chuyển sang bước 2
-        } catch (err) {
-            setError(err.response?.data?.message || 'Failed to send OTP. Please try again.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    // Bước 2: Xác nhận OTP (chỉ là bước UI, không gọi API)
-    const handleVerifyOtp = (e) => {
-        e.preventDefault();
-        if (otp.length !== 6) {
-            setError('Please enter a valid 6-digit OTP.');
+    const submit = async (event, resend = false) => {
+        event.preventDefault();
+        if (lock.current) return;
+        const sending = step === 'email' || resend;
+        if (sending && remaining) return;
+        if (!sending && (!/^\d{6}$/.test(otp) || newPassword.length < 8 || newPassword.length > 128 || new TextEncoder().encode(newPassword).length > 72 || newPassword !== confirmPassword)) {
+            setError('Enter a 6-digit code and matching passwords of 8–128 characters, up to 72 UTF-8 bytes.');
             return;
         }
-        setError('');
-        setStep(3); // Chuyển sang bước 3
-    };
-
-    // Bước 3: Gửi OTP và mật khẩu mới để reset
-    const handleResetPassword = async (e) => {
-        e.preventDefault();
-        setIsLoading(true);
-        setError('');
+        lock.current = true; setPending(true); setError(''); setMessage('');
         try {
-            const response = await axiosInstance.post(API_PATHS.AUTH.RESET_PASSWORD, { email, otp, newPassword });
-            alert(response.data.message);
-            navigate('/login');
-        } catch (err) {
-            setError(err.response?.data?.message || 'Failed to reset password. Please check your OTP.');
-        } finally {
-            setIsLoading(false);
-        }
+            const response = await axiosInstance.post(sending ? API_PATHS.AUTH.REQUEST_PASSWORD_RESET : API_PATHS.AUTH.RESET_PASSWORD,
+                sending ? { email: email.trim() } : { email: email.trim(), otp, newPassword, confirmPassword });
+            if (!alive.current) return;
+            setMessage(response.data.message);
+            setOtp(''); setNewPassword(''); setConfirmPassword('');
+            if (sending) { setStep('reset'); setRemaining(response.data.retryAfter || 60); }
+            else { setStep('done'); }
+        } catch (failure) {
+            if (!alive.current) return;
+            const data = failure.response?.data;
+            const text = Array.isArray(data?.message) ? data.message.join(' ') : data?.message;
+            setError(text || (sending ? 'Request could not be confirmed. Wait a minute, check your email, then try again.' : 'Reset could not be confirmed. Try signing in with the new password; otherwise request a new code.'));
+            if (data?.retryAfter) setRemaining(data.retryAfter);
+        } finally { lock.current = false; if (alive.current) setPending(false); }
     };
-
-    // Hàm render form cho từng bước
-    const renderStep = () => {
-        switch (step) {
-            case 1: // Form nhập Email
-                return (
-                    <form onSubmit={handleRequestOtp} className="space-y-4">
-                        <div>
-                            <label htmlFor="email" className="text-sm font-medium text-gray-700">Email Address</label>
-                            <div className="relative mt-1">
-                                <LuMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input
-                                    type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                                    required placeholder="you@example.com"
-                                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                />
-                            </div>
-                        </div>
-                        <button type="submit" disabled={isLoading} className="w-full px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-400 font-semibold transition-colors">
-                            {isLoading ? 'Sending...' : 'Send Reset Code'}
-                        </button>
-                    </form>
-                );
-            case 2: // Form nhập OTP
-                return (
-                    <form onSubmit={handleVerifyOtp} className="space-y-4">
-                        <div>
-                            <label htmlFor="otp" className="text-sm font-medium text-gray-700">Verification Code</label>
-                            <div className="relative mt-1">
-                                <LuShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input
-                                    type="text" id="otp" value={otp} onChange={(e) => setOtp(e.target.value)}
-                                    required placeholder="Enter the 6-digit code"
-                                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                />
-                            </div>
-                        </div>
-                        <button type="submit" className="w-full px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 font-semibold transition-colors">
-                            Verify Code
-                        </button>
-                    </form>
-                );
-            case 3: // Form nhập Mật khẩu mới
-                return (
-                    <form onSubmit={handleResetPassword} className="space-y-4">
-                        <div>
-                            <label htmlFor="newPassword" className="text-sm font-medium text-gray-700">New Password</label>
-                            <div className="relative mt-1">
-                                <LuKey className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input
-                                    type="password" id="newPassword" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                                    required placeholder="Enter your new password"
-                                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                />
-                            </div>
-                        </div>
-                        <button type="submit" disabled={isLoading} className="w-full px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-400 font-semibold transition-colors">
-                            {isLoading ? 'Resetting...' : 'Reset Password'}
-                        </button>
-                    </form>
-                );
-            default:
-                return null;
-        }
+    const restart = () => {
+        setStep('email'); setOtp(''); setNewPassword(''); setConfirmPassword(''); setError(''); setMessage('');
     };
-
+    const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900';
     return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="flex items-center justify-center min-h-screen bg-gray-50 p-4">
             <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
-                {/* Tiêu đề và mô tả động */}
-                <div className="text-center">
-                    <h2 className="text-2xl font-bold text-gray-800">
-                        {step === 1 && 'Forgot Password'}
-                        {step === 2 && 'Check Your Email'}
-                        {step === 3 && 'Set New Password'}
-                    </h2>
-                    <p className="text-sm text-gray-500 mt-2">
-                        {step === 1 && "We'll send a verification code to your email."}
-                        {step === 2 && `We've sent a code to ${email}.`}
-                        {step === 3 && "Create a new, strong password."}
-                    </p>
-                </div>
-
-                {/* Hiển thị thông báo thành công/lỗi */}
-                {message && step === 2 && <p className="text-sm text-center text-green-600 bg-green-50 p-3 rounded-md">{message}</p>}
-                {error && <p className="text-sm text-red-600 text-center">{error}</p>}
-
-                {/* Render form tương ứng với bước hiện tại */}
-                {renderStep()}
-                
-                <div className="text-center">
-                    <Link to="/login" className="text-sm text-blue-600 hover:underline">
-                        Back to Login
-                    </Link>
-                </div>
+                <h1 className="text-2xl font-bold text-gray-800">{step === 'email' ? 'Forgot Password' : step === 'reset' ? 'Reset Password' : 'Password Reset Complete'}</h1>
+                <p className="text-sm text-gray-600">{step === 'email' ? 'Request a reset code. Reloading this page starts a new request.' : step === 'reset' ? 'Enter the code from your email and a new password. The server checks the code when you submit.' : 'Sign in with your new password.'}</p>
+                {message && <p role="status" className="text-sm text-green-700">{message}</p>}
+                {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+                {step !== 'done' && <form onSubmit={submit} className="space-y-4">
+                    <label className="block text-gray-700" htmlFor="reset-email">Email Address</label>
+                    <input id="reset-email" type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} disabled={pending || step === 'reset'} className={inputClass} />
+                    {step === 'reset' && <>
+                        <label className="block text-gray-700" htmlFor="reset-code">Reset Code</label>
+                        <input id="reset-code" autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required value={otp} onChange={event => setOtp(event.target.value)} disabled={pending} className={inputClass} />
+                        <label className="block text-gray-700" htmlFor="reset-password">New Password</label>
+                        <input id="reset-password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={newPassword} onChange={event => setNewPassword(event.target.value)} disabled={pending} className={inputClass} />
+                        <label className="block text-gray-700" htmlFor="reset-confirm">Confirm Password</label>
+                        <input id="reset-confirm" type="password" autoComplete="new-password" required value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} disabled={pending} className={inputClass} />
+                    </>}
+                    <button type="submit" disabled={pending || (step === 'email' && remaining > 0)} className="w-full px-4 py-2 text-white bg-blue-600 rounded-md disabled:opacity-50">{pending ? 'Please wait…' : step === 'email' ? 'Request Reset Code' : 'Reset Password'}</button>
+                </form>}
+                {step === 'reset' && <div className="flex justify-between gap-4">
+                    <button type="button" disabled={pending || remaining > 0} onClick={event => submit(event, true)} className="text-blue-700 disabled:opacity-50">{remaining ? `Resend in ${remaining}s` : 'Resend Code'}</button>
+                    <button type="button" disabled={pending} onClick={restart} className="text-blue-700">Start Again</button>
+                </div>}
+                <Link to="/login" className="text-sm text-blue-700 underline">Back to Login</Link>
             </div>
         </div>
     );
-};
-
-export default ForgotPassword;
+}

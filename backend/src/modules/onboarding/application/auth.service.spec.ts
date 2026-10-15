@@ -20,6 +20,7 @@ describe('PostgresAuthService', () => {
   const repository = { findOneBy, create, save, createQueryBuilder: jest.fn() };
   const manager = {
     getRepository: jest.fn(() => repository),
+    query: jest.fn().mockResolvedValue([{ id: 'test-user' }]),
   } as unknown as EntityManager;
   const jwt = {
     sign: jest.fn(),

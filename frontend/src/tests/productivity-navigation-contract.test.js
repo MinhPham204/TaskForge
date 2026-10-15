@@ -236,10 +236,8 @@ const testOrganizations = [
   { organizationId: 'org-beta', name: 'Beta Org', role: 'member' },
 ];
 
-store.dispatch({
-  type: fetchMyOrganizations.fulfilled.type,
-  payload: testOrganizations,
-});
+store.dispatch(fetchMyOrganizations.pending('navigation-discovery-test'));
+store.dispatch(fetchMyOrganizations.fulfilled(testOrganizations, 'navigation-discovery-test'));
 
 store.dispatch(
   searchApi.util.upsertQueryData('search', { query: 'test', limit: 8 }, {

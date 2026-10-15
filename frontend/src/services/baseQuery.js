@@ -1,8 +1,9 @@
+import { normalizeHttpError } from '../utils/httpError.js';
 import axiosInstance from '../utils/axiosInstance.js';
 import { handleDevMockRequest, isDevMockActive } from '../utils/devMockHandler.js';
 
 export const axiosBaseQuery = ({ baseUrl } = { baseUrl: '' }) =>
-  async ({ url, method, data, params }, api) => {
+  async ({ url, method, data, params, headers, responseType, timeout, signal }, api) => {
     const auth = api?.getState()?.auth;
     const scope = { userId: auth?.user?.id, organizationId: auth?.activeOrganizationId };
     // Development review & testing mock interceptor
@@ -25,10 +26,11 @@ export const axiosBaseQuery = ({ baseUrl } = { baseUrl: '' }) =>
         method,
         data,
         params,
+        headers, responseType, timeout, signal: signal ?? api?.signal,
       });
       return { data: result.data };
     } catch (axiosError) {
-      let err = axiosError;
+      const err = await normalizeHttpError(axiosError);
       if (err.response?.status === 403 && scope.organizationId && !url.endsWith('/permissions/me')) {
         api.dispatch({ type: 'auth/invalidateOrganizationCapabilities', payload: scope });
       }

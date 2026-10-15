@@ -11,6 +11,7 @@ import {
   Res,
   UploadedFile,
   UseGuards,
+  UseFilters,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -29,6 +30,8 @@ import {
   type PostgresTenantRequest,
 } from '../../onboarding/tenant/tenant-membership.guard';
 import { PostgresCollaborationService } from '../application/collaboration.service';
+import { MAX_FILE_SIZE_BYTES } from '../application/file-storage';
+import { CodedErrorFilter } from '../../../common/http/coded-error.filter';
 
 interface MulterFileLike {
   originalname: string;
@@ -40,6 +43,7 @@ interface MulterFileLike {
 @ApiTags('PostgreSQL Project Files')
 @ApiBearerAuth('accessToken')
 @Controller('projects/:projectId/files')
+@UseFilters(CodedErrorFilter)
 @UseGuards(PostgresJwtAuthGuard, PostgresTenantMembershipGuard)
 @UseInterceptors(PostgresTenantInterceptor)
 export class PostgresProjectFileController {
@@ -56,9 +60,22 @@ export class PostgresProjectFileController {
   }
 
   @Post()
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: MAX_FILE_SIZE_BYTES + 1,
+        files: 1,
+        fields: 1,
+        fieldSize: 1024,
+        parts: 3,
+      },
+    }),
+  )
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Upload and add a file to Project (Project Manager only, FILES module enabled)' })
+  @ApiOperation({
+    summary:
+      'Upload and add a file to Project (Project Manager only, FILES module enabled)',
+  })
   @ApiOkResponse({ description: 'File added to Project' })
   async upload(
     @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
@@ -85,7 +102,8 @@ export class PostgresProjectFileController {
   @ApiOperation({ summary: 'Download an active Project file' })
   async download(
     @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
-    @Param('projectFileId', new ParseUUIDPipe({ version: '4' })) projectFileId: string,
+    @Param('projectFileId', new ParseUUIDPipe({ version: '4' }))
+    projectFileId: string,
     @Req() request: PostgresTenantRequest,
     @Res() res: Response,
   ) {
@@ -104,11 +122,14 @@ export class PostgresProjectFileController {
   }
 
   @Delete(':projectFileId')
-  @ApiOperation({ summary: 'Soft remove a file from Project (Project Manager only)' })
+  @ApiOperation({
+    summary: 'Soft remove a file from Project (Project Manager only)',
+  })
   @ApiOkResponse({ description: 'Project file removed' })
   remove(
     @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
-    @Param('projectFileId', new ParseUUIDPipe({ version: '4' })) projectFileId: string,
+    @Param('projectFileId', new ParseUUIDPipe({ version: '4' }))
+    projectFileId: string,
     @Req() request: PostgresTenantRequest,
   ) {
     return this.collaboration.removeProjectFile(

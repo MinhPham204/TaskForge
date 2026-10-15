@@ -1,3 +1,4 @@
+import { CodedErrorFilter } from '../../../common/http/coded-error.filter';
 import {
   BadRequestException,
   Controller,
@@ -9,6 +10,7 @@ import {
   Req,
   Res,
   UploadedFile,
+  UseFilters,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -28,6 +30,7 @@ import {
   type PostgresTenantRequest,
 } from '../../onboarding/tenant/tenant-membership.guard';
 import { PostgresCollaborationService } from '../application/collaboration.service';
+import { MAX_FILE_SIZE_BYTES } from '../application/file-storage';
 
 interface MulterFileLike {
   originalname: string;
@@ -39,6 +42,7 @@ interface MulterFileLike {
 @ApiTags('PostgreSQL Task Attachments')
 @ApiBearerAuth('accessToken')
 @Controller('projects/:projectId/tasks/:taskId/attachments')
+@UseFilters(CodedErrorFilter)
 @UseGuards(PostgresJwtAuthGuard, PostgresTenantMembershipGuard)
 @UseInterceptors(PostgresTenantInterceptor)
 export class PostgresTaskAttachmentController {
@@ -60,9 +64,21 @@ export class PostgresTaskAttachmentController {
   }
 
   @Post()
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: MAX_FILE_SIZE_BYTES + 1,
+        files: 1,
+        fields: 1,
+        fieldSize: 1024,
+        parts: 3,
+      },
+    }),
+  )
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Upload and attach a file to Task (active Project member)' })
+  @ApiOperation({
+    summary: 'Upload and attach a file to Task (active Project member)',
+  })
   @ApiOkResponse({ description: 'File attached to Task' })
   async upload(
     @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
@@ -90,7 +106,8 @@ export class PostgresTaskAttachmentController {
   async download(
     @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
     @Param('taskId', new ParseUUIDPipe({ version: '4' })) taskId: string,
-    @Param('attachmentId', new ParseUUIDPipe({ version: '4' })) attachmentId: string,
+    @Param('attachmentId', new ParseUUIDPipe({ version: '4' }))
+    attachmentId: string,
     @Req() request: PostgresTenantRequest,
     @Res() res: Response,
   ) {
@@ -115,7 +132,8 @@ export class PostgresTaskAttachmentController {
   unlink(
     @Param('projectId', new ParseUUIDPipe({ version: '4' })) projectId: string,
     @Param('taskId', new ParseUUIDPipe({ version: '4' })) taskId: string,
-    @Param('attachmentId', new ParseUUIDPipe({ version: '4' })) attachmentId: string,
+    @Param('attachmentId', new ParseUUIDPipe({ version: '4' }))
+    attachmentId: string,
     @Req() request: PostgresTenantRequest,
   ) {
     return this.collaboration.unlinkTaskAttachment(

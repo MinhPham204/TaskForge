@@ -1,18 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
+  useGetTaskAssignmentCandidatesQuery,
   useCreateProjectTaskMutation,
   useUpdateProjectTaskMutation,
   useConfigureApprovalMutation,
   useAssignTaskMutation,
+  useUnassignTaskMutation,
+  useTransitionTaskStatusMutation,
+  useGetProjectTaskDetailQuery,
 } from '../../../services/taskApi';
 import {
   useGetProjectsQuery,
+  useGetProjectByIdQuery,
   useGetProjectTeamsQuery,
   useGetProjectStatusesQuery,
   useGetProjectMembersQuery,
   useGetProjectMilestonesQuery,
 } from '../../../services/projectApi';
+import TaskAssigneePicker from '../../../components/task/TaskAssigneePicker.jsx';
+import { requireEligibleNewAssignees } from '../../../utils/taskAssignments.js';
+import { useDispatch } from 'react-redux';
+import { taskApi } from '../../../services/taskApi.js';
+import { taskEditorDraft, editorPermissions, editorReason, eligibleTaskApprovers, saveTaskEditor } from '../../../utils/taskEditor.js';
 import useUserAuth from '../../../hooks/useUserAuth.jsx';
 import {
   LuLayoutGrid,
@@ -70,13 +80,20 @@ const TaskFormModal = ({
   onClose,
   projectId: initialProjectId,
   task = null, // null for create, object for edit
-  canManage = false,
   onSuccess,
   projects: incomingProjects = null,
   onSelectProject,
 }) => {
-  const { user } = useUserAuth();
-  const isEditing = Boolean(task);
+  const { user, activeOrganizationId } = useUserAuth();
+  const dispatch = useDispatch();
+  const [savedTaskId, setSavedTaskId] = useState(null);
+  const isEditing = Boolean(task || savedTaskId);
+  const sessionRef = useRef(null);
+  const initializedKey = useRef(null);
+  const pendingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const currentScopeRef = useRef('');
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   // Queries
   const { data: cachedProjects = EMPTY_ARRAY } = useGetProjectsQuery(undefined, {
@@ -89,29 +106,31 @@ const TaskFormModal = ({
   const [selectedProjectId, setSelectedProjectId] = useState(
     initialProjectId || allProjects[0]?.id || ''
   );
-  const effectiveProjectId = selectedProjectId || initialProjectId || allProjects[0]?.id || '';
+  const effectiveProjectId = task?.projectId || (task ? initialProjectId : selectedProjectId) || initialProjectId || allProjects[0]?.id || '';
+  currentScopeRef.current = `${user?.id}:${activeOrganizationId}:${effectiveProjectId}:${task?.id || 'create'}:${isOpen}`;
 
-  const activeProject = allProjects.find((p) => p.id === effectiveProjectId);
+  const { currentData: activeProject } = useGetProjectByIdQuery(effectiveProjectId, { skip: !isOpen || !effectiveProjectId });
+  const detailId = task?.id || savedTaskId;
+  const { currentData: fullDetail, isFetching: isFetchingDetail, isError: detailError, refetch: refetchDetail } = useGetProjectTaskDetailQuery(
+    { projectId: effectiveProjectId, taskId: detailId },
+    { skip: !isOpen || !detailId, refetchOnMountOrArgChange: true },
+  );
 
   useEffect(() => {
     if (!isOpen) return;
-    if (initialProjectId) {
-      setSelectedProjectId(initialProjectId);
-    } else if (allProjects.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(allProjects[0].id);
-    }
-  }, [isOpen, initialProjectId, allProjects.length]);
+    setSelectedProjectId(current => current || initialProjectId || allProjects[0]?.id || '');
+  }, [isOpen, initialProjectId, allProjects]);
 
-  const { data: teams = EMPTY_ARRAY } = useGetProjectTeamsQuery(effectiveProjectId, {
+  const { currentData: teams = EMPTY_ARRAY } = useGetProjectTeamsQuery(effectiveProjectId, {
     skip: !isOpen || !effectiveProjectId,
   });
-  const { data: statuses = EMPTY_ARRAY } = useGetProjectStatusesQuery(effectiveProjectId, {
+  const { currentData: statuses = EMPTY_ARRAY } = useGetProjectStatusesQuery(effectiveProjectId, {
     skip: !isOpen || !effectiveProjectId,
   });
-  const { data: members = EMPTY_ARRAY } = useGetProjectMembersQuery(effectiveProjectId, {
+  const { currentData: members = EMPTY_ARRAY } = useGetProjectMembersQuery(effectiveProjectId, {
     skip: !isOpen || !effectiveProjectId,
   });
-  const { data: milestones = EMPTY_ARRAY } = useGetProjectMilestonesQuery(effectiveProjectId, {
+  const { currentData: milestones = EMPTY_ARRAY } = useGetProjectMilestonesQuery(effectiveProjectId, {
     skip: !isOpen || !effectiveProjectId,
   });
 
@@ -119,6 +138,10 @@ const TaskFormModal = ({
   const [updateTask, { isLoading: isUpdating }] = useUpdateProjectTaskMutation();
   const [configureApproval] = useConfigureApprovalMutation();
   const [assignTask] = useAssignTaskMutation();
+  const [unassignTask] = useUnassignTaskMutation();
+  const [transitionStatus] = useTransitionTaskStatusMutation();
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState(null);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -128,7 +151,7 @@ const TaskFormModal = ({
   const [priorityCode, setPriorityCode] = useState('MEDIUM');
   const [dueAt, setDueAt] = useState('');
   const [milestoneId, setMilestoneId] = useState('');
-  const [selectedAssigneeId, setSelectedAssigneeId] = useState('');
+  const [assigneeIds, setAssigneeIds] = useState([]);
   const [requiresApproval, setRequiresApproval] = useState(false);
   const [approverMembershipId, setApproverMembershipId] = useState('');
   const [createAnother, setCreateAnother] = useState(false);
@@ -136,12 +159,18 @@ const TaskFormModal = ({
   const [formError, setFormError] = useState('');
 
   // Labels
-  const [labels, setLabels] = useState(['Security']);
+  const [labels, setLabels] = useState([]);
   const [isAddingLabel, setIsAddingLabel] = useState(false);
   const [labelInput, setLabelInput] = useState('');
 
+  const { currentData: candidates = EMPTY_ARRAY, isFetching: candidatesLoading, isError: candidatesError, refetch: refetchCandidates } = useGetTaskAssignmentCandidatesQuery(
+    { projectId: effectiveProjectId, teamId: owningTeamId },
+    { skip: !isOpen || !effectiveProjectId || !owningTeamId || !(detailId ? fullDetail?.capabilities?.assign?.allowed === true : activeProject?.viewer?.canManage === true && activeProject?.viewer?.canCreateTask === true), refetchOnMountOrArgChange: true },
+  );
   const descriptionRef = useRef(null);
   const titleInputRef = useRef(null);
+  const createContentRef = useRef(null);
+  createContentRef.current = { title, description, labels, priorityCode, dueAt };
 
   const openMilestones = milestones.filter((m) => m.statusCode === 'OPEN');
 
@@ -150,73 +179,55 @@ const TaskFormModal = ({
     (m) => m.user?.id === user?.id || m.userId === user?.id
   );
 
-  // Sync initial task values or defaults only on modal open / task change
+  const applyDraft = (draft) => {
+    setTitle(draft.title); setDescription(draft.description); setLabels(draft.labels);
+    setOwningTeamId(draft.owningTeamId); setStatusId(draft.statusId); setPriorityCode(draft.priorityCode);
+    setDueAt(draft.dueAt); setMilestoneId(draft.milestoneId); setAssigneeIds(draft.assigneeIds);
+    setRequiresApproval(draft.requiresApproval); setApproverMembershipId(draft.approverMembershipId);
+  };
   useEffect(() => {
-    if (!isOpen) return;
-    if (task) {
-      setTitle(task.title || '');
-      let cleanDesc = task.description || '';
-      const match = cleanDesc.match(/Labels:\s*([^\n]+)/);
-      if (match) {
-        const parsedLabels = match[1]
-          .split(',')
-          .map((l) => l.trim().replace(/^#/, ''))
-          .filter(Boolean);
-        setLabels(parsedLabels);
-        cleanDesc = cleanDesc.replace(/\n*Labels:\s*[^\n]+/g, '').trim();
-      } else {
-        setLabels([]);
-      }
-      setDescription(cleanDesc);
-      setOwningTeamId(task.owningTeamId || '');
-      setStatusId(task.statusId || '');
-      setPriorityCode(task.priorityCode || 'MEDIUM');
-      setDueAt(task.dueAt ? task.dueAt.substring(0, 10) : '');
-      setMilestoneId(task.milestoneId || '');
-      setRequiresApproval(Boolean(task.requiresApproval));
-      setApproverMembershipId(task.approverProjectMembershipId || '');
-      if (task.assigneeProjectMembershipIds && task.assigneeProjectMembershipIds.length > 0) {
-        setSelectedAssigneeId(task.assigneeProjectMembershipIds[0]);
-      } else {
-        setSelectedAssigneeId('');
-      }
-    } else {
-      setTitle('');
-      setDescription('');
-      setOwningTeamId(teams[0]?.teamId || teams[0]?.id || '');
-      setStatusId(statuses[0]?.id || '');
-      setPriorityCode('MEDIUM');
-      setDueAt('');
-      setMilestoneId('');
-      setRequiresApproval(false);
-      setApproverMembershipId('');
-      setSelectedAssigneeId('');
-      setLabels(['Security']);
-    }
-    setFormError('');
-  }, [isOpen, task?.id]);
+    if (!isOpen) { initializedKey.current = null; sessionRef.current = null; return; }
+    const key = currentScopeRef.current;
+    if (initializedKey.current === key) return;
+    if (task && (!fullDetail || isFetchingDetail)) return;
+    const keepCreateContent = !task && !sessionRef.current?.task && initializedKey.current?.startsWith(`${user?.id}:${activeOrganizationId}:`);
+    const initial = keepCreateContent
+      ? { ...taskEditorDraft(), ...createContentRef.current }
+      : taskEditorDraft(task ? fullDetail : undefined);
+    sessionRef.current = { task: task ? fullDetail : null, initial: structuredClone(initial) };
+    initializedKey.current = key;
+    applyDraft(initial);
+    setSavedTaskId(null); setFormError(''); setSaveFeedback(null);
+  }, [isOpen, task, fullDetail, isFetchingDetail, effectiveProjectId, activeOrganizationId, user?.id]);
+
+  const permissions = editorPermissions(detailId ? (!detailError && fullDetail || { capabilities: {} }) : null, activeProject);
+  const ready = Boolean(sessionRef.current && initializedKey.current === currentScopeRef.current);
+  const permitted = operation => ready && permissions[operation].allowed;
+  const disabledReason = operation => permitted(operation) ? undefined : editorReason(permissions[operation].reason);
+  const creatorId = sessionRef.current?.task?.creatorProjectMembershipId || myMembership?.projectMembershipId || myMembership?.id;
+  const approvers = eligibleTaskApprovers(members, creatorId, assigneeIds);
 
   // Set default team and status once loaded if creating
   useEffect(() => {
-    if (!isOpen || isEditing) return;
+    if (!isOpen || isEditing || !ready) return;
     if (!owningTeamId && teams.length > 0) {
       setOwningTeamId(teams[0]?.teamId || teams[0]?.id || '');
     }
-  }, [isOpen, isEditing, teams, owningTeamId]);
+  }, [isOpen, isEditing, ready, teams, owningTeamId]);
 
   useEffect(() => {
     if (!isOpen || isEditing) return;
     if (!statusId && statuses.length > 0) {
       setStatusId(statuses[0]?.id || '');
     }
-  }, [isOpen, isEditing, statuses, statusId]);
+  }, [isOpen, isEditing, ready, statuses, statusId]);
 
   // Escape key handler
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        onClose();
+        if (!pendingRef.current) onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -226,7 +237,7 @@ const TaskFormModal = ({
   // Markdown toolbar helper
   const insertMarkdown = (prefix, suffix = '', defaultText = '') => {
     const textarea = descriptionRef.current;
-    if (!textarea) return;
+    if (!textarea || !permitted('editContent') || pendingRef.current) return;
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const text = description;
@@ -259,138 +270,62 @@ const TaskFormModal = ({
   const handleAssignToMe = () => {
     if (myMembership) {
       const myId = myMembership.id || myMembership.projectMembershipId || myMembership.organizationMembershipId;
-      setSelectedAssigneeId(myId);
+      setAssigneeIds(ids => [...new Set([...ids, myId])]);
     }
   };
-
-  const selectedAssignee = members.find(
-    (m) => (m.id || m.projectMembershipId || m.organizationMembershipId) === selectedAssigneeId
-  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setFormError('');
-
-    if (!title.trim()) {
-      setFormError('Task title is required.');
-      return;
-    }
-
+    if (pendingRef.current || !ready) return;
+    pendingRef.current = true;
+    setIsSaving(true); setFormError('');
+    const scope = currentScopeRef.current;
+    const saveSession = sessionRef.current;
+    const isCurrent = () => mountedRef.current && currentScopeRef.current === scope && sessionRef.current === saveSession;
+    const draft = { title, description, labels, owningTeamId, statusId, priorityCode, dueAt, milestoneId, assigneeIds, requiresApproval, approverMembershipId };
+    const commands = { createProjectTask: createTask, updateProjectTask: updateTask, assignTask, unassignTask, configureApproval, transitionTaskStatus: transitionStatus };
     try {
-      let finalDescription = description.trim();
-      finalDescription = finalDescription.replace(/\n*Labels:\s*[^\n]+/g, '').trim();
-      if (labels.length > 0) {
-        finalDescription = finalDescription
-          ? `${finalDescription}\n\nLabels: ${labels.map((l) => `#${l}`).join(', ')}`
-          : `Labels: ${labels.map((l) => `#${l}`).join(', ')}`;
+      requireEligibleNewAssignees(sessionRef.current.task?.assigneeProjectMembershipIds || [], assigneeIds, candidates);
+      if (fullDetail?.id === sessionRef.current.task?.id && !isFetchingDetail) sessionRef.current.task = fullDetail;
+      const result = await saveTaskEditor({
+        session: sessionRef.current, draft, projectId: effectiveProjectId, project: activeProject, members, creatorId,
+        execute: (name, args) => commands[name](args).unwrap(),
+        readDetail: async taskId => {
+          const request = dispatch(taskApi.endpoints.getProjectTaskDetail.initiate({ projectId: effectiveProjectId, taskId }, { forceRefetch: true, subscribe: false }));
+          return request.unwrap();
+        },
+        isCurrent,
+        onStep: label => { if (isCurrent()) setSaveFeedback(previous => ({ saved: [...(previous?.saved || []), label] })); },
+      });
+      if (!isCurrent() || result.stale) return;
+      if (sessionRef.current.task?.id && !task) setSavedTaskId(sessionRef.current.task.id);
+      if (!result.complete) {
+        setSaveFeedback(previous => ({ ...previous, failed: result.failed, remaining: result.remaining }));
+        const message = result.error?.data?.message || result.error?.message || 'Request failed.';
+        const detail = Array.isArray(message) ? message.join(' ') : message;
+        setFormError(sessionRef.current.uncertainCreate
+          ? 'Creation result is unknown. Check the Task list before starting another creation; retry could duplicate the Task.'
+          : `${detail}${result.ambiguous ? sessionRef.current.needsReconcile ? ' Server state could not be read. Retry will reload it before sending any changes.' : ' Server state has been reloaded. Retry will send only the remaining changes.' : ''}`);
+        return;
       }
-
-      if (isEditing) {
-        const payload = {
-          projectId: effectiveProjectId,
-          taskId: task.id,
-          title: title.trim(),
-          description: finalDescription || undefined,
-        };
-        if (canManage) {
-          if (owningTeamId) payload.owningTeamId = owningTeamId;
-          payload.priorityCode = priorityCode;
-          payload.dueAt = dueAt ? new Date(dueAt).toISOString() : null;
-          payload.milestoneId = milestoneId || null;
-        }
-        await updateTask(payload).unwrap();
-
-        if (canManage && selectedAssigneeId) {
-          try {
-            await assignTask({
-              projectId: effectiveProjectId,
-              taskId: task.id,
-              projectMembershipId: selectedAssigneeId,
-            }).unwrap();
-          } catch (e) {
-            // Already assigned or unchanged
-          }
-        }
-
-        if (canManage && task.requiresApproval !== requiresApproval) {
-          await configureApproval({
-            projectId: effectiveProjectId,
-            taskId: task.id,
-            approverProjectMembershipId: requiresApproval ? (approverMembershipId || null) : null,
-          }).unwrap();
-        }
-
-        toast.success('Task updated successfully');
-        onSuccess?.();
-        onClose();
-      } else {
-        if (!owningTeamId) {
-          setFormError('An owning participating team is required.');
-          return;
-        }
-        if (!statusId) {
-          setFormError('A task status is required.');
-          return;
-        }
-
-        const payload = {
-          projectId: effectiveProjectId,
-          title: title.trim(),
-          description: finalDescription || undefined,
-          owningTeamId,
-          statusId,
-          priorityCode,
-          dueAt: dueAt ? new Date(dueAt).toISOString() : null,
-          milestoneId: milestoneId || null,
-        };
-
-        const created = await createTask(payload).unwrap();
-
-        if (selectedAssigneeId && created?.id) {
-          try {
-            await assignTask({
-              projectId: effectiveProjectId,
-              taskId: created.id,
-              projectMembershipId: selectedAssigneeId,
-            }).unwrap();
-          } catch (e) {
-            console.warn('Could not assign task:', e);
-          }
-        }
-
-        if (requiresApproval && created?.id) {
-          try {
-            await configureApproval({
-              projectId: effectiveProjectId,
-              taskId: created.id,
-              approverProjectMembershipId: approverMembershipId || null,
-            }).unwrap();
-          } catch (e) {
-            console.warn('Could not configure approval:', e);
-          }
-        }
-
-        if (createAnother) {
-          toast.success('Task created! Ready for next task.');
-          setTitle('');
-          setDescription('');
-          setDueAt('');
-          setMilestoneId('');
-          setLabels(['Security']);
-          titleInputRef.current?.focus();
-          onSuccess?.();
-        } else {
-          toast.success('Task created successfully');
-          onSuccess?.();
-          onClose();
-        }
-      }
-    } catch (err) {
-      setFormError(err.data?.message || err.message || 'Operation failed');
+      toast.success(task || savedTaskId ? 'Task changes saved successfully' : 'Task created successfully');
+      onSuccess?.();
+      if (createAnother && !task) {
+        const initial = taskEditorDraft({ owningTeamId, statusId, priorityCode });
+        sessionRef.current = { task: null, initial: structuredClone(initial) };
+        applyDraft(initial); setSavedTaskId(null); setSaveFeedback(null);
+        titleInputRef.current?.focus();
+      } else onClose();
+    } catch (error) {
+      if (isCurrent()) setFormError(error.data?.message || error.message || 'Operation failed.');
+    } finally {
+      pendingRef.current = false;
+      if (mountedRef.current) setIsSaving(false);
     }
   };
 
-  const isSubmitting = isCreating || isUpdating;
+  const isSubmitting = isSaving || isCreating || isUpdating;
+  const closeEditor = () => { if (!pendingRef.current) onClose(); };
 
   if (!isOpen) return null;
 
@@ -407,7 +342,7 @@ const TaskFormModal = ({
       {/* Dimmed backdrop */}
       <div
         className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs transition-opacity"
-        onClick={onClose}
+        onClick={closeEditor}
         aria-hidden="true"
       />
 
@@ -455,7 +390,7 @@ const TaskFormModal = ({
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={closeEditor}
               className="flex items-center gap-1 p-1.5 rounded-lg text-content-muted hover:text-content hover:bg-surface-muted transition-colors cursor-pointer"
               title="Close (Esc)"
             >
@@ -478,6 +413,16 @@ const TaskFormModal = ({
             </div>
           )}
 
+          {detailId && !ready && !detailError && <div role="status">Loading full Task details…</div>}
+          {detailError && <div role="alert">Could not load Task details. <button type="button" onClick={refetchDetail}>Retry</button></div>}
+          {saveFeedback && <div role="status" className="text-xs text-content space-y-1">
+            {saveFeedback.saved?.length > 0 && <p>Saved: {saveFeedback.saved.join('; ')}.</p>}
+            {saveFeedback.failed && <p>Failed: {saveFeedback.failed}. Pending: {saveFeedback.remaining?.join('; ')}. Keep this form open and retry the remaining changes.</p>}
+          </div>}
+          {['editContent', 'editManagement', 'transition', 'assign', 'configureApproval'].filter(operation => !permissions[operation].allowed).map(operation => (
+            <p key={operation} className="text-xs text-content-muted">{({ editContent: 'Content and labels', editManagement: 'Team, priority, due date and milestone', transition: 'Status', assign: 'Assignees', configureApproval: 'Approval' })[operation]}: {editorReason(permissions[operation].reason)}</p>
+          ))}
+          <fieldset disabled={isSubmitting || !ready} className="space-y-5">
           {/* Project and Key Selector Bar */}
           <div className="flex flex-wrap items-center gap-2 select-none">
             {/* Project Dropdown Pill */}
@@ -533,6 +478,8 @@ const TaskFormModal = ({
             <input
               ref={titleInputRef}
               id="task-title"
+                    disabled={!permitted('editContent')}
+                    title={disabledReason('editContent')}
               type="text"
               required
               autoFocus
@@ -611,6 +558,8 @@ const TaskFormModal = ({
               <textarea
                 ref={descriptionRef}
                 id="task-desc"
+                    disabled={!permitted('editContent')}
+                    title={disabledReason('editContent')}
                 rows={4}
                 maxLength={10000}
                 value={description}
@@ -643,7 +592,8 @@ const TaskFormModal = ({
                     required
                     value={owningTeamId}
                     onChange={(e) => setOwningTeamId(e.target.value)}
-                    disabled={teams.length === 0}
+                    disabled={teams.length === 0 || !permitted('editManagement')}
+                    title={disabledReason('editManagement')}
                     className="w-full text-xs font-medium text-content bg-surface border border-border rounded-lg py-1.5 pl-3 pr-7 hover:border-content-muted focus:border-primary focus:ring-1 focus:ring-primary transition shadow-2xs cursor-pointer disabled:opacity-50"
                   >
                     {teams.length === 0 ? (
@@ -659,46 +609,14 @@ const TaskFormModal = ({
                 </div>
               </div>
 
-              {/* 2. Assignee with Quick Assign */}
-              <div className="flex items-center justify-between gap-2">
-                <label
-                  htmlFor="task-assignee"
-                  className="text-xs font-medium text-content-muted flex items-center gap-1.5 min-w-[105px]"
-                >
-                  <LuUser className="w-3.5 h-3.5 text-content-muted shrink-0" />
-                  <span>Assignee</span>
-                </label>
-                <div className="flex items-center gap-2 flex-1 justify-end min-w-0">
-                  <div className="relative flex-1 min-w-0">
-                    <select
-                      id="task-assignee"
-                      value={selectedAssigneeId}
-                      onChange={(e) => setSelectedAssigneeId(e.target.value)}
-                      className="w-full text-xs font-medium text-content bg-surface border border-border rounded-lg py-1.5 pl-2.5 pr-7 hover:border-content-muted focus:border-primary focus:ring-1 focus:ring-primary transition shadow-2xs truncate cursor-pointer"
-                    >
-                      <option value="">Unassigned</option>
-                      {members.map((m) => {
-                        const memId = m.id || m.projectMembershipId || m.organizationMembershipId;
-                        const name = m.user?.name || m.user?.email || 'Member';
-                        return (
-                          <option key={memId} value={memId}>
-                            {name} ({m.role || 'Member'})
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                  {myMembership && (
-                    <button
-                      type="button"
-                      onClick={handleAssignToMe}
-                      className="text-[11px] font-medium text-primary hover:underline px-1 py-0.5 whitespace-nowrap cursor-pointer shrink-0"
-                      title="Assign this task to myself"
-                    >
-                      Assign to me
-                    </button>
-                  )}
-                </div>
+              <div className="space-y-2">
+                <span className="text-xs font-medium text-content-muted">Assignees</span>
+                <TaskAssigneePicker ids={assigneeIds} candidates={candidates} members={members} onChange={setAssigneeIds}
+                  canAssign={permitted('assign')} canUnassign={permitted('unassign')} loading={candidatesLoading}
+                  error={candidatesError} onRetry={refetchCandidates} disabled={isSubmitting} />
+                {sessionRef.current?.task && owningTeamId !== sessionRef.current.task.owningTeamId && !candidatesLoading && !candidatesError && sessionRef.current.task.assigneeProjectMembershipIds?.some(id => !candidates.some(member => member.projectMembershipId === id)) && (
+                  <p className="text-xs text-content-muted">Some current assignees do not belong to the selected Team. First save explicit assignee removals using the current Team, then select the new Team.</p>
+                )}
               </div>
 
               {/* 3. Status */}
@@ -716,7 +634,8 @@ const TaskFormModal = ({
                     required
                     value={statusId}
                     onChange={(e) => setStatusId(e.target.value)}
-                    disabled={statuses.length === 0}
+                    disabled={statuses.length === 0 || !permitted('transition')}
+                    title={disabledReason('transition')}
                     className="w-full text-xs font-medium text-content bg-surface border border-border rounded-lg py-1.5 pl-3 pr-7 hover:border-content-muted focus:border-primary focus:ring-1 focus:ring-primary transition shadow-2xs cursor-pointer disabled:opacity-50"
                   >
                     {statuses.length === 0 ? (
@@ -744,6 +663,8 @@ const TaskFormModal = ({
                 <div className="relative flex-1">
                   <select
                     id="task-priority"
+                    disabled={!permitted('editManagement')}
+                    title={disabledReason('editManagement')}
                     value={priorityCode}
                     onChange={(e) => setPriorityCode(e.target.value)}
                     className="w-full text-xs font-medium text-content bg-surface border border-border rounded-lg py-1.5 pl-3 pr-7 hover:border-content-muted focus:border-primary focus:ring-1 focus:ring-primary transition shadow-2xs cursor-pointer"
@@ -769,6 +690,8 @@ const TaskFormModal = ({
                 <div className="relative flex-1">
                   <input
                     id="task-due"
+                    disabled={!permitted('editManagement')}
+                    title={disabledReason('editManagement')}
                     type="date"
                     value={dueAt}
                     onChange={(e) => setDueAt(e.target.value)}
@@ -789,11 +712,14 @@ const TaskFormModal = ({
                 <div className="relative flex-1">
                   <select
                     id="task-milestone"
+                    disabled={!permitted('editManagement')}
+                    title={disabledReason('editManagement')}
                     value={milestoneId}
                     onChange={(e) => setMilestoneId(e.target.value)}
                     className="w-full text-xs font-medium text-content bg-surface border border-border rounded-lg py-1.5 pl-3 pr-7 hover:border-content-muted focus:border-primary focus:ring-1 focus:ring-primary transition shadow-2xs cursor-pointer"
                   >
                     <option value="">No milestone assigned</option>
+                    {milestoneId && !openMilestones.some(m => m.id === milestoneId) && <option value={milestoneId}>Current milestone (closed or unavailable)</option>}
                     {openMilestones.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name}
@@ -812,6 +738,7 @@ const TaskFormModal = ({
               </label>
 
               <div className="flex items-center gap-1.5 flex-wrap justify-end flex-1">
+                <fieldset disabled={!permitted('editContent')} className="flex items-center gap-1.5 flex-wrap justify-end">
                 {labels.map((lbl) => (
                   <span
                     key={lbl}
@@ -870,6 +797,7 @@ const TaskFormModal = ({
                     <span>Add label</span>
                   </button>
                 )}
+                </fieldset>
               </div>
             </div>
           </div>
@@ -880,6 +808,8 @@ const TaskFormModal = ({
               <div className="flex items-center h-5 mt-0.5">
                 <input
                   id="requires-approval"
+                    disabled={!permitted('configureApproval')}
+                    title={disabledReason('configureApproval')}
                   type="checkbox"
                   checked={requiresApproval}
                   onChange={(e) => setRequiresApproval(e.target.checked)}
@@ -894,7 +824,7 @@ const TaskFormModal = ({
                   </span>
                 </div>
                 <p className="text-[11px] text-content-muted mt-0.5">
-                  Prevents task from being marked as Done until verified by team lead or project owner.
+                  Completion requires a decision by the designated eligible Project member.
                 </p>
               </label>
             </div>
@@ -905,16 +835,19 @@ const TaskFormModal = ({
                   htmlFor="task-approver"
                   className="block text-xs font-medium text-content-muted mb-1"
                 >
-                  Designated Approver (Optional)
+                  Designated Approver (Required)
                 </label>
                 <select
                   id="task-approver"
+                    disabled={!permitted('configureApproval')}
+                    title={disabledReason('configureApproval')}
                   value={approverMembershipId}
                   onChange={(e) => setApproverMembershipId(e.target.value)}
                   className="w-full text-xs font-medium text-content bg-surface border border-border rounded-lg py-1.5 px-3 focus:border-primary focus:ring-1 focus:ring-primary shadow-2xs cursor-pointer"
                 >
-                  <option value="">Any eligible Project Member (no self-approval)</option>
-                  {members.map((m) => {
+                  <option value="">Choose a designated approver</option>
+                  {approverMembershipId && !approvers.some(m => (m.projectMembershipId || m.id) === approverMembershipId) && <option value={approverMembershipId} disabled>Current approver (unavailable)</option>}
+                  {approvers.map((m) => {
                     const memId = m.id || m.projectMembershipId || m.organizationMembershipId;
                     const name = m.user?.name || m.user?.email || 'Member';
                     return (
@@ -927,6 +860,7 @@ const TaskFormModal = ({
               </div>
             )}
           </div>
+          </fieldset>
         </form>
 
         {/* Modal Footer Actions */}
@@ -950,14 +884,14 @@ const TaskFormModal = ({
           <div className="flex items-center gap-2.5">
             <button
               type="button"
-              onClick={onClose}
+              onClick={closeEditor}
               className="px-4 py-2 text-xs font-medium text-content bg-surface border border-border rounded-lg hover:bg-surface-muted transition-colors shadow-2xs cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="button"
-              disabled={isSubmitting || !title.trim()}
+              disabled={isSubmitting || !ready || !title.trim() || sessionRef.current?.uncertainCreate || (!permitted('editContent') && !permitted('editManagement') && !permitted('transition') && !permitted('configureApproval') && !permitted('assign'))}
               onClick={handleSubmit}
               className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-primary hover:bg-primary/90 active:scale-[0.98] rounded-lg transition shadow-sm cursor-pointer disabled:opacity-50"
             >
@@ -966,7 +900,7 @@ const TaskFormModal = ({
                 {isSubmitting
                   ? 'Saving...'
                   : isEditing
-                  ? 'Save Changes'
+                  ? saveFeedback?.failed ? 'Retry Remaining Changes' : 'Save Changes'
                   : 'Create Task'}
               </span>
             </button>

@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { getTaskCapability, readTaskContract } from '../utils/taskCapabilities.js';
+assert.deepEqual(getTaskCapability(null, 'assign'), { allowed: false, reason: 'TASK_CAPABILITIES_UNAVAILABLE' });
+assert.equal(getTaskCapability({ capabilities: { assign: { allowed: 'true' } } }, 'assign').allowed, false);
+assert.equal(getTaskCapability({ capabilities: Object.create({ assign: { allowed: true } }) }, 'assign').allowed, false);
+assert.deepEqual(getTaskCapability({ capabilities: { editContent: { allowed: true, reason: null } } }, 'editContent'), { allowed: true, reason: null });
+assert.deepEqual(getTaskCapability({ capabilities: { assign: { allowed: false, reason: 'PROJECT_MANAGER_REQUIRED' } } }, 'assign'), { allowed: false, reason: 'PROJECT_MANAGER_REQUIRED' });
+const task = { milestoneId: null, effectiveProgress: 0, manualProgress: 0, dueAt: null, owningTeamName: 'General', assigneeProjectMembershipIds: [] };
+assert.deepEqual(readTaskContract(task), task);
+console.log('task-capabilities.test.js passed (canonical values and fail-closed authority)');

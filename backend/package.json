@@ -45,7 +45,9 @@
     "migration:revert": "node --env-file=.env ./node_modules/typeorm/cli-ts-node-commonjs.js migration:revert -d src/database/data-source.ts",
     "migration:run:compiled": "node --env-file=.env ./node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js",
     "test:supabase:smoke": "node --env-file=.env -r ts-node/register -r tsconfig-paths/register scripts/supabase-smoke.ts",
-    "seed:rich": "node --env-file=.env -r ts-node/register -r tsconfig-paths/register src/database/seed/rich-portfolio-seed.ts --confirm-seed"
+    "seed:rich": "node --env-file=.env -r ts-node/register -r tsconfig-paths/register src/database/seed/rich-portfolio-seed.ts --confirm-seed",
+    "test:browser:postgres": "node scripts/run-test-command.mjs node node_modules/jest/bin/jest.js test/p12-browser.integration.e2e-spec.ts --config test/jest-e2e.json --runInBand",
+    "test:critical:p12": "node scripts/run-critical-suite.mjs --exclude-signup"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

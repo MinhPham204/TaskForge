@@ -69,8 +69,13 @@ const CreateProjectModal = ({
 
   const activeAccent = ACCENT_COLORS.find((c) => c.id === accentColor) || ACCENT_COLORS[0];
 
-  // Reset form when modal opens
+  const initializedScope = useRef(null);
+  // Reset on opening or identity/scope changes; background Teams reads preserve drafts.
   useEffect(() => {
+    if (!isOpen) { initializedScope.current = null; return; }
+    const scope = JSON.stringify([user?.id, activeOrganizationId]);
+    if (initializedScope.current === scope) return;
+    initializedScope.current = scope;
     if (isOpen) {
       setName('');
       setDescription('');
@@ -85,7 +90,7 @@ const CreateProjectModal = ({
       setError('');
       setTimeout(() => nameInputRef.current?.focus(), 50);
     }
-  }, [isOpen, user?.name, teams]);
+  }, [isOpen, user?.id, user?.name, activeOrganizationId, teams]);
 
   // Escape key handler
   useEffect(() => {

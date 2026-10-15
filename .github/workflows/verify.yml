@@ -50,6 +50,14 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Chromium for integrated browser acceptance
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
       - name: Lint PostgreSQL foundation without writing files
         working-directory: backend
         run: npm run lint:check
@@ -92,10 +100,6 @@ jobs:
       - name: Build backend
         working-directory: backend
         run: npm run build
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
 
       - name: Run frontend workspace and task workflow verification
         working-directory: frontend

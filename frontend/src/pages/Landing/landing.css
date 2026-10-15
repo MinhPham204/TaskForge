@@ -1,0 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+.landing-page {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+.landing-page .font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.landing-page .font-sans {
+  font-family: inherit;
+}
+
+.landing-page [id] {
+  scroll-margin-top: 110px;
+}
+
+.landing-page .grid-pattern {
+  background-size: 28px 28px;
+  background-image:
+    linear-gradient(to right, rgb(15 23 42 / 3.5%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(15 23 42 / 3.5%) 1px, transparent 1px);
+}
+
+[data-theme='dark'] .landing-page .grid-pattern {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 3.5%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 3.5%) 1px, transparent 1px);
+}
+
+.landing-page input[type='checkbox'] {
+  accent-color: #1d4ed8;
+}
+
+.landing-page summary {
+  list-style: none;
+}
+
+.landing-page summary::-webkit-details-marker {
+  display: none;
+}
+
+.landing-skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  transform: translateY(-150%);
+  border-radius: 6px;
+  padding: 12px 16px;
+  background: #1d4ed8;
+  color: white;
+}
+
+.landing-skip-link:focus {
+  transform: translateY(0);
+}
+
+@media (max-width: 639px) {
+  .landing-page #product-preview > div > div:first-child {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .landing-page #product-preview > div > div:first-child > div:first-child {
+    min-width: 0;
+  }
+
+  .landing-page #product-preview > div > div:first-child > div:first-child > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .landing-page #product-preview .flex.items-center.gap-5 {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  .landing-page #features .flex.items-center.justify-between {
+    gap: 8px;
+  }
+
+  .landing-page #features .w-8.h-8 {
+    flex-shrink: 0;
+  }
+}

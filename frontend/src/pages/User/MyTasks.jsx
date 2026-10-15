@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import DashboardLayout from '../../components/layouts/DashboardLayout';
@@ -58,6 +58,7 @@ const MyTasks = () => {
 
   // Create Task Modal State
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
+  const [taskToEdit, setTaskToEdit] = useState(null);
 
   const searchInputRef = useRef(null);
 
@@ -85,7 +86,7 @@ const MyTasks = () => {
   };
 
   const {
-    data: rawMyTasks = [],
+    currentData: rawMyTasks = [],
     isLoading: isTasksLoading,
     isError: isTasksError,
     error: tasksError,
@@ -93,17 +94,20 @@ const MyTasks = () => {
   } = useGetMyTasksQuery(queryParams, { skip: !activeOrganizationId });
 
   const {
-    data: queue = [],
+    currentData: queue = [],
     isLoading: isQueueLoading,
     isError: isQueueError,
     error: queueError,
     refetch: refetchQueue,
   } = useGetApprovalQueueQuery(undefined, { skip: !activeOrganizationId });
 
-  const { data: projects = [] } = useGetProjectsQuery(undefined, {
+  const { currentData: projects = [] } = useGetProjectsQuery(undefined, {
     skip: !activeOrganizationId,
   });
-  const firstProjectId = projects[0]?.id;
+  const creatableProjects = projects.filter(project => project.viewer?.canCreateTask === true);
+  const firstProjectId = creatableProjects[0]?.id;
+  const openTaskEditor = task => { setTaskToEdit(task); setSelectedTaskContext(null); setIsTaskFormOpen(true); };
+  useEffect(() => { setTaskToEdit(null); setSelectedTaskContext(null); setIsTaskFormOpen(false); setSelectedTask(null); }, [activeOrganizationId, user?.id]);
 
   const [resolveApproval, { isLoading: isResolving }] = useResolveApprovalMutation();
 
@@ -193,6 +197,16 @@ const MyTasks = () => {
     }
   }, [filteredAndSortedTasks, selectedTask]);
 
+  const handleCreateNewTask = useCallback(() => {
+    if (!firstProjectId) {
+      toast.error('Join a mutable Project as a Project Manager or Contributor before creating Tasks.');
+      navigate('/projects');
+      return;
+    }
+    setTaskToEdit(null);
+    setIsTaskFormOpen(true);
+  }, [firstProjectId, navigate]);
+
   // Keyboard shortcut listener: '/' for search, 'c' for new task, 'Space' for inspect
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -228,16 +242,7 @@ const MyTasks = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredAndSortedTasks, selectedTask, firstProjectId]);
-
-  const handleCreateNewTask = () => {
-    if (!projects || projects.length === 0) {
-      toast.error('Please create or join a project first before creating tasks.');
-      navigate('/projects');
-      return;
-    }
-    setIsTaskFormOpen(true);
-  };
+  }, [filteredAndSortedTasks, selectedTask, handleCreateNewTask]);
 
   const handleQuickResolve = async () => {
     if (!quickApprovalTarget) return;
@@ -1031,7 +1036,9 @@ const MyTasks = () => {
           {/* RIGHT PANEL: 4 cols Inspector */}
           <div className="lg:col-span-4">
             <MyTaskInspector
-              task={selectedTask}
+              key={`${activeOrganizationId}:${selectedTask?.projectId}:${selectedTask?.id}`}
+              task={filteredAndSortedTasks.find(task => task.id === selectedTask?.id) || null}
+              onEditTask={openTaskEditor}
               onOpenFullModal={(t) =>
                 setSelectedTaskContext({
                   projectId: t.projectId,
@@ -1050,7 +1057,7 @@ const MyTasks = () => {
           onClose={() => setSelectedTaskContext(null)}
           projectId={selectedTaskContext.projectId}
           taskId={selectedTaskContext.taskId}
-          canManage={false}
+          onEditTask={openTaskEditor}
         />
       )}
 
@@ -1058,10 +1065,10 @@ const MyTasks = () => {
       {isTaskFormOpen && (
         <TaskFormModal
           isOpen={isTaskFormOpen}
-          onClose={() => setIsTaskFormOpen(false)}
-          projectId={firstProjectId}
-          projects={projects}
-          canManage={true}
+          onClose={() => { setIsTaskFormOpen(false); setTaskToEdit(null); }}
+          projectId={taskToEdit?.projectId || firstProjectId}
+          task={taskToEdit}
+          projects={taskToEdit ? projects : creatableProjects}
           onSuccess={() => {
             refetchTasks();
             refetchQueue();

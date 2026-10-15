@@ -21,9 +21,11 @@ const getColumnColor = (column) => {
   return 'bg-blue-500'; // Default To Do
 };
 
-const BoardColumn = ({
+export const BoardColumn = ({
   column,
-  dragOverColumnId,
+  members,
+  dragBlocked = false,
+  isDragOver = false,
   onDragOver,
   onDragEnter,
   onDragLeave,
@@ -35,7 +37,6 @@ const BoardColumn = ({
   const tasks = column.tasks || [];
   const dotColor = getColumnColor(column);
   const isCompletedColumn = String(column.semanticCategory || '').toUpperCase() === 'COMPLETED';
-  const isDragOver = dragOverColumnId === column.id;
 
   return (
     <section
@@ -77,6 +78,8 @@ const BoardColumn = ({
           <BoardTaskCard
             key={task.id}
             task={task}
+            members={members}
+            dragBlocked={dragBlocked}
             isCompletedColumn={isCompletedColumn}
             onSelectTask={onSelectTask}
             onDragStart={onDragStart}
@@ -86,7 +89,7 @@ const BoardColumn = ({
 
         {tasks.length === 0 && (
           <div className="h-32 border border-dashed border-border rounded-lg flex items-center justify-center text-xs text-content-muted/60 select-none">
-            Drop tasks here
+            No tasks in this status
           </div>
         )}
       </div>
@@ -94,4 +97,4 @@ const BoardColumn = ({
   );
 };
 
-export default BoardColumn;
+export default React.memo(BoardColumn);

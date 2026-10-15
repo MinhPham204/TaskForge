@@ -51,6 +51,8 @@ const initialState = {
   refreshToken: getStoredItem("refreshToken"),
   loading: false,
   error: null,
+  profileRequestId: null,
+  organizationsRequestId: null,
 
   // Workspace state
   organizations: [],
@@ -76,7 +78,7 @@ export const fetchProfile = createAsyncThunk(
       const response = await axiosInstance.get(API_PATHS.AUTH.GET_PROFILE);
       return response.data;
     } catch (error) {
-      return rejectWithValue(error?.response?.data || { message: "Unauthorized" });
+      return rejectWithValue({ ...error?.response?.data, status: error?.response?.status, message: error?.response?.data?.message || "Unable to load your profile. Please retry." });
     }
   }
 );
@@ -89,7 +91,7 @@ export const fetchMyOrganizations = createAsyncThunk(
       const response = await axiosInstance.get(API_PATHS.AUTH.MY_ORGANIZATIONS);
       return response.data; // Array of WorkspaceOrganizationDto: [{ organizationId, name, slug, logoUrl, role, joinedAt }]
     } catch (error) {
-      return rejectWithValue(error?.response?.data || { message: "Failed to fetch organizations" });
+      return rejectWithValue({ ...error?.response?.data, status: error?.response?.status, message: error?.response?.data?.message || "Failed to fetch organizations" });
     }
   }
 );
@@ -128,6 +130,9 @@ const authSlice = createSlice({
      * setCredentials: gọi sau khi login / set-password thành công.
      */
     setCredentials(state, action) {
+      state.profileRequestId = null;
+      state.organizationsRequestId = null;
+      state.isOrganizationsLoading = false;
       state.capabilitiesInvalidated = false;
       state.organizationCapabilities = null;
       state.capabilityScope = null;
@@ -152,6 +157,9 @@ const authSlice = createSlice({
      * setUser: backward-compat nếu chỉ cần cập nhật user object.
      */
     setUser(state, action) {
+      state.profileRequestId = null;
+      state.organizationsRequestId = null;
+      state.isOrganizationsLoading = false;
       if (state.user?.id !== action.payload?.id) {
         state.capabilitiesInvalidated = false;
         state.organizationCapabilities = null;
@@ -201,6 +209,9 @@ const authSlice = createSlice({
 
     /** clearUser: logout hoàn toàn — xóa state + localStorage */
     clearUser(state) {
+      state.profileRequestId = null;
+      state.organizationsRequestId = null;
+      state.isOrganizationsLoading = false;
       state.capabilitiesInvalidated = false;
       state.organizationCapabilities = null;
       state.capabilityScope = null;
@@ -219,6 +230,9 @@ const authSlice = createSlice({
 
     /** setSessionFromDev: hỗ trợ review/testing nhanh trong dev mode */
     setSessionFromDev(state, action) {
+      state.profileRequestId = null;
+      state.organizationsRequestId = null;
+      state.isOrganizationsLoading = false;
       state.capabilitiesInvalidated = false;
       state.organizationCapabilities = null;
       state.capabilityScope = null;
@@ -238,11 +252,14 @@ const authSlice = createSlice({
   extraReducers: (builder) => {
     builder
       // fetchProfile
-      .addCase(fetchProfile.pending, (state) => {
+      .addCase(fetchProfile.pending, (state, action) => {
+        state.profileRequestId = action.meta?.requestId ?? null;
         state.loading = true;
         state.error   = null;
       })
       .addCase(fetchProfile.fulfilled, (state, action) => {
+        if (!action.meta?.requestId || state.profileRequestId !== action.meta.requestId) return;
+        state.profileRequestId = null;
         if (state.user?.id !== action.payload?.id) {
           state.capabilitiesInvalidated = false;
           state.organizationCapabilities = null;
@@ -257,6 +274,11 @@ const authSlice = createSlice({
         setStoredItem("authUser", JSON.stringify(action.payload));
       })
       .addCase(fetchProfile.rejected, (state, action) => {
+        if (!action.meta?.requestId || state.profileRequestId !== action.meta.requestId) return;
+        state.profileRequestId = null;
+        state.loading = false;
+        state.error = action.payload?.message || "Unable to load your profile. Please retry.";
+        if (![401, 403].includes(action.payload?.status)) return;
         state.capabilitiesInvalidated = false;
         state.organizationCapabilities = null;
         state.capabilityScope = null;
@@ -272,11 +294,14 @@ const authSlice = createSlice({
       })
 
       // fetchMyOrganizations
-      .addCase(fetchMyOrganizations.pending, (state) => {
+      .addCase(fetchMyOrganizations.pending, (state, action) => {
+        state.organizationsRequestId = action.meta?.requestId ?? null;
         state.isOrganizationsLoading = true;
         state.organizationsError     = null;
       })
       .addCase(fetchMyOrganizations.fulfilled, (state, action) => {
+        if (!action.meta?.requestId || state.organizationsRequestId !== action.meta.requestId) return;
+        state.organizationsRequestId = null;
         const orgs = Array.isArray(action.payload) ? action.payload : [];
         state.organizations          = orgs;
         state.isOrganizationsLoading = false;
@@ -312,14 +337,15 @@ const authSlice = createSlice({
         }
       })
       .addCase(fetchMyOrganizations.rejected, (state, action) => {
-        state.organizationCapabilities = null;
-        state.capabilityScope = null;
+        if (!action.meta?.requestId || state.organizationsRequestId !== action.meta.requestId) return;
+        state.organizationsRequestId = null;
         state.isOrganizationsLoading = false;
         state.organizationsInitialized = true;
-        state.organizationsError     = action.payload?.message || "Failed to fetch organizations";
-        state.organizations          = [];
-        state.activeOrganizationId   = null;
-        state.activeOrganization     = null;
+        state.organizationsError = action.payload?.message || "Failed to fetch organizations";
+        if ([401, 403].includes(action.payload?.status)) {
+          state.organizationCapabilities = null; state.capabilityScope = null;
+          state.organizations = []; state.activeOrganizationId = null; state.activeOrganization = null;
+        }
       });
   },
 });

@@ -25,7 +25,7 @@ import {
 } from '../utils/workspaceSettings.js';
 import { organizationApi } from '../services/organizationApi.js';
 import { store } from '../store/index.js';
-import { logout, switchOrganization } from '../store/authSlice.js';
+import { logout, switchOrganization, fetchMyOrganizations } from '../store/authSlice.js';
 
 console.log('Starting Workspace Settings contract verification...');
 
@@ -197,10 +197,8 @@ const testOrgs = [
   { organizationId: 'org-1', name: 'Org One', role: 'OWNER' },
   { organizationId: 'org-2', name: 'Org Two', role: 'ADMIN' },
 ];
-store.dispatch({
-  type: 'auth/fetchMyOrganizations/fulfilled',
-  payload: testOrgs,
-});
+store.dispatch(fetchMyOrganizations.pending('settings-discovery-test'));
+store.dispatch(fetchMyOrganizations.fulfilled(testOrgs, 'settings-discovery-test'));
 
 store.dispatch(
   organizationApi.util.upsertQueryData('getOrganizationSettings', 'org-1', {

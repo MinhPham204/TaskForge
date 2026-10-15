@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -15,7 +16,6 @@ import {
 import {
   ProjectEntity,
   ProjectMembershipEntity,
-  ProjectRole,
 } from '../../projects/persistence/typeorm/project.entities';
 import { TaskEntity } from '../../task/persistence/typeorm/task.entities';
 import {
@@ -106,7 +106,7 @@ export class PostgresCollaborationService {
           'u.name AS "actorName"',
           'u.email AS "actorEmail"',
         ])
-        .getRawMany();
+        .getRawMany<ActivityViewRow>();
 
       return rows.map((r) => ({
         id: r.id,
@@ -114,7 +114,7 @@ export class PostgresCollaborationService {
         actionCode: r.actionCode,
         subjectType: r.subjectType,
         subjectId: r.subjectId,
-        safeMetadata: (r.safeMetadata as Record<string, unknown>) || {},
+        safeMetadata: r.safeMetadata || {},
         occurredAt: new Date(r.occurredAt),
         actorName: r.actorName || null,
         actorEmail: r.actorEmail || null,
@@ -163,7 +163,7 @@ export class PostgresCollaborationService {
           'sf.size_bytes AS "sizeBytes"',
           'u.name AS "uploaderName"',
         ])
-        .getRawMany();
+        .getRawMany<ProjectFileViewRow>();
 
       return rows.map((r) => ({
         id: r.id,
@@ -186,30 +186,39 @@ export class PostgresCollaborationService {
     fileInput: UploadPostgresFileInput,
     displayName?: string,
   ): Promise<ProjectFileViewRow> {
-    const stored = await this.storage.upload(actor, fileInput);
-    try {
-      const relation = await this.relations.addToProject(
-        actor,
-        projectId,
-        stored.id,
-        displayName,
-      );
-      return {
-        id: relation.id,
-        projectId: relation.projectId,
-        storedFileId: stored.id,
-        displayName: relation.displayName,
-        originalName: stored.originalName,
-        mediaType: stored.mediaType,
-        sizeBytes: Number(stored.sizeBytes),
-        createdAt: relation.createdAt,
-        uploaderName: null,
-      };
-    } catch (error) {
-      // Best-effort cleanup of stored file if relation creation failed
-      await this.storage.archive(actor, stored.id).catch(() => {});
-      throw error;
-    }
+    if (
+      displayName !== undefined &&
+      (typeof displayName !== 'string' ||
+        displayName.trim().length > 255 ||
+        // eslint-disable-next-line no-control-regex -- Reject control bytes in download names.
+        /[\x00-\x1f\x7f]/.test(displayName))
+    )
+      throw new BadRequestException('Display name is invalid');
+    await this.relations.preflightProject(actor, projectId);
+    return this.storage.uploadLinked(
+      actor,
+      fileInput,
+      async (manager, stored) => {
+        const relation = await this.relations.addToProjectInTransaction(
+          manager,
+          actor,
+          projectId,
+          stored.id,
+          displayName,
+        );
+        return {
+          id: relation.id,
+          projectId: relation.projectId,
+          storedFileId: stored.id,
+          displayName: relation.displayName,
+          originalName: stored.originalName,
+          mediaType: stored.mediaType || 'application/octet-stream',
+          sizeBytes: Number(stored.sizeBytes),
+          createdAt: relation.createdAt,
+          uploaderName: null,
+        };
+      },
+    );
   }
 
   /** Download project file */
@@ -291,7 +300,7 @@ export class PostgresCollaborationService {
           'sf.size_bytes AS "sizeBytes"',
           'u.name AS "uploaderName"',
         ])
-        .getRawMany();
+        .getRawMany<TaskAttachmentViewRow>();
 
       return rows.map((r) => ({
         id: r.id,
@@ -314,29 +323,31 @@ export class PostgresCollaborationService {
     taskId: string,
     fileInput: UploadPostgresFileInput,
   ): Promise<TaskAttachmentViewRow> {
-    const stored = await this.storage.upload(actor, fileInput);
-    try {
-      const relation = await this.relations.attachToTask(
-        actor,
-        projectId,
-        taskId,
-        stored.id,
-      );
-      return {
-        id: relation.id,
-        projectId: relation.projectId,
-        taskId: relation.taskId,
-        storedFileId: stored.id,
-        originalName: stored.originalName,
-        mediaType: stored.mediaType,
-        sizeBytes: Number(stored.sizeBytes),
-        createdAt: relation.createdAt,
-        uploaderName: null,
-      };
-    } catch (error) {
-      await this.storage.archive(actor, stored.id).catch(() => {});
-      throw error;
-    }
+    await this.relations.preflightTask(actor, projectId, taskId);
+    return this.storage.uploadLinked(
+      actor,
+      fileInput,
+      async (manager, stored) => {
+        const relation = await this.relations.attachToTaskInTransaction(
+          manager,
+          actor,
+          projectId,
+          taskId,
+          stored.id,
+        );
+        return {
+          id: relation.id,
+          projectId: relation.projectId,
+          taskId: relation.taskId,
+          storedFileId: stored.id,
+          originalName: stored.originalName,
+          mediaType: stored.mediaType || 'application/octet-stream',
+          sizeBytes: Number(stored.sizeBytes),
+          createdAt: relation.createdAt,
+          uploaderName: null,
+        };
+      },
+    );
   }
 
   /** Download task attachment */
@@ -396,7 +407,18 @@ export class PostgresCollaborationService {
         'Active organization membership is required',
       );
 
-    const capabilities = await new PostgresOrganizationPermissionService(manager).resolve(membership.userId, actor.organizationId);
+    if (
+      (
+        await manager
+          .getRepository(UserEntity)
+          .findOneBy({ id: membership.userId })
+      )?.disabledAt !== null
+    )
+      throw new ForbiddenException('Active user is required');
+
+    const capabilities = await new PostgresOrganizationPermissionService(
+      manager,
+    ).resolve(membership.userId, actor.organizationId);
     if (capabilities.permissions.includes('org.projects.read_all')) {
       return;
     }

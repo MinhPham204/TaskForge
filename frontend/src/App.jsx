@@ -10,6 +10,7 @@ import {
 
 import PrivateRoute from "./routes/PrivateRoutes";
 import Login from "./pages/Auth/Login";
+import LandingPage from './pages/Landing/LandingPage';
 import SignUp from "./pages/Auth/SignUp";
 import ForgotPassword from './pages/Auth/ForgotPassword';
 import Profile from './pages/Account/Profile'
@@ -66,6 +67,7 @@ const App = () => {
             <Route path="/forgot-password" element={<ForgotPassword />}/>
             {/* Retired route aliases redirect bookmarks to canonical v0.3 paths. */}
             <Route element={<PrivateRoute requireWorkspace={false} />}>
+              <Route path="/accept-invite" element={<AcceptInvitePage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/admin/dashboard" element={<Navigate to="/dashboard" replace />} />
               <Route path="/user/dashboard" element={<Navigate to="/dashboard" replace />} />
@@ -85,7 +87,6 @@ const App = () => {
               <Route path="/user/task-detail/:id" element={<Navigate to="/tasks/my" replace />} />
 
               {/* Canonical v0.3 Workspace, Team, Project, and Task Routes */}
-              <Route path="/accept-invite" element={<AcceptInvitePage />} />
               <Route path="/workspace/onboarding" element={<WorkspaceOnboarding />} />
               <Route path="/settings/workspace" element={<WorkspaceSettingsPage />} />
               <Route path="/inbox" element={<NotificationInbox />} />
@@ -115,7 +116,7 @@ const Root = () => {
   if (loading || (user && !organizationsInitialized)) return <Outlet />;
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <LandingPage />;
   }
   return <Navigate to="/dashboard" replace />;
 };

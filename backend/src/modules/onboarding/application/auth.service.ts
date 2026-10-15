@@ -4,7 +4,10 @@ import {
   ForbiddenException,
   NotFoundException,
   UnauthorizedException,
+  Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
 import type { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
@@ -21,6 +24,8 @@ import type {
   UserPreferenceEntity,
 } from '../persistence/typeorm/onboarding.entities';
 import { writePostgresAudit } from '../../collaboration/application/audit.writer';
+import { PasswordResetChallenges, resetDigest } from './password-reset';
+import { UserEntity as ResetUserEntity } from '../persistence/typeorm/onboarding.entities';
 
 export interface CompletePostgresSignupInput {
   fullName: string;
@@ -51,8 +56,8 @@ export interface UpdatePostgresPersonalPreferencesInput {
   inAppNotificationsEnabled: boolean;
 }
 
-export interface PostgresPersonalPreferencesResponse
-  extends UpdatePostgresPersonalPreferencesInput {}
+export type PostgresPersonalPreferencesResponse =
+  UpdatePostgresPersonalPreferencesInput;
 
 const DEFAULT_PERSONAL_PREFERENCES: PostgresPersonalPreferencesResponse = {
   timezone: 'UTC',
@@ -101,6 +106,12 @@ interface AuthTokenPayload {
  */
 export class PostgresAuthService {
   private readonly users: PostgresUserRepository;
+  private readonly resetDeliveries = new Set<Promise<void>>();
+  private pendingResetRequests = 0;
+
+  async onModuleDestroy(): Promise<void> {
+    await Promise.allSettled([...this.resetDeliveries]);
+  }
 
   constructor(
     private readonly manager: EntityManager,
@@ -205,7 +216,7 @@ export class PostgresAuthService {
     }
 
     const tokens = await this.issueTokens(user);
-    await this.storeRefreshToken(user, tokens.refreshToken);
+    await this.storeRefreshToken(user, tokens.refreshToken, user.passwordHash);
     await writePostgresAudit(this.manager, {
       actorUserId: user.id,
       actionCode: 'AUTH_LOGIN_SUCCEEDED',
@@ -239,8 +250,12 @@ export class PostgresAuthService {
     }
 
     const tokenMatches = await bcrypt.compare(
-      rawRefreshToken,
-      user.refreshTokenHash,
+      user.refreshTokenHash.startsWith('sha256:')
+        ? resetDigest(rawRefreshToken)
+        : rawRefreshToken,
+      user.refreshTokenHash.startsWith('sha256:')
+        ? user.refreshTokenHash.slice(7)
+        : user.refreshTokenHash,
     );
     if (!tokenMatches) {
       throw new ForbiddenException(
@@ -249,7 +264,15 @@ export class PostgresAuthService {
     }
 
     const tokens = await this.issueTokens(user);
-    await this.storeRefreshToken(user, tokens.refreshToken);
+    const nextHash = await hashRefreshCredential(tokens.refreshToken);
+    const updated: unknown[] = await this.manager.query(
+      'WITH changed AS (UPDATE users SET refresh_token_hash = $1 WHERE id = $2 AND refresh_token_hash = $3 AND disabled_at IS NULL RETURNING id) SELECT id FROM changed',
+      [nextHash, user.id, user.refreshTokenHash],
+    );
+    if (!updated.length)
+      throw new ForbiddenException(
+        'Refresh credential was revoked. Please sign in again.',
+      );
     await writePostgresAudit(this.manager, {
       actorUserId: user.id,
       actionCode: 'AUTH_REFRESH_TOKEN_ROTATED',
@@ -340,7 +363,10 @@ export class PostgresAuthService {
         'Password change is disabled for demo accounts in portfolio mode.',
       );
     }
-    if (!user.passwordHash || !(await bcrypt.compare(input.currentPassword, user.passwordHash))) {
+    if (
+      !user.passwordHash ||
+      !(await bcrypt.compare(input.currentPassword, user.passwordHash))
+    ) {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
@@ -357,6 +383,127 @@ export class PostgresAuthService {
     });
 
     return { message: 'Password changed successfully. Please sign in again.' };
+  }
+
+  async forgotPassword(
+    email: string,
+    ip: string,
+  ): Promise<{ message: string; retryAfter: number }> {
+    const normalized = normalizeEmail(email);
+    const challenges = new PasswordResetChallenges(
+      this.redisService,
+      requiredConfig(this.config, 'JWT_REFRESH_SECRET'),
+    );
+    if (this.pendingResetRequests >= 20)
+      throw new ServiceUnavailableException(
+        'Password reset is busy. Please try again later.',
+      );
+    this.pendingResetRequests++;
+    try {
+      await challenges.reserve(normalized, ip);
+      const user = await this.users.findByEmailWithCredentials(normalized);
+      // All accounts follow the same Redis path and return before SMTP work.
+      const challenge = await challenges.create(
+        normalized,
+        user?.id ?? randomUUID(),
+        user?.passwordHash ?? randomUUID(),
+      );
+      const delivery = (async () => {
+        let delivered = false;
+        if (
+          user &&
+          !user.disabledAt &&
+          user.passwordHash &&
+          !DEMO_USER_EMAILS.has(normalized)
+        ) {
+          try {
+            await this.emailService.sendPasswordResetEmail(
+              normalized,
+              challenge.otp,
+            );
+            delivered = true;
+          } catch {
+            /* Generic response and sanitized provider logging only. */
+          }
+        }
+        await challenges.finish(normalized, challenge.generation, delivered);
+      })()
+        .catch(() => {
+          new Logger(PostgresAuthService.name).warn(
+            'Reset delivery finalization unavailable; challenge expires automatically.',
+          );
+        })
+        .finally(() => {
+          this.pendingResetRequests--;
+          this.resetDeliveries.delete(delivery);
+        });
+      this.resetDeliveries.add(delivery);
+    } catch (error) {
+      this.pendingResetRequests--;
+      throw error;
+    }
+    return {
+      message:
+        'If this account is eligible, a reset code will arrive shortly. If no code arrives, wait a minute and request another. Codes expire after 5 minutes.',
+      retryAfter: 60,
+    };
+  }
+
+  async resetPassword(
+    input: {
+      email: string;
+      otp: string;
+      newPassword: string;
+      confirmPassword: string;
+    },
+    ip: string,
+  ): Promise<{ message: string }> {
+    ensurePasswordPolicy(input.newPassword);
+    if (Buffer.byteLength(input.newPassword, 'utf8') > 72)
+      throw new BadRequestException('Password must not exceed 72 UTF-8 bytes');
+    if (input.newPassword !== input.confirmPassword)
+      throw new BadRequestException('Password confirmation does not match');
+    const claim = await new PasswordResetChallenges(
+      this.redisService,
+      requiredConfig(this.config, 'JWT_REFRESH_SECRET'),
+    ).consume(normalizeEmail(input.email), input.otp, ip);
+    const passwordHash = await bcrypt.hash(input.newPassword, 10);
+    // Redis consumes once before the DB transaction. On DB failure the code stays
+    // consumed: request a fresh code, never restore a possibly superseded challenge.
+    await this.manager.transaction(async (manager) => {
+      const user = await manager
+        .getRepository(ResetUserEntity)
+        .createQueryBuilder('user')
+        .addSelect('user.passwordHash')
+        .where('user.id = :id', { id: claim.userId })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (
+        !user ||
+        user.disabledAt ||
+        !user.passwordHash ||
+        resetDigest(user.passwordHash) !== claim.credential ||
+        DEMO_USER_EMAILS.has(user.email.toLowerCase())
+      ) {
+        throw new BadRequestException({
+          code: 'RESET_CODE_INVALID',
+          message: 'Reset code is invalid or expired. Request a new code.',
+        });
+      }
+      await manager
+        .getRepository(ResetUserEntity)
+        .update(user.id, { passwordHash, refreshTokenHash: null });
+      await writePostgresAudit(manager, {
+        actorUserId: user.id,
+        actionCode: 'AUTH_PASSWORD_RESET',
+        targetType: 'USER',
+        targetId: user.id,
+      });
+    });
+    return {
+      message:
+        'Password reset successfully. Please sign in with your new password.',
+    };
   }
 
   private verifyVerifiedEmail(verifiedToken: string | undefined): string {
@@ -395,13 +542,16 @@ export class PostgresAuthService {
           'JWT_ACCESS_EXPIRES_IN',
         ) as StringValue,
       }),
-      this.jwtService.signAsync(payload, {
-        secret: requiredConfig(this.config, 'JWT_REFRESH_SECRET'),
-        expiresIn: requiredConfig(
-          this.config,
-          'JWT_REFRESH_EXPIRES_IN',
-        ) as StringValue,
-      }),
+      this.jwtService.signAsync(
+        { ...payload, jti: randomUUID(), purpose: 'refresh' },
+        {
+          secret: requiredConfig(this.config, 'JWT_REFRESH_SECRET'),
+          expiresIn: requiredConfig(
+            this.config,
+            'JWT_REFRESH_EXPIRES_IN',
+          ) as StringValue,
+        },
+      ),
     ]);
 
     return { accessToken, refreshToken };
@@ -410,11 +560,22 @@ export class PostgresAuthService {
   private async storeRefreshToken(
     user: UserEntity,
     refreshToken: string,
+    expectedPasswordHash?: string,
   ): Promise<void> {
-    user.refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+    user.refreshTokenHash = await hashRefreshCredential(refreshToken);
+    if (expectedPasswordHash) {
+      const updated: unknown[] = await this.manager.query(
+        'WITH changed AS (UPDATE users SET refresh_token_hash = $1 WHERE id = $2 AND password_hash = $3 AND disabled_at IS NULL RETURNING id) SELECT id FROM changed',
+        [user.refreshTokenHash, user.id, expectedPasswordHash],
+      );
+      if (!updated.length)
+        throw new UnauthorizedException(
+          'Credentials changed. Please sign in again.',
+        );
+      return;
+    }
     await this.users.save(user);
   }
-
 }
 
 function normalizeEmail(email: string): string {
@@ -427,7 +588,9 @@ function generateOtp(): string {
 
 function ensurePasswordPolicy(password: string): void {
   if (password.length < 8 || password.length > 128) {
-    throw new BadRequestException('Password must be between 8 and 128 characters');
+    throw new BadRequestException(
+      'Password must be between 8 and 128 characters',
+    );
   }
 }
 
@@ -457,4 +620,9 @@ function sanitizePersonalPreferences(
     weekStartsOn: preferences.weekStartsOn,
     inAppNotificationsEnabled: preferences.inAppNotificationsEnabled,
   };
+}
+
+async function hashRefreshCredential(token: string): Promise<string> {
+  // Hash the full JWT before bcrypt; marker preserves legacy credential rotation.
+  return `sha256:${await bcrypt.hash(resetDigest(token), 10)}`;
 }

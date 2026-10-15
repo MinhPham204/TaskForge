@@ -5,10 +5,10 @@ import { selectActiveOrganizationId } from '../store/authSlice.js'
 
 const PrivateRoutes = ({ requireWorkspace = true }) => {
   const location = useLocation();
-  const { user, loading, isOrganizationsLoading, organizationsInitialized } = useSelector((state) => state.auth);
+  const { user, loading, organizationsInitialized } = useSelector((state) => state.auth);
   const activeOrganizationId = useSelector(selectActiveOrganizationId);
 
-  if (loading || (user && (!organizationsInitialized || isOrganizationsLoading))) {
+  if (loading || (user && !organizationsInitialized)) {
     return (
       <main
         className="min-h-screen bg-slate-50 flex items-center justify-center p-6"

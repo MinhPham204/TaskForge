@@ -1,3 +1,4 @@
+import { normalizeHttpError } from '../utils/httpError.js';
 import { createApi } from '@reduxjs/toolkit/query/react';
 import { axiosBaseQuery } from './baseQuery.js';
 import axiosInstance from '../utils/axiosInstance.js';
@@ -64,10 +65,6 @@ export const collaborationApi = createApi({
           'Content-Type': undefined,
         },
       }),
-      invalidatesTags: (result, error, { projectId }) => [
-        { type: 'ProjectFile', id: projectId },
-        { type: 'ProjectActivity', id: projectId },
-      ],
     }),
 
     removeProjectFile: builder.mutation({
@@ -75,10 +72,6 @@ export const collaborationApi = createApi({
         url: API_PATHS.PROJECTS.FILES.REMOVE(projectId, fileId),
         method: 'delete',
       }),
-      invalidatesTags: (result, error, { projectId }) => [
-        { type: 'ProjectFile', id: projectId },
-        { type: 'ProjectActivity', id: projectId },
-      ],
     }),
 
     // ── Task Attachments ───────────────────────────────────────────────────────
@@ -101,11 +94,6 @@ export const collaborationApi = createApi({
           'Content-Type': undefined,
         },
       }),
-      invalidatesTags: (result, error, { projectId, taskId }) => [
-        { type: 'TaskAttachment', id: taskId },
-        { type: 'ProjectActivity', id: projectId },
-        { type: 'Task', id: taskId },
-      ],
     }),
 
     unlinkTaskAttachment: builder.mutation({
@@ -113,54 +101,34 @@ export const collaborationApi = createApi({
         url: API_PATHS.PROJECTS.TASKS.ATTACHMENTS.UNLINK(projectId, taskId, attachmentId),
         method: 'delete',
       }),
-      invalidatesTags: (result, error, { projectId, taskId }) => [
-        { type: 'TaskAttachment', id: taskId },
-        { type: 'ProjectActivity', id: projectId },
-        { type: 'Task', id: taskId },
-      ],
     }),
   }),
 });
 
-export const downloadProjectFile = async (projectId, fileId, originalName = 'download') => {
-  const response = await axiosInstance.get(
-    API_PATHS.PROJECTS.FILES.DOWNLOAD(projectId, fileId),
-    { responseType: 'blob' },
-  );
-  const blob = new Blob([response.data], {
-    type: response.headers?.['content-type'] || 'application/octet-stream',
-  });
+function saveDownload(response, originalName, { isCurrent = () => true } = {}) {
+  if (!isCurrent()) return;
+  const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.href = url;
-  link.setAttribute('download', originalName);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
+  try {
+    link.href = url; link.setAttribute('download', originalName);
+    document.body.appendChild(link); link.click();
+  } finally {
+    try {
+      if (link.parentNode) link.parentNode.removeChild(link);
+      else document.body.removeChild(link);
+    } finally { window.URL.revokeObjectURL(url); }
+  }
+}
+
+export const downloadProjectFile = async (projectId, fileId, originalName = 'download', options) => {
+  const response = await axiosInstance.get(API_PATHS.PROJECTS.FILES.DOWNLOAD(projectId, fileId), { responseType: 'blob' }).catch(async error => { throw await normalizeHttpError(error); });
+  saveDownload(response, originalName, options);
 };
 
-export const downloadTaskAttachment = async (
-  projectId,
-  taskId,
-  attachmentId,
-  originalName = 'download',
-) => {
-  const response = await axiosInstance.get(
-    API_PATHS.PROJECTS.TASKS.ATTACHMENTS.DOWNLOAD(projectId, taskId, attachmentId),
-    { responseType: 'blob' },
-  );
-  const blob = new Blob([response.data], {
-    type: response.headers?.['content-type'] || 'application/octet-stream',
-  });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.setAttribute('download', originalName);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
+export const downloadTaskAttachment = async (projectId, taskId, attachmentId, originalName = 'download', options) => {
+  const response = await axiosInstance.get(API_PATHS.PROJECTS.TASKS.ATTACHMENTS.DOWNLOAD(projectId, taskId, attachmentId), { responseType: 'blob' }).catch(async error => { throw await normalizeHttpError(error); });
+  saveDownload(response, originalName, options);
 };
 
 export const {
